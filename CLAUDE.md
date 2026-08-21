@@ -76,3 +76,18 @@ RLE compresses brutally well (density fields are mostly-empty or mostly-full). S
 - itch.io vs Steam
 - Exact grid size & voxel resolution (start 96³ @ 4cm, tune after Phase 1)
 - Whether sculptures can be *edited* by strangers (current lean: no — additive-only communal lumps maybe later)
+
+## Dev workflow (headless, no editor needed)
+
+Unity: `C:\Program Files\Unity\Hub\Editor\6000.3.19f1\Editor\Unity.exe`. All commands take `-batchmode -projectPath C:\Projects\snow -logFile <log>`.
+
+- Regenerate settings/scene (idempotent, never clobbers an existing scene): `-nographics -quit -executeMethod Snowfield.Editor.ProjectBootstrap.Run`
+- Re-wire player rig into the scene: `-nographics -quit -executeMethod Snowfield.Editor.SandboxActors.Run`
+- Render the scene to PNG (needs graphics, so no `-nographics`): `-executeMethod Snowfield.Editor.HeadlessScreenshot.Run -screenshotOut Screenshots/x.png`
+- Tests: `-runTests -testPlatform EditMode|PlayMode -testResults out.xml` (PlayMode needs graphics)
+
+Gotchas learned: `SerializedProperty.objectReferenceValue` silently drops refs to custom ScriptableObjects in batchmode — assign fields directly (`SnowSculpture.EditorAssign`). Shadows don't show in the edit-mode screenshot path; judge lighting in play mode.
+
+## Controls (Sandbox)
+
+LMB add · RMB smooth · Ctrl+LMB carve · scroll brush radius · WASD/Shift move · Tab toggle cursor lock · +/- zoom
