@@ -1,0 +1,14 @@
+{
+  "name": "Snowfield.Voxel",
+  "rootNamespace": "Snowfield.Voxel",
+  "references": ["Unity.Burst","Unity.Collections","Unity.Mathematics","Snowfield.Config"],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": true,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

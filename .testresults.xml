@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<test-run id="2" testcasecount="5" result="Passed" total="5" passed="5" failed="0" inconclusive="0" skipped="0" asserts="0" engine-version="3.5.0.0" clr-version="4.0.30319.42000" start-time="2026-08-21 08:04:00Z" end-time="2026-08-21 08:04:00Z" duration="0.096933">
+  <test-suite type="TestSuite" id="1000" name="snow" fullname="snow" runstate="Runnable" testcasecount="5" result="Passed" start-time="2026-08-21 08:04:00Z" end-time="2026-08-21 08:04:00Z" duration="0.096933" total="5" passed="5" failed="0" inconclusive="0" skipped="0" asserts="0">
+    <properties>
+      <property name="platform" value="EditMode" />
+    </properties>
+    <test-suite type="Assembly" id="1007" name="Snowfield.Voxel.Tests.dll" fullname="C:/Projects/snow/Library/ScriptAssemblies/Snowfield.Voxel.Tests.dll" runstate="Runnable" testcasecount="5" result="Passed" start-time="2026-08-21 08:04:00Z" end-time="2026-08-21 08:04:00Z" duration="0.090954" total="5" passed="5" failed="0" inconclusive="0" skipped="0" asserts="0">
+      <properties>
+        <property name="_PID" value="15920" />
+        <property name="_APPDOMAIN" value="Unity Child Domain" />
+        <property name="platform" value="EditMode" />
+        <property name="EditorOnly" value="True" />
+      </properties>
+      <test-suite type="TestSuite" id="1008" name="Snowfield" fullname="Snowfield" runstate="Runnable" testcasecount="5" result="Passed" start-time="2026-08-21 08:04:00Z" end-time="2026-08-21 08:04:00Z" duration="0.090664" total="5" passed="5" failed="0" inconclusive="0" skipped="0" asserts="0">
+        <properties />
+        <test-suite type="TestSuite" id="1009" name="Voxel" fullname="Snowfield.Voxel" runstate="Runnable" testcasecount="5" result="Passed" start-time="2026-08-21 08:04:00Z" end-time="2026-08-21 08:04:00Z" duration="0.090575" total="5" passed="5" failed="0" inconclusive="0" skipped="0" asserts="0">
+          <properties />
+          <test-suite type="TestSuite" id="1010" name="Tests" fullname="Snowfield.Voxel.Tests" runstate="Runnable" testcasecount="5" result="Passed" start-time="2026-08-21 08:04:00Z" end-time="2026-08-21 08:04:00Z" duration="0.090474" total="5" passed="5" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-suite type="TestFixture" id="1001" name="MarchingCubesTests" fullname="Snowfield.Voxel.Tests.MarchingCubesTests" classname="Snowfield.Voxel.Tests.MarchingCubesTests" runstate="Runnable" testcasecount="5" result="Passed" start-time="2026-08-21 08:04:00Z" end-time="2026-08-21 08:04:00Z" duration="0.089614" total="5" passed="5" failed="0" inconclusive="0" skipped="0" asserts="0">
+              <properties />
+              <test-case id="1005" name="AddBrush_RaisesDensity_AndMarksDirty" fullname="Snowfield.Voxel.Tests.MarchingCubesTests.AddBrush_RaisesDensity_AndMarksDirty" methodname="AddBrush_RaisesDensity_AndMarksDirty" classname="Snowfield.Voxel.Tests.MarchingCubesTests" runstate="Runnable" seed="562060612" result="Passed" start-time="2026-08-21 08:04:00Z" end-time="2026-08-21 08:04:00Z" duration="0.028019" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1003" name="EmptyGrid_ProducesNoGeometry" fullname="Snowfield.Voxel.Tests.MarchingCubesTests.EmptyGrid_ProducesNoGeometry" methodname="EmptyGrid_ProducesNoGeometry" classname="Snowfield.Voxel.Tests.MarchingCubesTests" runstate="Runnable" seed="453065559" result="Passed" start-time="2026-08-21 08:04:00Z" end-time="2026-08-21 08:04:00Z" duration="0.032871" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1006" name="SmoothBrush_PreservesUniformRegions" fullname="Snowfield.Voxel.Tests.MarchingCubesTests.SmoothBrush_PreservesUniformRegions" methodname="SmoothBrush_PreservesUniformRegions" classname="Snowfield.Voxel.Tests.MarchingCubesTests" runstate="Runnable" seed="1839086463" result="Passed" start-time="2026-08-21 08:04:00Z" end-time="2026-08-21 08:04:00Z" duration="0.005992" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1004" name="Sphere_WindingMatchesGradientNormals_AndIsClosed" fullname="Snowfield.Voxel.Tests.MarchingCubesTests.Sphere_WindingMatchesGradientNormals_AndIsClosed" methodname="Sphere_WindingMatchesGradientNormals_AndIsClosed" classname="Snowfield.Voxel.Tests.MarchingCubesTests" runstate="Runnable" seed="1187569569" result="Passed" start-time="2026-08-21 08:04:00Z" end-time="2026-08-21 08:04:00Z" duration="0.008760" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1002" name="TriTable_HasExpectedShape" fullname="Snowfield.Voxel.Tests.MarchingCubesTests.TriTable_HasExpectedShape" methodname="TriTable_HasExpectedShape" classname="Snowfield.Voxel.Tests.MarchingCubesTests" runstate="Runnable" seed="1483134179" result="Passed" start-time="2026-08-21 08:04:00Z" end-time="2026-08-21 08:04:00Z" duration="0.002739" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+                <output><![CDATA[Saving results to: C:/Users/bacon/AppData/LocalLow/DefaultCompany/snow\TestResults.xml
+]]></output>
+              </test-case>
+            </test-suite>
+          </test-suite>
+        </test-suite>
+      </test-suite>
+    </test-suite>
+  </test-suite>
+</test-run>
