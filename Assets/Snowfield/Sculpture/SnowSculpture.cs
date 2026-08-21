@@ -23,6 +23,9 @@ namespace Snowfield.Sculpture
         public VoxelGridInfo Info => Grid.Info;
         public SculptFeelConfig Config => config;
 
+        /// <summary>Editor/bootstrap hook for wiring references on a freshly added component.</summary>
+        public void EditorAssign(SculptFeelConfig cfg, Material mat) { config = cfg; snowMaterial = mat; }
+
         MarchingCubesLookup _lookup;
         NativeArray<byte> _scratch; // snapshot buffer for the smooth brush
         Mesh[] _meshes;

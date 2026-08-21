@@ -13,7 +13,9 @@ namespace Snowfield.Sculpture
         public float sink = 0.25f;
         [Range(0f, 1f)] public float shoulder = 0.7f;
 
-        void Start()
+        void Start() => SpawnNow();
+
+        public void SpawnNow()
         {
             var s = GetComponent<SnowSculpture>();
             float extent = s.Info.WorldExtent;

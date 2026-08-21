@@ -23,6 +23,7 @@ namespace Snowfield.Editor
         const string PipelinePath = SettingsDir + "/URP-Pipeline.asset";
         const string ConfigPath = SettingsDir + "/SculptFeelConfig.asset";
         const string MaterialPath = SettingsDir + "/Snow.mat";
+        const string GroundMaterialPath = SettingsDir + "/Ground.mat";
         const string ScenePath = ScenesDir + "/Sandbox.unity";
 
         [MenuItem("Snowfield/Bootstrap Project")]
@@ -31,10 +32,17 @@ namespace Snowfield.Editor
             Directory.CreateDirectory(SettingsDir);
             Directory.CreateDirectory(ScenesDir);
 
-            var pipeline = EnsureUrp();
-            var config = EnsureAsset<SculptFeelConfig>(ConfigPath);
-            var material = EnsureSnowMaterial();
-            EnsureScene(config, material);
+            EnsureUrp();
+            EnsureAsset<SculptFeelConfig>(ConfigPath);
+            EnsureSnowMaterial();
+            EnsureGroundMaterial();
+            // Save + reload so the scene references persistent assets (fresh instances can serialise as null).
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+            var config = AssetDatabase.LoadAssetAtPath<SculptFeelConfig>(ConfigPath);
+            var material = AssetDatabase.LoadAssetAtPath<Material>(MaterialPath);
+            var ground = AssetDatabase.LoadAssetAtPath<Material>(GroundMaterialPath);
+            EnsureScene(config, material, ground);
 
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
@@ -84,7 +92,7 @@ namespace Snowfield.Editor
             if (m == null)
             {
                 m = new Material(Shader.Find("Universal Render Pipeline/Lit")) { name = "Snow" };
-                m.SetColor("_BaseColor", new Color(0.93f, 0.95f, 1.0f));
+                m.SetColor("_BaseColor", new Color(0.88f, 0.91f, 0.97f));
                 m.SetFloat("_Smoothness", 0.12f);
                 m.SetFloat("_Metallic", 0f);
                 AssetDatabase.CreateAsset(m, MaterialPath);
@@ -92,15 +100,29 @@ namespace Snowfield.Editor
             return m;
         }
 
-        static void EnsureScene(SculptFeelConfig config, Material snow)
+        static Material EnsureGroundMaterial()
+        {
+            var m = AssetDatabase.LoadAssetAtPath<Material>(GroundMaterialPath);
+            if (m == null)
+            {
+                m = new Material(Shader.Find("Universal Render Pipeline/Lit")) { name = "Ground" };
+                m.SetColor("_BaseColor", new Color(0.78f, 0.82f, 0.9f));
+                m.SetFloat("_Smoothness", 0.08f);
+                m.SetFloat("_Metallic", 0f);
+                AssetDatabase.CreateAsset(m, GroundMaterialPath);
+            }
+            return m;
+        }
+
+        static void EnsureScene(SculptFeelConfig config, Material snow, Material groundMat)
         {
             if (File.Exists(ScenePath)) return; // never clobber a hand-edited scene
 
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             RenderSettings.ambientMode = AmbientMode.Trilight;
-            RenderSettings.ambientSkyColor = new Color(0.55f, 0.65f, 0.85f);
-            RenderSettings.ambientEquatorColor = new Color(0.6f, 0.62f, 0.7f);
-            RenderSettings.ambientGroundColor = new Color(0.5f, 0.5f, 0.55f);
+            RenderSettings.ambientSkyColor = new Color(0.35f, 0.42f, 0.55f);
+            RenderSettings.ambientEquatorColor = new Color(0.32f, 0.34f, 0.4f);
+            RenderSettings.ambientGroundColor = new Color(0.22f, 0.22f, 0.26f);
             RenderSettings.fog = true;
             RenderSettings.fogMode = FogMode.ExponentialSquared;
             RenderSettings.fogColor = new Color(0.75f, 0.8f, 0.9f);
@@ -109,14 +131,14 @@ namespace Snowfield.Editor
             var sun = new GameObject("Sun").AddComponent<Light>();
             sun.type = LightType.Directional;
             sun.color = new Color(1f, 0.96f, 0.9f);
-            sun.intensity = 1.4f;
+            sun.intensity = 1.0f;
             sun.shadows = LightShadows.Soft;
             sun.transform.rotation = Quaternion.Euler(38f, -35f, 0f);
 
             var ground = GameObject.CreatePrimitive(PrimitiveType.Plane);
             ground.name = "Ground";
             ground.transform.localScale = Vector3.one * 6f; // 60 m field
-            ground.GetComponent<MeshRenderer>().sharedMaterial = snow;
+            ground.GetComponent<MeshRenderer>().sharedMaterial = groundMat;
 
             var camGo = new GameObject("Main Camera");
             camGo.tag = "MainCamera";
@@ -130,10 +152,8 @@ namespace Snowfield.Editor
             var sculptGo = new GameObject("Sculpture");
             sculptGo.transform.position = new Vector3(-extent * 0.5f, 0f, -extent * 0.5f);
             var sculpt = sculptGo.AddComponent<SnowSculpture>();
-            var so = new SerializedObject(sculpt);
-            so.FindProperty("config").objectReferenceValue = config;
-            so.FindProperty("snowMaterial").objectReferenceValue = snow;
-            so.ApplyModifiedPropertiesWithoutUndo();
+            sculpt.EditorAssign(config, snow); // direct assignment: SerializedProperty drops custom SO refs in batchmode
+            EditorUtility.SetDirty(sculpt);
             sculptGo.AddComponent<SculptureSpawner>();
 
             EditorSceneManager.SaveScene(scene, ScenePath);
