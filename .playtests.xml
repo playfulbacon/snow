@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<test-run id="2" testcasecount="2" result="Passed" total="2" passed="2" failed="0" inconclusive="0" skipped="0" asserts="0" engine-version="3.5.0.0" clr-version="4.0.30319.42000" start-time="2026-08-21 08:09:47Z" end-time="2026-08-21 08:09:47Z" duration="0.1367828">
+  <test-suite type="TestSuite" id="1011" name="snow" fullname="snow" runstate="Runnable" testcasecount="2" result="Passed" start-time="2026-08-21 08:09:47Z" end-time="2026-08-21 08:09:47Z" duration="0.136783" total="2" passed="2" failed="0" inconclusive="0" skipped="0" asserts="0">
+    <properties>
+      <property name="platform" value="PlayMode" />
+    </properties>
+    <test-suite type="Assembly" id="1004" name="Snowfield.Sculpture.Tests.dll" fullname="C:/Projects/snow/Library/ScriptAssemblies/Snowfield.Sculpture.Tests.dll" runstate="Runnable" testcasecount="2" result="Passed" start-time="2026-08-21 08:09:47Z" end-time="2026-08-21 08:09:47Z" duration="0.127980" total="2" passed="2" failed="0" inconclusive="0" skipped="0" asserts="0">
+      <properties>
+        <property name="_PID" value="47108" />
+        <property name="_APPDOMAIN" value="Unity Child Domain" />
+        <property name="platform" value="PlayMode" />
+        <property name="EditorOnly" value="False" />
+      </properties>
+      <test-suite type="TestSuite" id="1005" name="Snowfield" fullname="Snowfield" runstate="Runnable" testcasecount="2" result="Passed" start-time="2026-08-21 08:09:47Z" end-time="2026-08-21 08:09:47Z" duration="0.127153" total="2" passed="2" failed="0" inconclusive="0" skipped="0" asserts="0">
+        <properties />
+        <test-suite type="TestSuite" id="1006" name="Sculpture" fullname="Snowfield.Sculpture" runstate="Runnable" testcasecount="2" result="Passed" start-time="2026-08-21 08:09:47Z" end-time="2026-08-21 08:09:47Z" duration="0.126794" total="2" passed="2" failed="0" inconclusive="0" skipped="0" asserts="0">
+          <properties />
+          <test-suite type="TestSuite" id="1007" name="Tests" fullname="Snowfield.Sculpture.Tests" runstate="Runnable" testcasecount="2" result="Passed" start-time="2026-08-21 08:09:47Z" end-time="2026-08-21 08:09:47Z" duration="0.126420" total="2" passed="2" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-suite type="TestFixture" id="1001" name="SnowSculptureTests" fullname="Snowfield.Sculpture.Tests.SnowSculptureTests" classname="Snowfield.Sculpture.Tests.SnowSculptureTests" runstate="Runnable" testcasecount="2" result="Passed" start-time="2026-08-21 08:09:47Z" end-time="2026-08-21 08:09:47Z" duration="0.125233" total="2" passed="2" failed="0" inconclusive="0" skipped="0" asserts="0">
+              <properties />
+              <test-case id="1002" name="HeldAddBrush_AccumulatesIntoVisibleSnow" fullname="Snowfield.Sculpture.Tests.SnowSculptureTests.HeldAddBrush_AccumulatesIntoVisibleSnow" methodname="HeldAddBrush_AccumulatesIntoVisibleSnow" classname="Snowfield.Sculpture.Tests.SnowSculptureTests" runstate="Runnable" seed="1016474659" result="Passed" start-time="2026-08-21 08:09:47Z" end-time="2026-08-21 08:09:47Z" duration="0.096738" asserts="0">
+                <properties>
+                  <property name="_JOINTYPE" value="UnityCombinatorial" />
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1003" name="SmoothBrush_ReducesVertexCountOnNoisyBlob" fullname="Snowfield.Sculpture.Tests.SnowSculptureTests.SmoothBrush_ReducesVertexCountOnNoisyBlob" methodname="SmoothBrush_ReducesVertexCountOnNoisyBlob" classname="Snowfield.Sculpture.Tests.SnowSculptureTests" runstate="Runnable" seed="1485759070" result="Passed" start-time="2026-08-21 08:09:47Z" end-time="2026-08-21 08:09:47Z" duration="0.017256" asserts="0">
+                <properties>
+                  <property name="_JOINTYPE" value="UnityCombinatorial" />
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+                <output><![CDATA[Saving results to: C:/Users/bacon/AppData/LocalLow/DefaultCompany/snow\TestResults.xml
+]]></output>
+              </test-case>
+            </test-suite>
+          </test-suite>
+        </test-suite>
+      </test-suite>
+    </test-suite>
+  </test-suite>
+</test-run>
