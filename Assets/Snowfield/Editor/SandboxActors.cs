@@ -41,6 +41,10 @@ namespace Snowfield.Editor
                 var ch = player.AddComponent<SnowCharacter>();
                 ch.cameraRig = cam.transform;
             }
+            // The brush ray starts behind the player; keep the player out of every raycast.
+            int ignore = LayerMask.NameToLayer("Ignore Raycast");
+            player.layer = ignore;
+            foreach (Transform t in player.GetComponentsInChildren<Transform>(true)) t.gameObject.layer = ignore;
 
             var orbit = cam.GetComponent<OrbitCamera>();
             if (orbit == null) orbit = cam.gameObject.AddComponent<OrbitCamera>();

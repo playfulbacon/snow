@@ -32,6 +32,8 @@ namespace Snowfield.Editor
             }
 
             var cam = Camera.main;
+            var orbit = cam.GetComponent<Snowfield.Player.OrbitCamera>();
+            if (orbit != null) orbit.Snap(); // LateUpdate does not run in edit mode
             var rt = new RenderTexture(1280, 720, 24, RenderTextureFormat.ARGB32);
             cam.targetTexture = rt;
             cam.Render();

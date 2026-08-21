@@ -57,6 +57,13 @@ namespace Snowfield.Player
                 distance = Mathf.Clamp(distance, minDistance, maxDistance);
             }
 
+            Snap();
+        }
+
+        /// <summary>Place the camera for the current yaw/pitch/distance without reading input. Safe in edit mode.</summary>
+        public void Snap()
+        {
+            if (target == null) return;
             var rot = Quaternion.Euler(_pitch, _yaw, 0f);
             Vector3 pivot = target.position + targetOffset;
             Vector3 desired = pivot + rot * new Vector3(shoulder, 0f, -distance);

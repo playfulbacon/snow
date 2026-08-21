@@ -86,7 +86,7 @@ Unity: `C:\Program Files\Unity\Hub\Editor\6000.3.19f1\Editor\Unity.exe`. All com
 - Render the scene to PNG (needs graphics, so no `-nographics`): `-executeMethod Snowfield.Editor.HeadlessScreenshot.Run -screenshotOut Screenshots/x.png`
 - Tests: `-runTests -testPlatform EditMode|PlayMode -testResults out.xml` (PlayMode needs graphics)
 
-Gotchas learned: `SerializedProperty.objectReferenceValue` silently drops refs to custom ScriptableObjects in batchmode — assign fields directly (`SnowSculpture.EditorAssign`). Shadows don't show in the edit-mode screenshot path; judge lighting in play mode.
+Gotchas learned: `SerializedProperty.objectReferenceValue` silently drops refs to custom ScriptableObjects in batchmode — assign fields directly (`SnowSculpture.EditorAssign`). Edit-mode screenshots render shadows but not play-mode-only behaviour (orbit camera, brush); `HeadlessScreenshot` snaps the orbit camera manually.
 
 ## Controls (Sandbox)
 
