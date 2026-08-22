@@ -12,7 +12,7 @@ namespace Snowfield.Player
     ///   Empty Hand — LMB smooth/pat, scroll = radius
     ///   Accessory  — scroll picks, hover ghost, LMB place, RMB remove (via <see cref="AccessoryPlacer"/>)
     /// Left Shift cycles modes; 1/2/3 select. Remesh on a timer while sculpting; colliders rebuild on release.
-    /// Self-wires its HUD and placer so a scene only needs this component on the camera.
+    /// Lives on the Player (or a child); the HUD is a separate object that reads this component.
     /// </summary>
     public class SculptTool : MonoBehaviour
     {
@@ -50,15 +50,12 @@ namespace Snowfield.Player
             if (viewCamera == null) viewCamera = Camera.main;
             if (reachOrigin == null)
             {
-                var ch = FindAnyObjectByType<SnowCharacter>();
+                var ch = GetComponentInParent<SnowCharacter>();
+                if (ch == null) ch = FindAnyObjectByType<SnowCharacter>();
                 reachOrigin = ch != null ? ch.transform : viewCamera.transform;
             }
             _placer = GetComponent<AccessoryPlacer>();
             if (_placer == null) _placer = gameObject.AddComponent<AccessoryPlacer>();
-            var hud = GetComponent<ToolHud>();
-            if (hud == null) hud = gameObject.AddComponent<ToolHud>();
-            hud.tool = this;
-            hud.placer = _placer;
         }
 
         public void SetMode(ToolMode mode)

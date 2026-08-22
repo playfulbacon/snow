@@ -82,7 +82,7 @@ RLE compresses brutally well (density fields are mostly-empty or mostly-full). S
 Unity: `C:\Program Files\Unity\Hub\Editor\6000.3.19f1\Editor\Unity.exe`. All commands take `-batchmode -projectPath C:\Projects\snow -logFile <log>`.
 
 - Regenerate settings/scene (idempotent, never clobbers an existing scene): `-nographics -quit -executeMethod Snowfield.Editor.ProjectBootstrap.Run`
-- Re-wire player rig into the scene: `-nographics -quit -executeMethod Snowfield.Editor.SandboxActors.Run`
+- Re-wire player rig into the scene: `-nographics -quit -executeMethod Snowfield.Editor.SandboxActors.Run` (also menu Snowfield ▸ Ensure Sandbox Actors). Scene layout convention — one responsibility per GameObject: `Player` (SnowCharacter) › `OrbitCamera` (moves Main Camera) · `SculptTool` (+AccessoryPlacer); `Main Camera` is a bare camera; `HUD` is its own root with Canvas + ToolHud.
 - Render the scene to PNG (needs graphics, so no `-nographics`): `-executeMethod Snowfield.Editor.HeadlessScreenshot.Run -screenshotOut Screenshots/x.png`
 - Tests: `-runTests -testPlatform EditMode|PlayMode -testResults out.xml` (PlayMode needs graphics)
 

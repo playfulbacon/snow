@@ -7,8 +7,15 @@ using UnityEngine;
 namespace Snowfield.Editor
 {
     /// <summary>
-    /// Adds the player rig (character, orbit camera, sculpt tool, cursor) to the Sandbox scene if missing.
-    /// Separate from ProjectBootstrap.EnsureScene so it can be re-run against a hand-edited scene.
+    /// Ensures the player rig and HUD exist in the Sandbox scene, grouped by responsibility:
+    ///
+    ///   Player          SnowCharacter
+    ///    ├ OrbitCamera  OrbitCamera   (moves Main Camera)
+    ///    └ SculptTool   SculptTool + AccessoryPlacer
+    ///   Main Camera     Camera only
+    ///   HUD             Canvas + CanvasScaler + ToolHud
+    ///
+    /// Idempotent, and migrates the older layout where everything hung off the camera.
     /// </summary>
     public static class SandboxActors
     {
@@ -25,6 +32,13 @@ namespace Snowfield.Editor
             var cam = Camera.main;
             if (cam == null) { Debug.LogError("[Snowfield] Sandbox scene has no MainCamera"); return; }
 
+            // --- migrate: strip behaviour components that used to live on the camera ---
+            StripComponent<SculptTool>(cam.gameObject);
+            StripComponent<AccessoryPlacer>(cam.gameObject);
+            StripComponent<ToolHud>(cam.gameObject);
+            StripComponent<OrbitCamera>(cam.gameObject);
+
+            // --- player ---
             var player = GameObject.Find("Player");
             if (player == null)
             {
@@ -38,19 +52,24 @@ namespace Snowfield.Editor
                 body.transform.SetParent(player.transform, false);
                 body.transform.localPosition = new Vector3(0f, 0.9f, 0f);
                 body.transform.localScale = new Vector3(0.7f, 0.9f, 0.7f);
-                var ch = player.AddComponent<SnowCharacter>();
-                ch.cameraRig = cam.transform;
             }
+            var character = player.GetComponent<SnowCharacter>();
+            if (character == null) character = player.AddComponent<SnowCharacter>();
+            character.cameraRig = cam.transform;
+
             // The brush ray starts behind the player; keep the player out of every raycast.
             int ignore = LayerMask.NameToLayer("Ignore Raycast");
-            player.layer = ignore;
             foreach (Transform t in player.GetComponentsInChildren<Transform>(true)) t.gameObject.layer = ignore;
 
-            var orbit = cam.GetComponent<OrbitCamera>();
-            if (orbit == null) orbit = cam.gameObject.AddComponent<OrbitCamera>();
+            // --- orbit camera rig (child of player) ---
+            var orbitGo = Child(player.transform, "OrbitCamera");
+            var orbit = orbitGo.GetComponent<OrbitCamera>();
+            if (orbit == null) orbit = orbitGo.AddComponent<OrbitCamera>();
+            orbit.cameraTransform = cam.transform;
             orbit.target = player.transform;
             orbit.collisionMask = ~LayerMask.GetMask("Ignore Raycast");
 
+            // --- brush cursor ---
             var cursorGo = GameObject.Find("BrushCursor");
             if (cursorGo == null)
             {
@@ -77,28 +96,48 @@ namespace Snowfield.Editor
                 cursorGo.SetActive(false);
             }
 
-            var tool = cam.GetComponent<SculptTool>();
-            if (tool == null) tool = cam.gameObject.AddComponent<SculptTool>();
+            // --- sculpt tool (child of player) ---
+            var toolGo = Child(player.transform, "SculptTool");
+            var tool = toolGo.GetComponent<SculptTool>();
+            if (tool == null) tool = toolGo.AddComponent<SculptTool>();
             tool.config = config;
             tool.viewCamera = cam;
+            tool.reachOrigin = player.transform;
             tool.cursor = cursorGo.transform;
             tool.sculptMask = ~LayerMask.GetMask("Ignore Raycast");
+            var placer = toolGo.GetComponent<AccessoryPlacer>();
+            if (placer == null) placer = toolGo.AddComponent<AccessoryPlacer>();
 
-            var placer = cam.GetComponent<AccessoryPlacer>();
-            if (placer == null) placer = cam.gameObject.AddComponent<AccessoryPlacer>();
-            var hud = cam.GetComponent<ToolHud>();
-            if (hud == null) hud = cam.gameObject.AddComponent<ToolHud>();
+            // --- HUD (own root object) ---
+            var hudGo = GameObject.Find("HUD");
+            if (hudGo == null) hudGo = new GameObject("HUD", typeof(RectTransform));
+            var hud = hudGo.GetComponent<ToolHud>();
+            if (hud == null) hud = hudGo.AddComponent<ToolHud>();
             hud.tool = tool;
             hud.placer = placer;
             hud.RebuildNow();
-            EditorUtility.SetDirty(hud);
 
-            EditorUtility.SetDirty(tool);
-            EditorUtility.SetDirty(orbit);
+            foreach (var o in new Object[] { character, orbit, tool, placer, hud }) EditorUtility.SetDirty(o);
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene);
             AssetDatabase.SaveAssets();
             Debug.Log("[Snowfield] Sandbox actors ensured.");
+        }
+
+        static GameObject Child(Transform parent, string name)
+        {
+            var t = parent.Find(name);
+            if (t != null) return t.gameObject;
+            var go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+            go.layer = parent.gameObject.layer;
+            return go;
+        }
+
+        static void StripComponent<T>(GameObject go) where T : Component
+        {
+            var c = go.GetComponent<T>();
+            if (c != null) Object.DestroyImmediate(c);
         }
     }
 }

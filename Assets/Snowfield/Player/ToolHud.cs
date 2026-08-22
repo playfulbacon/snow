@@ -10,7 +10,7 @@ namespace Snowfield.Player
     /// uGUI overlay for the tool: mode boxes with number badges along the bottom, an accessory row above them,
     /// a status line top-left, and the centre reticle.
     ///
-    /// Builds its own hierarchy under a "HUD" canvas and runs in edit mode, so the layout can be tuned in the
+    /// Sits on its own "HUD" GameObject with the Canvas, builds the children itself, and runs in edit mode, so the layout can be tuned in the
     /// Scene/Game view without pressing Play. **This component's inspector is the source of truth**: every size,
     /// spacing and colour lives in the settings groups below and is re-applied to the generated objects each
     /// frame. Hand edits to the generated children are overwritten unless <see cref="applyLayoutFromSettings"/>
@@ -86,7 +86,7 @@ namespace Snowfield.Player
         [Header("Wiring")]
         public SculptTool tool;
         public AccessoryPlacer placer;
-        [Tooltip("Generated root. Leave empty to create/find a 'HUD' canvas.")]
+        [Tooltip("Canvas the HUD is built under. Defaults to the Canvas on this object (added if missing).")]
         public Canvas canvas;
         public Vector2 referenceResolution = new Vector2(1920f, 1080f);
         public float outlineWidth = 1f;
@@ -126,10 +126,12 @@ namespace Snowfield.Player
 
         // ------------------------------------------------------------------ lifecycle
 
-        void Awake()
+        void Awake() => ResolveRefs();
+
+        void ResolveRefs()
         {
-            if (tool == null) tool = GetComponent<SculptTool>();
-            if (placer == null) placer = GetComponent<AccessoryPlacer>();
+            if (tool == null) tool = FindAnyObjectByType<SculptTool>();
+            if (placer == null && tool != null) placer = tool.GetComponent<AccessoryPlacer>();
         }
 
         void OnEnable()
@@ -157,14 +159,13 @@ namespace Snowfield.Player
         void Update()
         {
             if (_pendingBuild) Build();
+            if (Application.isPlaying && tool == null) ResolveRefs();
             ApplyAll();
         }
 
         [ContextMenu("Rebuild HUD")]
         public void RebuildNow()
         {
-            if (canvas != null) Kill(canvas.gameObject);
-            canvas = null;
             _modes.Clear(); _accessories.Clear();
             Build();
             ApplyAll();
@@ -182,16 +183,8 @@ namespace Snowfield.Player
             _pendingBuild = false;
             _font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
 
-            if (canvas == null)
-            {
-                var existing = GameObject.Find("HUD");
-                canvas = existing != null ? existing.GetComponent<Canvas>() : null;
-            }
-            if (canvas == null)
-            {
-                var go = new GameObject("HUD", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler));
-                canvas = go.GetComponent<Canvas>();
-            }
+            if (canvas == null) canvas = GetComponent<Canvas>();
+            if (canvas == null) canvas = gameObject.AddComponent<Canvas>();
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
             var scaler = canvas.GetComponent<CanvasScaler>();
             if (scaler == null) scaler = canvas.gameObject.AddComponent<CanvasScaler>();

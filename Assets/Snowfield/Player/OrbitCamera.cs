@@ -10,6 +10,9 @@ namespace Snowfield.Player
     /// </summary>
     public class OrbitCamera : MonoBehaviour
     {
+        [Tooltip("The camera this rig moves. Defaults to Camera.main.")]
+        public Transform cameraTransform;
+        [Tooltip("What to orbit. Defaults to the SnowCharacter in this object's parents.")]
         public Transform target;
         public Vector3 targetOffset = new Vector3(0f, 1.4f, 0f);
         public float distance = 3.5f;
@@ -22,9 +25,19 @@ namespace Snowfield.Player
         float _yaw, _pitch = 20f;
         public bool CursorLocked { get; private set; }
 
+        void Awake()
+        {
+            if (cameraTransform == null && Camera.main != null) cameraTransform = Camera.main.transform;
+            if (target == null)
+            {
+                var ch = GetComponentInParent<SnowCharacter>();
+                if (ch != null) target = ch.transform;
+            }
+        }
+
         void Start()
         {
-            _yaw = transform.eulerAngles.y;
+            if (cameraTransform != null) _yaw = cameraTransform.eulerAngles.y;
             SetCursorLock(true);
         }
 
@@ -63,7 +76,7 @@ namespace Snowfield.Player
         /// <summary>Place the camera for the current yaw/pitch/distance without reading input. Safe in edit mode.</summary>
         public void Snap()
         {
-            if (target == null) return;
+            if (target == null || cameraTransform == null) return;
             var rot = Quaternion.Euler(_pitch, _yaw, 0f);
             Vector3 pivot = target.position + targetOffset;
             Vector3 desired = pivot + rot * new Vector3(shoulder, 0f, -distance);
@@ -74,7 +87,7 @@ namespace Snowfield.Player
             if (Physics.SphereCast(pivot, 0.2f, dir / len, out var hit, len, collisionMask, QueryTriggerInteraction.Ignore))
                 desired = pivot + dir / len * Mathf.Max(hit.distance - 0.05f, 0.3f);
 
-            transform.SetPositionAndRotation(desired, rot);
+            cameraTransform.SetPositionAndRotation(desired, rot);
         }
     }
 }
