@@ -215,7 +215,7 @@ namespace Snowfield.Player
             foreach (var m in ToolModeInfo.All)
             {
                 var item = new ModeItem();
-                item.root = Rect(ToolModeInfo.DisplayName(m).Replace(" ", ""), _modeBarRoot, new Vector2(0, 0), new Vector2(0, 0), new Vector2(0, 0));
+                item.root = MakeRect(ToolModeInfo.DisplayName(m).Replace(" ", ""), _modeBarRoot, new Vector2(0, 0), new Vector2(0, 0), new Vector2(0, 0));
                 item.boxOutline = Img("Outline", item.root);
                 item.box = Img("Box", item.root);
                 item.label = Txt("Label", item.root, TextAnchor.MiddleCenter);
@@ -233,7 +233,7 @@ namespace Snowfield.Player
             foreach (var e in AccessoryCatalog.Entries)
             {
                 var item = new AccessoryItem();
-                item.root = Rect(e.DisplayName, _accessoryBarRoot, new Vector2(0, 0), new Vector2(0, 0), new Vector2(0, 0));
+                item.root = MakeRect(e.DisplayName, _accessoryBarRoot, new Vector2(0, 0), new Vector2(0, 0), new Vector2(0, 0));
                 item.boxOutline = Img("Outline", item.root);
                 item.box = Img("Box", item.root);
                 var thumbGo = new GameObject("Thumbnail", typeof(RectTransform), typeof(RawImage));
