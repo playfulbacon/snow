@@ -11,7 +11,8 @@ namespace Snowfield.Editor
     ///
     ///   Player          SnowCharacter
     ///    ├ CameraRig    FirstPersonCamera (moves Main Camera)
-    ///    └ SculptTool   SculptTool + AccessoryPlacer
+    ///    ├ SculptTool   SculptTool + AccessoryPlacer + SnowballRoller + AccessoryInventory
+    ///    └ CarryAnchor  authored hold point for carried objects
     ///   Main Camera     Camera only
     ///   HUD             Canvas + CanvasScaler + ToolHud
     ///
@@ -117,6 +118,16 @@ namespace Snowfield.Editor
             roller.config = config;
             roller.character = character;
             roller.groundMask = ~LayerMask.GetMask("Ignore Raycast");
+            var anchorT = player.transform.Find("CarryAnchor");
+            if (anchorT == null)
+            {
+                var anchor = new GameObject("CarryAnchor");
+                anchor.transform.SetParent(player.transform, false);
+                anchor.transform.localPosition = new Vector3(0f, 2.0f, 0.5f); // author freely in the scene
+                anchor.layer = ignore;
+                anchorT = anchor.transform;
+            }
+            roller.carryAnchor = anchorT;
             EditorUtility.SetDirty(roller);
 
             // --- loose items scattered over the field ---

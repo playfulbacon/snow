@@ -8,7 +8,7 @@ namespace Snowfield.Player
 {
     /// <summary>
     /// The player's hands. Aims a screen-centre ray at sculptures and dispatches to the active <see cref="ToolMode"/>:
-    ///   Snow       — LMB add (accumulates), RMB carve, scroll = radius
+    ///   Sculpt     — LMB add (accumulates), RMB carve, scroll = radius
     ///   Empty Hand — LMB smooth/pat, scroll = radius
     ///   Accessory  — scroll picks, hover ghost, LMB place, RMB remove (via <see cref="AccessoryPlacer"/>)
     /// Left Shift cycles modes; 1/2/3 select. Remesh on a timer while sculpting; colliders rebuild on release.
@@ -104,7 +104,7 @@ namespace Snowfield.Player
 
             switch (Mode)
             {
-                case ToolMode.Snow:
+                case ToolMode.Sculpt:
                     UpdateBrush(mouse);
                     break;
                 case ToolMode.EmptyHand:
@@ -200,7 +200,7 @@ namespace Snowfield.Player
             bool rmb = mouse != null && mouse.rightButton.isPressed && allowCarve;
 
             BrushOp op = BrushOp.None;
-            if (Mode == ToolMode.Snow) op = lmb ? BrushOp.Add : (rmb ? BrushOp.Carve : BrushOp.None);
+            if (Mode == ToolMode.Sculpt) op = lmb ? BrushOp.Add : (rmb ? BrushOp.Carve : BrushOp.None);
             else if (Mode == ToolMode.EmptyHand) op = lmb ? BrushOp.Smooth : (rmb ? BrushOp.Carve : BrushOp.None);
             CurrentOp = op;
 
@@ -301,7 +301,7 @@ namespace Snowfield.Player
 
                 if (rmbUp && _throwArmed && ThrowCharge > 0f)
                 {
-                    Roller.Throw(viewCamera.transform.forward, ThrowCharge);
+                    Roller.Throw(viewCamera.transform.position, viewCamera.transform.forward, ThrowCharge);
                     ThrowCharge = 0f;
                     return;
                 }

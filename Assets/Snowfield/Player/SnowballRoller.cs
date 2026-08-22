@@ -95,8 +95,12 @@ namespace Snowfield.Player
         public Material snowMaterial;
         [Tooltip("Gap between the character's capsule and the ball surface while pushing (m).")]
         public float pushGap = 0.35f;
-        [Tooltip("Where a carried ball floats: forward of the character, and above the eye line (m).")]
+        [Tooltip("Authored hold point: the carried ball's centre sits here. Make it a child of the Player so it turns with you.")]
+        public Transform carryAnchor;
+        [Tooltip("Fallback if no anchor is set: forward of the character, and above the eye line (m).")]
         public Vector2 carryOffset = new Vector2(0.55f, 0.35f);
+        [Tooltip("A thrown ball starts this far in front of the camera (plus its radius) so it flies along the reticle.")]
+        public float throwStartDistance = 0.25f;
 
         [Header("Throw")]
         public float throwSpeedMin = 3f;
@@ -238,15 +242,18 @@ namespace Snowfield.Player
 
         public Vector3 CarryPosition()
         {
+            if (carryAnchor != null) return carryAnchor.position;
             var t = character != null ? character.transform : transform;
             float eye = character != null ? character.EyeHeight : 1.6f;
             return t.position + t.forward * carryOffset.x + Vector3.up * (eye + carryOffset.y + Radius);
         }
 
-        /// <summary>Launch the carried ball along <paramref name="direction"/> with power 0..1.</summary>
-        public void Throw(Vector3 direction, float power)
+        /// <summary>Launch the carried ball from <paramref name="origin"/> along <paramref name="direction"/> with power 0..1.</summary>
+        public void Throw(Vector3 origin, Vector3 direction, float power)
         {
             if (!IsCarrying) return;
+            direction = direction.normalized;
+            _ballT.position = origin + direction * (throwStartDistance + Radius);
             var go = _ball.gameObject;
             go.layer = 0;
             var col = go.GetComponent<SphereCollider>();
