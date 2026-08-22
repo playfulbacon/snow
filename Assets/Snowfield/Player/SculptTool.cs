@@ -56,9 +56,10 @@ namespace Snowfield.Player
             // --- radius control ---
             if (mouse != null)
             {
+                // Scroll magnitude varies per mouse/driver, so step per notch direction rather than by amount.
                 float scroll = mouse.scroll.ReadValue().y;
                 if (math.abs(scroll) > 0.01f)
-                    radiusScale = math.clamp(radiusScale * math.exp(scroll * 0.0015f), 0.3f, 3f);
+                    radiusScale = math.clamp(radiusScale * (scroll > 0 ? 1.15f : 1f / 1.15f), 0.25f, 4f);
             }
 
             // --- aim ---
@@ -161,11 +162,39 @@ namespace Snowfield.Player
             style.normal.textColor = new Color(0.1f, 0.1f, 0.15f);
             GUI.Label(new Rect(12, 10, 600, 22), $"[{CurrentMode}]  radius {CurrentRadius(CurrentMode):0.00} m   rate {config.addRatePerTick:0}/tick @ {config.ticksPerSecond:0} Hz", style);
             GUI.Label(new Rect(12, 30, 600, 22), "LMB add · RMB smooth · Ctrl+LMB carve · scroll radius · WASD move · Tab cursor · +/- zoom", style);
-            if (HasHit)
+            DrawReticle();
+        }
+
+        static Texture2D _white;
+
+        /// <summary>Screen-centre reticle: a cross with a gap, plus a dot. Blue-ish when over snow, grey otherwise.</summary>
+        void DrawReticle()
+        {
+            if (_white == null)
             {
-                float cx = Screen.width * 0.5f, cy = Screen.height * 0.5f;
-                GUI.Label(new Rect(cx - 4, cy - 10, 20, 20), "+", style);
+                _white = new Texture2D(1, 1);
+                _white.SetPixel(0, 0, Color.white);
+                _white.Apply();
             }
+            float cx = Screen.width * 0.5f, cy = Screen.height * 0.5f;
+            Color col = HasHit ? new Color(0.35f, 0.75f, 1f, 0.95f) : new Color(1f, 1f, 1f, 0.6f);
+            const float arm = 9f, gap = 4f, thick = 2f;
+
+            void Bar(float x, float y, float w, float h, Color c)
+            {
+                var prev = GUI.color;
+                GUI.color = new Color(0, 0, 0, c.a * 0.5f);           // soft shadow for readability on white snow
+                GUI.DrawTexture(new Rect(x - 1, y - 1, w + 2, h + 2), _white);
+                GUI.color = c;
+                GUI.DrawTexture(new Rect(x, y, w, h), _white);
+                GUI.color = prev;
+            }
+
+            Bar(cx - gap - arm, cy - thick * 0.5f, arm, thick, col);   // left
+            Bar(cx + gap,       cy - thick * 0.5f, arm, thick, col);   // right
+            Bar(cx - thick * 0.5f, cy - gap - arm, thick, arm, col);   // up
+            Bar(cx - thick * 0.5f, cy + gap,       thick, arm, col);   // down
+            Bar(cx - 1.5f, cy - 1.5f, 3f, 3f, col);                    // centre dot
         }
     }
 }
