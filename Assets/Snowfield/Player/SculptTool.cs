@@ -44,6 +44,10 @@ namespace Snowfield.Player
         public SnowballRoller Roller { get; private set; }
         /// <summary>0..1 while charging a throw (RMB held with a carried ball); 0 otherwise. Drives the HUD ring.</summary>
         public float ThrowCharge { get; private set; }
+        /// <summary>What LMB would do right now (HUD prompt). Recomputed every frame.</summary>
+        public CursorAction PrimaryAction { get; private set; }
+        /// <summary>What RMB would do right now (HUD prompt). Recomputed every frame.</summary>
+        public CursorAction SecondaryAction { get; private set; }
         bool _throwArmed;
         public AccessoryInventory Inventory => _placer != null ? _placer.Inventory : null;
         [Tooltip("Loose field items are small; aim at them with a sphere cast of this radius (m).")]
@@ -115,6 +119,8 @@ namespace Snowfield.Player
                     break;
             }
 
+            ComputeActions();
+
             // timed remesh while a stroke is in progress
             if (_dirtySculpture != null)
             {
@@ -125,6 +131,49 @@ namespace Snowfield.Player
                     _dirtySculpture.Remesh();
                 }
             }
+        }
+
+        // ---------- prompts ----------
+
+        void ComputeActions()
+        {
+            CursorAction p = CursorAction.None, s = CursorAction.None;
+            bool onSnow = HasHit && Target != null;
+            switch (Mode)
+            {
+                case ToolMode.Sculpt:
+                    if (Target != null) { p = CursorAction.AddSnow; s = CursorAction.Carve; }
+                    break;
+
+                case ToolMode.EmptyHand:
+                    if (Roller.IsPushing) { p = CursorAction.PushSnowball; }
+                    else if (Roller.IsCarrying)
+                    {
+                        s = CursorAction.Throw;
+                        if (ThrowCharge <= 0f)
+                        {
+                            if (onSnow) p = CursorAction.AttachSnowball;
+                            else if (HasGroundHit) p = CursorAction.SetDownSnowball;
+                        }
+                    }
+                    else
+                    {
+                        if (AimedSnowball != null) { p = CursorAction.PushSnowball; s = CursorAction.PickUpSnowball; }
+                        else if (AimedWorldItem != null) { s = CursorAction.PickUpItem; }
+                        else if (AimedProp != null) { s = CursorAction.RetrieveAccessory; if (Target != null) p = CursorAction.Smooth; }
+                        else if (onSnow) p = CursorAction.Smooth;
+                        else if (HasGroundHit) p = CursorAction.StartSnowball;
+                    }
+                    break;
+
+                case ToolMode.Accessory:
+                    if (onSnow && _placer.CanPlaceSelected) p = CursorAction.PlaceAccessory;
+                    if (AimedProp != null) s = CursorAction.RetrieveAccessory;
+                    else if (AimedWorldItem != null) s = CursorAction.PickUpItem;
+                    break;
+            }
+            PrimaryAction = p;
+            SecondaryAction = s;
         }
 
         // ---------- input ----------
@@ -327,7 +376,7 @@ namespace Snowfield.Player
 
             // --- LMB: push a ball, start a ball on bare ground, or smooth snow ---
             if (lmbDown && AimedSnowball != null) { Roller.StartPushing(AimedSnowball); HideBrushCursor(); return; }
-            if (lmbDown && !HasHit && HasGroundHit && AimedWorldItem == null) { Roller.StartNew(); HideBrushCursor(); return; }
+            if (lmbDown && !HasHit && HasGroundHit && AimedWorldItem == null) { Roller.StartNew(GroundPoint); HideBrushCursor(); return; }
 
             UpdateBrush(mouse, allowCarve: false); // smoothing on snow
         }

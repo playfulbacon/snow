@@ -64,6 +64,32 @@ namespace Snowfield.Player
         }
 
         [Serializable]
+        public class ActionPrompt
+        {
+            public CursorAction action;
+            public Sprite icon;
+            public string label;
+        }
+
+        [Serializable]
+        public class CursorSettings
+        {
+            [Tooltip("Sprite drawn at the screen centre. Leave empty to use the procedural cross.")]
+            public Sprite defaultIcon;
+            public float iconSize = 28f;
+            [Header("Prompts (primary = LMB, secondary = RMB)")]
+            public Vector2 primaryOffset = new Vector2(-110f, -48f);
+            public Vector2 secondaryOffset = new Vector2(110f, -48f);
+            public float promptIconSize = 26f;
+            public float promptHeight = 34f;
+            public float promptPadding = 8f;
+            public float promptMinWidth = 120f;
+            public int promptFontSize = 14;
+            [Tooltip("One entry per action. Assign an icon; edit the label if the default wording is off.")]
+            public List<ActionPrompt> prompts = new List<ActionPrompt>();
+        }
+
+        [Serializable]
         public class StatusSettings
         {
             public Vector2 margin = new Vector2(14f, 12f);
@@ -89,6 +115,9 @@ namespace Snowfield.Player
             public Color reticleOnProp = new Color(1f, 0.45f, 0.35f, 0.95f);
             public Color chargeRingBg = new Color(1f, 1f, 1f, 0.18f);
             public Color chargeRingFill = new Color(1f, 0.85f, 0.3f, 0.95f);
+            public Color promptBg = new Color(0.08f, 0.1f, 0.14f, 0.72f);
+            public Color promptText = new Color(0.9f, 0.92f, 0.97f);
+            public Color promptIconTint = Color.white;
             public Color thumbnailPlaceholder = new Color(0.5f, 0.55f, 0.65f, 0.6f);
             public Color countBg = new Color(0.2f, 0.45f, 0.8f, 0.95f);
             public Color countText = Color.white;
@@ -110,6 +139,7 @@ namespace Snowfield.Player
         public ModeBarSettings modeBar = new ModeBarSettings();
         public AccessoryBarSettings accessoryBar = new AccessoryBarSettings();
         public ReticleSettings reticle = new ReticleSettings();
+        public CursorSettings cursor = new CursorSettings();
         public StatusSettings status = new StatusSettings();
         public Palette colors = new Palette();
 
@@ -118,6 +148,8 @@ namespace Snowfield.Player
         public bool previewAccessoryBar = true;
         public int previewAccessoryIndex = 0;
         public bool previewChargeRing = false;
+        public CursorAction previewPrimary = CursorAction.Smooth;
+        public CursorAction previewSecondary = CursorAction.PickUpItem;
 
         // ------------------------------------------------------------------ generated refs
 
@@ -133,7 +165,9 @@ namespace Snowfield.Player
         [SerializeField, HideInInspector] Image[] _reticleBars = new Image[4];
         [SerializeField, HideInInspector] Image[] _reticleShadows = new Image[4];
         [SerializeField, HideInInspector] Image _reticleDot, _reticleDotShadow;
-        [SerializeField, HideInInspector] Image _chargeBg, _chargeFill;
+        [SerializeField, HideInInspector] Image _chargeBg, _chargeFill, _cursorIcon;
+        [Serializable] class Prompt { public RectTransform root; public Image bg, outline, icon; public Text label; }
+        [SerializeField, HideInInspector] Prompt _primary, _secondary;
         static Sprite _ringSprite;
         [SerializeField, HideInInspector] Text _statusLine1, _statusLine2;
 
@@ -168,6 +202,7 @@ namespace Snowfield.Player
 
         void OnValidate()
         {
+            EnsurePromptList();
             if (!Application.isPlaying) UnityEditor.EditorApplication.delayCall += EditorTick;
         }
 #endif
@@ -191,6 +226,7 @@ namespace Snowfield.Player
             canvas != null && _modeBarRoot != null && _accessoryBarRoot != null && _reticleRoot != null && _statusRoot != null
             && _modes.Count == ToolModeInfo.All.Length && _accessories.Count == AccessoryCatalog.Entries.Count
             && _statusLine1 != null && _reticleDot != null && _chargeFill != null
+            && _cursorIcon != null && _primary != null && _primary.root != null && _secondary != null && _secondary.root != null
             && (_accessories.Count == 0 || _accessories[0].count != null);
 
         // ------------------------------------------------------------------ build
@@ -275,6 +311,11 @@ namespace Snowfield.Player
             _chargeFill.fillMethod = Image.FillMethod.Radial360;
             _chargeFill.fillOrigin = (int)Image.Origin360.Top;
             _chargeFill.fillClockwise = true;
+            _cursorIcon = Img("CursorIcon", _reticleRoot);
+            _cursorIcon.preserveAspect = true;
+            _primary = BuildPrompt("PromptPrimary", _reticleRoot);
+            _secondary = BuildPrompt("PromptSecondary", _reticleRoot);
+            EnsurePromptList();
         }
 
         // ------------------------------------------------------------------ apply
@@ -378,6 +419,9 @@ namespace Snowfield.Player
             Centre(_reticleDotShadow.rectTransform, Vector2.zero, Vector2.one * (reticle.dotSize + ow * 2));
             Centre(_chargeBg.rectTransform, Vector2.zero, Vector2.one * reticle.chargeRadius * 2f);
             Centre(_chargeFill.rectTransform, Vector2.zero, Vector2.one * reticle.chargeRadius * 2f);
+            Centre(_cursorIcon.rectTransform, Vector2.zero, Vector2.one * cursor.iconSize);
+            LayoutPrompt(_primary, cursor.primaryOffset);
+            LayoutPrompt(_secondary, cursor.secondaryOffset);
             var ring = RingSprite();
             _chargeBg.sprite = ring; _chargeFill.sprite = ring;
             _chargeBg.color = c.chargeRingBg; _chargeFill.color = c.chargeRingFill;
@@ -433,6 +477,17 @@ namespace Snowfield.Player
             Color shadow = new Color(0, 0, 0, rc.a * 0.5f);
             for (int i = 0; i < 4; i++) { _reticleBars[i].color = rc; _reticleShadows[i].color = shadow; }
             _reticleDot.color = rc; _reticleDotShadow.color = shadow;
+
+            // centre cursor: sprite if assigned, else the procedural cross
+            bool useIcon = cursor.defaultIcon != null;
+            _cursorIcon.gameObject.SetActive(useIcon);
+            if (useIcon) { _cursorIcon.sprite = cursor.defaultIcon; _cursorIcon.color = rc; }
+            for (int i = 0; i < 4; i++) { _reticleBars[i].gameObject.SetActive(!useIcon); _reticleShadows[i].gameObject.SetActive(!useIcon); }
+            _reticleDot.gameObject.SetActive(!useIcon); _reticleDotShadow.gameObject.SetActive(!useIcon);
+
+            // action prompts
+            ApplyPrompt(_primary, playing ? tool.PrimaryAction : previewPrimary);
+            ApplyPrompt(_secondary, playing ? tool.SecondaryAction : previewSecondary);
 
             // throw charge ring
             float charge = playing ? tool.ThrowCharge : 0f;
@@ -509,6 +564,76 @@ namespace Snowfield.Player
         {
             rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0.5f, 0.5f);
             rt.anchoredPosition = pos; rt.sizeDelta = size;
+        }
+
+        Prompt BuildPrompt(string name, Transform parent)
+        {
+            var p = new Prompt();
+            p.root = MakeRect(name, parent, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+            p.outline = Img("Outline", p.root);
+            p.bg = Img("Box", p.root);
+            p.icon = Img("Icon", p.root);
+            p.icon.preserveAspect = true;
+            p.label = Txt("Label", p.root, TextAnchor.MiddleLeft);
+            return p;
+        }
+
+        void LayoutPrompt(Prompt p, Vector2 offset)
+        {
+            float pad = cursor.promptPadding, ico = cursor.promptIconSize, h = cursor.promptHeight;
+            p.root.anchoredPosition = offset;
+            p.root.sizeDelta = new Vector2(cursor.promptMinWidth, h);
+            Stretch(p.outline.rectTransform, -outlineWidth);
+            Stretch(p.bg.rectTransform, 0);
+            var ir = p.icon.rectTransform;
+            ir.anchorMin = ir.anchorMax = new Vector2(0, 0.5f); ir.pivot = new Vector2(0, 0.5f);
+            ir.anchoredPosition = new Vector2(pad, 0); ir.sizeDelta = Vector2.one * ico;
+            var lr = p.label.rectTransform;
+            lr.anchorMin = new Vector2(0, 0); lr.anchorMax = new Vector2(1, 1); lr.pivot = new Vector2(0.5f, 0.5f);
+            lr.offsetMin = new Vector2(pad + ico + pad, 0); lr.offsetMax = new Vector2(-pad, 0);
+            p.label.fontSize = cursor.promptFontSize;
+            p.outline.color = colors.outline;
+            p.bg.color = colors.promptBg;
+            p.label.color = colors.promptText;
+        }
+
+        void ApplyPrompt(Prompt p, CursorAction action)
+        {
+            bool show = action != CursorAction.None;
+            p.root.gameObject.SetActive(show);
+            if (!show) return;
+            var entry = FindPrompt(action);
+            string label = entry != null && !string.IsNullOrEmpty(entry.label) ? entry.label : CursorActionInfo.DefaultLabel(action);
+            var icon = entry != null ? entry.icon : null;
+            p.icon.gameObject.SetActive(icon != null);
+            if (icon != null) { p.icon.sprite = icon; p.icon.color = colors.promptIconTint; }
+            p.label.text = label;
+            // no icon: let the text start at the left pad
+            var lr = p.label.rectTransform;
+            float pad = cursor.promptPadding;
+            lr.offsetMin = new Vector2(icon != null ? pad + cursor.promptIconSize + pad : pad, 0);
+            // grow to fit the label
+            float textW = p.label.preferredWidth;
+            float w = Mathf.Max(cursor.promptMinWidth, lr.offsetMin.x + textW + pad);
+            p.root.sizeDelta = new Vector2(w, cursor.promptHeight);
+        }
+
+        ActionPrompt FindPrompt(CursorAction a)
+        {
+            foreach (var e in cursor.prompts) if (e.action == a) return e;
+            return null;
+        }
+
+        /// <summary>Make sure the inspector list has one row per action, with default labels filled in.</summary>
+        void EnsurePromptList()
+        {
+            foreach (CursorAction a in Enum.GetValues(typeof(CursorAction)))
+            {
+                if (a == CursorAction.None) continue;
+                var e = FindPrompt(a);
+                if (e == null) { e = new ActionPrompt { action = a }; cursor.prompts.Add(e); }
+                if (string.IsNullOrEmpty(e.label)) e.label = CursorActionInfo.DefaultLabel(a);
+            }
         }
 
         /// <summary>Procedural ring sprite (transparent centre) so the charge indicator reads as a dial, not a square.</summary>

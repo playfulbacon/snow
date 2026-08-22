@@ -138,8 +138,8 @@ namespace Snowfield.Player
 
         // ---------- engage / release ----------
 
-        /// <summary>Make a fresh ball on the ground ahead and start pushing it.</summary>
-        public void StartNew()
+        /// <summary>Make a fresh ball resting on <paramref name="groundPoint"/> and start pushing it.</summary>
+        public void StartNew(Vector3 groundPoint)
         {
             if (IsEngaged) return;
             float r = config != null ? config.snowballStartRadius : 0.15f;
@@ -150,7 +150,7 @@ namespace Snowfield.Player
             ball.radius = r;
             go.transform.localScale = Vector3.one * r * 2f;
             Engage(ball, State.Pushing);
-            _ballT.position = PushRestPosition();
+            _ballT.position = groundPoint + Vector3.up * r;
         }
 
         public void StartPushing(DroppedSnowball ball) => Engage(ball, State.Pushing);
