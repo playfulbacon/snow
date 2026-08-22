@@ -5,13 +5,13 @@ namespace Snowfield.Player
 {
     /// <summary>
     /// Minimal third-person mover: WASD relative to the camera's yaw, gravity, CharacterController.
+    /// (Shift is reserved for mode cycling, so there is no run.)
     /// Deliberately plain; the feel budget goes to the brush, not locomotion.
     /// </summary>
     [RequireComponent(typeof(CharacterController))]
     public class SnowCharacter : MonoBehaviour
     {
         public float walkSpeed = 3.2f;
-        public float runSpeed = 5.5f;
         public float turnSmoothing = 12f;
         public float gravity = -18f;
 
@@ -34,21 +34,19 @@ namespace Snowfield.Player
         {
             var kb = Keyboard.current;
             Vector2 input = Vector2.zero;
-            bool run = false;
             if (kb != null)
             {
                 if (kb.wKey.isPressed || kb.upArrowKey.isPressed) input.y += 1;
                 if (kb.sKey.isPressed || kb.downArrowKey.isPressed) input.y -= 1;
                 if (kb.dKey.isPressed || kb.rightArrowKey.isPressed) input.x += 1;
                 if (kb.aKey.isPressed || kb.leftArrowKey.isPressed) input.x -= 1;
-                run = kb.leftShiftKey.isPressed;
             }
             input = Vector2.ClampMagnitude(input, 1f);
 
             Vector3 fwd = cameraRig != null ? cameraRig.forward : transform.forward;
             fwd.y = 0; fwd.Normalize();
             Vector3 right = Vector3.Cross(Vector3.up, fwd);
-            Vector3 move = (fwd * input.y + right * input.x) * (run ? runSpeed : walkSpeed);
+            Vector3 move = (fwd * input.y + right * input.x) * walkSpeed;
 
             if (move.sqrMagnitude > 0.001f)
             {

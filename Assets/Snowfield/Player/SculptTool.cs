@@ -7,12 +7,16 @@ using UnityEngine.InputSystem;
 namespace Snowfield.Player
 {
     /// <summary>
-    /// Screen-centre raycast onto sculptures → brush cursor. LMB hold = add (accumulates), RMB hold = smooth/pat,
-    /// Ctrl+LMB = carve. Scroll = radius. Remesh on a timer while sculpting; colliders rebuild on release.
+    /// The player's hands. Aims a screen-centre ray at sculptures and dispatches to the active <see cref="ToolMode"/>:
+    ///   Snow       — LMB add (accumulates), RMB carve, scroll = radius
+    ///   Empty Hand — LMB smooth/pat, scroll = radius
+    ///   Accessory  — scroll picks, hover ghost, LMB place, RMB remove (via <see cref="AccessoryPlacer"/>)
+    /// Left Shift cycles modes; 1/2/3 select. Remesh on a timer while sculpting; colliders rebuild on release.
+    /// Self-wires its HUD and placer so a scene only needs this component on the camera.
     /// </summary>
     public class SculptTool : MonoBehaviour
     {
-        public enum Mode { Add, Smooth, Carve }
+        public enum BrushOp { None, Add, Carve, Smooth }
 
         public SculptFeelConfig config;
         public Camera viewCamera;
@@ -21,18 +25,22 @@ namespace Snowfield.Player
         public float maxReach = 4f;
         [Tooltip("Reach is measured from here. Defaults to the SnowCharacter in the scene, else the camera.")]
         public Transform reachOrigin;
-        [Tooltip("Visual cursor; scaled to brush diameter.")]
+        [Tooltip("Visual brush cursor; scaled to brush diameter.")]
         public Transform cursor;
 
-        public Mode CurrentMode { get; private set; } = Mode.Add;
+        public ToolMode Mode { get; private set; } = ToolMode.Snow;
+        public BrushOp CurrentOp { get; private set; } = BrushOp.None;
         public bool IsSculpting { get; private set; }
         public SnowSculpture Target { get; private set; }
+        public SculptureProp AimedProp { get; private set; }
         public float3 BrushPoint { get; private set; }
+        public float3 BrushNormal { get; private set; }
         public bool HasHit { get; private set; }
 
-        /// <summary>Radius multiplier on top of config, driven by scroll. Persisted per session only.</summary>
+        /// <summary>Radius multiplier on top of config, driven by scroll. Session-only.</summary>
         public float radiusScale = 1f;
 
+        AccessoryPlacer _placer;
         float _tickAccumulator;
         float _remeshAccumulator;
         SnowSculpture _dirtySculpture;
@@ -45,6 +53,21 @@ namespace Snowfield.Player
                 var ch = FindAnyObjectByType<SnowCharacter>();
                 reachOrigin = ch != null ? ch.transform : viewCamera.transform;
             }
+            _placer = GetComponent<AccessoryPlacer>();
+            if (_placer == null) _placer = gameObject.AddComponent<AccessoryPlacer>();
+            var hud = GetComponent<ToolHud>();
+            if (hud == null) hud = gameObject.AddComponent<ToolHud>();
+            hud.tool = this;
+            hud.placer = _placer;
+        }
+
+        public void SetMode(ToolMode mode)
+        {
+            if (mode == Mode) return;
+            if (IsSculpting) { IsSculpting = false; Flush(); }
+            Mode = mode;
+            if (cursor != null) cursor.gameObject.SetActive(false);
+            _placer.HidePreview();
         }
 
         void Update()
@@ -53,68 +76,22 @@ namespace Snowfield.Player
             var mouse = Mouse.current;
             var kb = Keyboard.current;
 
-            // --- radius control ---
-            if (mouse != null)
+            HandleModeInput(kb);
+            HandleScroll(mouse);
+            Aim();
+
+            switch (Mode)
             {
-                // Scroll magnitude varies per mouse/driver, so step per notch direction rather than by amount.
-                float scroll = mouse.scroll.ReadValue().y;
-                if (math.abs(scroll) > 0.01f)
-                    radiusScale = math.clamp(radiusScale * (scroll > 0 ? 1.15f : 1f / 1.15f), 0.25f, 4f);
+                case ToolMode.Snow:
+                case ToolMode.EmptyHand:
+                    UpdateBrush(mouse);
+                    break;
+                case ToolMode.Accessory:
+                    UpdateAccessory(mouse);
+                    break;
             }
 
-            // --- aim ---
-            HasHit = false;
-            Target = null;
-            var ray = viewCamera.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
-            Vector3 origin = reachOrigin != null ? reachOrigin.position + Vector3.up : ray.origin;
-            float rayLength = maxReach + Vector3.Distance(ray.origin, origin);
-            if (Physics.Raycast(ray, out var hit, rayLength, sculptMask, QueryTriggerInteraction.Ignore))
-            {
-                var s = hit.collider.GetComponentInParent<SnowSculpture>();
-                if (s != null && Vector3.Distance(hit.point, origin) <= maxReach)
-                {
-                    Target = s;
-                    HasHit = true;
-                    BrushPoint = hit.point;
-                }
-            }
-
-            bool lmb = mouse != null && mouse.leftButton.isPressed;
-            bool rmb = mouse != null && mouse.rightButton.isPressed;
-            bool ctrl = kb != null && (kb.leftCtrlKey.isPressed || kb.rightCtrlKey.isPressed);
-            bool pressing = lmb || rmb;
-            Mode mode = rmb ? Mode.Smooth : (ctrl ? Mode.Carve : Mode.Add);
-            CurrentMode = mode;
-
-            float radius = CurrentRadius(mode);
-            if (cursor != null)
-            {
-                cursor.gameObject.SetActive(HasHit);
-                if (HasHit)
-                {
-                    cursor.position = BrushPoint;
-                    cursor.localScale = Vector3.one * radius * 2f;
-                }
-            }
-
-            // --- apply ---
-            if (pressing && HasHit)
-            {
-                if (!IsSculpting) { IsSculpting = true; _tickAccumulator = 1f / config.ticksPerSecond; } // first tick immediate
-                _dirtySculpture = Target;
-                _tickAccumulator += Time.deltaTime;
-                float tickDt = 1f / config.ticksPerSecond;
-                int ticks = 0;
-                while (_tickAccumulator >= tickDt && ticks < 8) { _tickAccumulator -= tickDt; ticks++; }
-                for (int i = 0; i < ticks; i++) ApplyTick(Target, mode, BrushPoint, radius);
-            }
-            else if (IsSculpting && !pressing)
-            {
-                IsSculpting = false;
-                Flush();
-            }
-
-            // --- timed remesh while sculpting ---
+            // timed remesh while a stroke is in progress
             if (_dirtySculpture != null)
             {
                 _remeshAccumulator += Time.deltaTime;
@@ -126,20 +103,110 @@ namespace Snowfield.Player
             }
         }
 
-        public float CurrentRadius(Mode mode) =>
-            (mode == Mode.Smooth ? config.smoothRadius : config.addRadius) * radiusScale;
+        // ---------- input ----------
 
-        public void ApplyTick(SnowSculpture s, Mode mode, float3 point, float radius)
+        void HandleModeInput(Keyboard kb)
         {
-            switch (mode)
+            if (kb == null) return;
+            if (kb.leftShiftKey.wasPressedThisFrame)
+                SetMode(ToolModeInfo.All[((int)Mode + 1) % ToolModeInfo.All.Length]);
+            if (kb.digit1Key.wasPressedThisFrame || kb.numpad1Key.wasPressedThisFrame) SetMode(ToolMode.Snow);
+            if (kb.digit2Key.wasPressedThisFrame || kb.numpad2Key.wasPressedThisFrame) SetMode(ToolMode.EmptyHand);
+            if (kb.digit3Key.wasPressedThisFrame || kb.numpad3Key.wasPressedThisFrame) SetMode(ToolMode.Accessory);
+        }
+
+        void HandleScroll(Mouse mouse)
+        {
+            if (mouse == null) return;
+            float scroll = mouse.scroll.ReadValue().y;
+            if (math.abs(scroll) <= 0.01f) return;
+            int dir = scroll > 0 ? 1 : -1;
+            if (Mode == ToolMode.Accessory)
+                _placer.Step(-dir); // scroll down = next, matches reading order
+            else
+                radiusScale = math.clamp(radiusScale * (dir > 0 ? 1.15f : 1f / 1.15f), 0.25f, 4f);
+        }
+
+        // ---------- aim ----------
+
+        void Aim()
+        {
+            HasHit = false;
+            Target = null;
+            AimedProp = null;
+            var ray = viewCamera.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
+            Vector3 origin = reachOrigin != null ? reachOrigin.position + Vector3.up : ray.origin;
+            float rayLength = maxReach + Vector3.Distance(ray.origin, origin);
+            if (!Physics.Raycast(ray, out var hit, rayLength, sculptMask, QueryTriggerInteraction.Ignore)) return;
+            if (Vector3.Distance(hit.point, origin) > maxReach) return;
+
+            AimedProp = hit.collider.GetComponentInParent<SculptureProp>();
+            var s = hit.collider.GetComponentInParent<SnowSculpture>();
+            if (s == null) return;
+            Target = s;
+            BrushPoint = hit.point;
+            BrushNormal = hit.normal;
+            HasHit = AimedProp == null; // aiming at a prop is not a snow hit
+        }
+
+        // ---------- brush modes ----------
+
+        void UpdateBrush(Mouse mouse)
+        {
+            _placer.HidePreview();
+            bool lmb = mouse != null && mouse.leftButton.isPressed;
+            bool rmb = mouse != null && mouse.rightButton.isPressed;
+
+            BrushOp op = BrushOp.None;
+            if (Mode == ToolMode.Snow) op = lmb ? BrushOp.Add : (rmb ? BrushOp.Carve : BrushOp.None);
+            else if (Mode == ToolMode.EmptyHand) op = lmb ? BrushOp.Smooth : BrushOp.None;
+            CurrentOp = op;
+
+            float radius = CurrentRadius();
+            if (cursor != null)
             {
-                case Mode.Add:
+                // Aiming at a prop still shows the cursor so the brush feels continuous over accessories.
+                bool show = Target != null;
+                cursor.gameObject.SetActive(show);
+                if (show)
+                {
+                    cursor.position = BrushPoint;
+                    cursor.localScale = Vector3.one * radius * 2f;
+                }
+            }
+
+            bool pressing = op != BrushOp.None;
+            if (pressing && Target != null)
+            {
+                if (!IsSculpting) { IsSculpting = true; _tickAccumulator = 1f / config.ticksPerSecond; } // first tick immediate
+                _dirtySculpture = Target;
+                _tickAccumulator += Time.deltaTime;
+                float tickDt = 1f / config.ticksPerSecond;
+                int ticks = 0;
+                while (_tickAccumulator >= tickDt && ticks < 8) { _tickAccumulator -= tickDt; ticks++; }
+                for (int i = 0; i < ticks; i++) ApplyTick(Target, op, BrushPoint, radius);
+            }
+            else if (IsSculpting && !pressing)
+            {
+                IsSculpting = false;
+                Flush();
+            }
+        }
+
+        public float CurrentRadius() =>
+            (Mode == ToolMode.EmptyHand ? config.smoothRadius : config.addRadius) * radiusScale;
+
+        public void ApplyTick(SnowSculpture s, BrushOp op, float3 point, float radius)
+        {
+            switch (op)
+            {
+                case BrushOp.Add:
                     s.ApplyAdd(point, radius, config.addRatePerTick, config.addShoulder);
                     break;
-                case Mode.Carve:
+                case BrushOp.Carve:
                     s.ApplyAdd(point, radius, -config.addRatePerTick, config.addShoulder);
                     break;
-                case Mode.Smooth:
+                case BrushOp.Smooth:
                     s.ApplySmooth(point, radius, config.smoothStrength, config.smoothShoulder);
                     break;
             }
@@ -155,46 +222,20 @@ namespace Snowfield.Player
             _remeshAccumulator = 0f;
         }
 
-        void OnGUI()
+        // ---------- accessory mode ----------
+
+        void UpdateAccessory(Mouse mouse)
         {
-            if (config == null) return;
-            var style = new GUIStyle(GUI.skin.label) { fontSize = 13 };
-            style.normal.textColor = new Color(0.1f, 0.1f, 0.15f);
-            GUI.Label(new Rect(12, 10, 600, 22), $"[{CurrentMode}]  radius {CurrentRadius(CurrentMode):0.00} m   rate {config.addRatePerTick:0}/tick @ {config.ticksPerSecond:0} Hz", style);
-            GUI.Label(new Rect(12, 30, 600, 22), "LMB add · RMB smooth · Ctrl+LMB carve · scroll radius · WASD move · Tab cursor · +/- zoom", style);
-            DrawReticle();
-        }
+            CurrentOp = BrushOp.None;
+            if (cursor != null) cursor.gameObject.SetActive(false);
 
-        static Texture2D _white;
+            _placer.UpdatePreview(HasHit, BrushPoint, BrushNormal);
 
-        /// <summary>Screen-centre reticle: a cross with a gap, plus a dot. Blue-ish when over snow, grey otherwise.</summary>
-        void DrawReticle()
-        {
-            if (_white == null)
-            {
-                _white = new Texture2D(1, 1);
-                _white.SetPixel(0, 0, Color.white);
-                _white.Apply();
-            }
-            float cx = Screen.width * 0.5f, cy = Screen.height * 0.5f;
-            Color col = HasHit ? new Color(0.35f, 0.75f, 1f, 0.95f) : new Color(1f, 1f, 1f, 0.6f);
-            const float arm = 9f, gap = 4f, thick = 2f;
-
-            void Bar(float x, float y, float w, float h, Color c)
-            {
-                var prev = GUI.color;
-                GUI.color = new Color(0, 0, 0, c.a * 0.5f);           // soft shadow for readability on white snow
-                GUI.DrawTexture(new Rect(x - 1, y - 1, w + 2, h + 2), _white);
-                GUI.color = c;
-                GUI.DrawTexture(new Rect(x, y, w, h), _white);
-                GUI.color = prev;
-            }
-
-            Bar(cx - gap - arm, cy - thick * 0.5f, arm, thick, col);   // left
-            Bar(cx + gap,       cy - thick * 0.5f, arm, thick, col);   // right
-            Bar(cx - thick * 0.5f, cy - gap - arm, thick, arm, col);   // up
-            Bar(cx - thick * 0.5f, cy + gap,       thick, arm, col);   // down
-            Bar(cx - 1.5f, cy - 1.5f, 3f, 3f, col);                    // centre dot
+            if (mouse == null) return;
+            if (mouse.leftButton.wasPressedThisFrame && HasHit && Target != null)
+                _placer.Place(Target, BrushPoint, BrushNormal);
+            if (mouse.rightButton.wasPressedThisFrame && AimedProp != null)
+                AimedProp.Remove();
         }
     }
 }

@@ -26,6 +26,12 @@ namespace Snowfield.Sculpture
         /// <summary>Editor/bootstrap hook for wiring references on a freshly added component.</summary>
         public void EditorAssign(SculptFeelConfig cfg, Material mat) { config = cfg; snowMaterial = mat; }
 
+        /// <summary>Placed accessories; this list is the persisted props[] record.</summary>
+        public IReadOnlyList<SculptureProp> Props => _props;
+        readonly List<SculptureProp> _props = new List<SculptureProp>();
+        public void RegisterProp(SculptureProp p) { if (!_props.Contains(p)) _props.Add(p); }
+        public void UnregisterProp(SculptureProp p) => _props.Remove(p);
+
         MarchingCubesLookup _lookup;
         NativeArray<byte> _scratch; // snapshot buffer for the smooth brush
         Mesh[] _meshes;
