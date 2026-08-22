@@ -98,7 +98,9 @@ namespace Snowfield.Voxel
                     float v0 = cornerVal[ec.x];
                     float v1 = cornerVal[ec.y];
                     float t = math.abs(v1 - v0) < 1e-5f ? 0.5f : (iso - v0) / (v1 - v0);
-                    edgeVert[e] = math.lerp(p0, p1, math.saturate(t));
+                    // Keep vertices off the cube corners: a corner exactly at iso would make two edges share a
+                    // vertex and yield zero-area triangles, which PhysX refuses to cook.
+                    edgeVert[e] = math.lerp(p0, p1, math.clamp(t, 0.02f, 0.98f));
                 }
 
                 int row = cubeIndex * 16;
@@ -108,6 +110,11 @@ namespace Snowfield.Voxel
                     if (e0 < 0) break;
                     int e1 = Lookup.TriTable[row + k + 1];
                     int e2 = Lookup.TriTable[row + k + 2];
+
+                    // Skip degenerate triangles (belt and braces with the clamp above).
+                    float3 ab = edgeVert[e1] - edgeVert[e0];
+                    float3 ac = edgeVert[e2] - edgeVert[e0];
+                    if (math.lengthsq(math.cross(ab, ac)) < 1e-8f) continue;
 
                     int baseIndex = Vertices.Length;
                     Emit(edgeVert[e0]);
