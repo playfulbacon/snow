@@ -11,6 +11,53 @@ namespace Snowfield.Player
     }
 
     /// <summary>
+    /// A snowball in flight. Physics-driven until it either splats into a sculpture (density stamp, prop destroyed)
+    /// or comes to rest, at which point the Rigidbody is removed and it is an ordinary <see cref="DroppedSnowball"/>.
+    /// </summary>
+    [RequireComponent(typeof(Rigidbody))]
+    public class ThrownSnowball : MonoBehaviour
+    {
+        public float radius;
+        public float attachSink = 0.45f;
+        public float attachShoulder = 0.75f;
+        [Tooltip("Seconds below the rest speed before the ball is considered landed.")]
+        public float restTime = 0.35f;
+        public float restSpeed = 0.08f;
+
+        Rigidbody _rb;
+        float _slowFor;
+
+        void Awake() => _rb = GetComponent<Rigidbody>();
+
+        void FixedUpdate()
+        {
+            if (_rb.linearVelocity.magnitude < restSpeed) _slowFor += Time.fixedDeltaTime; else _slowFor = 0f;
+            if (_slowFor >= restTime || _rb.IsSleeping()) Land();
+        }
+
+        void OnCollisionEnter(Collision col)
+        {
+            var sculpture = col.collider.GetComponentInParent<SnowSculpture>();
+            if (sculpture == null) return;
+            var contact = col.GetContact(0);
+            Vector3 centre = contact.point + contact.normal * (radius * (1f - attachSink));
+            sculpture.StampSphere(centre, radius, attachShoulder);
+            sculpture.Remesh();
+            sculpture.RebuildColliders();
+            Destroy(gameObject);
+        }
+
+        void Land()
+        {
+            Destroy(_rb);
+            var dropped = GetComponent<DroppedSnowball>();
+            if (dropped == null) dropped = gameObject.AddComponent<DroppedSnowball>();
+            dropped.radius = radius;
+            Destroy(this);
+        }
+    }
+
+    /// <summary>
     /// Faked snowball rolling. One ball can be engaged at a time, in one of two ways:
     ///   Pushing  — the ball rolls ahead of the character while the button is held, growing with distance.
     ///   Carrying — the ball floats at hand height; it can be set down on the ground or attached to a sculpture.
@@ -28,8 +75,16 @@ namespace Snowfield.Player
         public Material snowMaterial;
         [Tooltip("Gap between the character's capsule and the ball surface while pushing (m).")]
         public float pushGap = 0.35f;
-        [Tooltip("Where a carried ball floats, relative to the character (forward, up).")]
-        public Vector2 carryOffset = new Vector2(0.75f, 1.05f);
+        [Tooltip("Where a carried ball floats: forward of the character, and above the eye line (m).")]
+        public Vector2 carryOffset = new Vector2(0.55f, 0.35f);
+
+        [Header("Throw")]
+        public float throwSpeedMin = 3f;
+        public float throwSpeedMax = 11f;
+        [Tooltip("Extra upward speed so a flat throw still arcs.")]
+        public float throwLift = 1.5f;
+        [Tooltip("Seconds of holding to reach full power.")]
+        public float chargeTime = 1.2f;
         [Tooltip("How deep the ball sinks into the target when attached, as a fraction of its radius.")]
         [Range(0f, 1f)] public float attachSink = 0.45f;
         [Range(0f, 1f)] public float attachShoulder = 0.75f;
@@ -153,18 +208,47 @@ namespace Snowfield.Player
             _ballT.position = Vector3.Lerp(_ballT.position, PushRestPosition(), 1f - Mathf.Exp(-14f * Time.deltaTime));
         }
 
-        /// <summary>Carrying: float at the hand, or preview at a target position.</summary>
+        /// <summary>Carrying: float above the head, or preview at a target position.</summary>
         public void UpdateCarrying(Vector3? previewCentre)
         {
             if (!IsCarrying) return;
-            Vector3 goal;
-            if (previewCentre.HasValue) goal = previewCentre.Value;
-            else
-            {
-                var t = character != null ? character.transform : transform;
-                goal = t.position + t.forward * carryOffset.x + Vector3.up * carryOffset.y;
-            }
+            Vector3 goal = previewCentre ?? CarryPosition();
             _ballT.position = Vector3.Lerp(_ballT.position, goal, 1f - Mathf.Exp(-18f * Time.deltaTime));
+        }
+
+        public Vector3 CarryPosition()
+        {
+            var t = character != null ? character.transform : transform;
+            float eye = character != null ? character.EyeHeight : 1.6f;
+            return t.position + t.forward * carryOffset.x + Vector3.up * (eye + carryOffset.y + Radius);
+        }
+
+        /// <summary>Launch the carried ball along <paramref name="direction"/> with power 0..1.</summary>
+        public void Throw(Vector3 direction, float power)
+        {
+            if (!IsCarrying) return;
+            var go = _ball.gameObject;
+            go.layer = 0;
+            var col = go.GetComponent<SphereCollider>();
+            if (col == null) { col = go.AddComponent<SphereCollider>(); col.radius = 0.5f; }
+            col.enabled = true;
+            var rb = go.GetComponent<Rigidbody>();
+            if (rb == null) rb = go.AddComponent<Rigidbody>();
+            rb.mass = Mathf.Max(0.2f, Radius * Radius * Radius * 60f);
+            rb.angularDamping = 1.5f;
+            rb.interpolation = RigidbodyInterpolation.Interpolate;
+            rb.collisionDetectionMode = CollisionDetectionMode.Continuous;
+            var thrown = go.AddComponent<ThrownSnowball>();
+            thrown.radius = Radius;
+            thrown.attachSink = attachSink;
+            thrown.attachShoulder = attachShoulder;
+            _ball.radius = Radius;
+
+            float speed = Mathf.Lerp(throwSpeedMin, throwSpeedMax, Mathf.Clamp01(power));
+            rb.linearVelocity = direction.normalized * speed + Vector3.up * throwLift;
+
+            _ball = null; _ballT = null;
+            Current = State.None;
         }
 
         public Vector3 AttachCentre(Vector3 point, Vector3 normal) => point + normal * (Radius * (1f - attachSink));

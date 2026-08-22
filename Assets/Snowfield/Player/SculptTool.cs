@@ -42,6 +42,9 @@ namespace Snowfield.Player
         public DroppedSnowball AimedSnowball { get; private set; }
         public WorldItem AimedWorldItem { get; private set; }
         public SnowballRoller Roller { get; private set; }
+        /// <summary>0..1 while charging a throw (RMB held with a carried ball); 0 otherwise. Drives the HUD ring.</summary>
+        public float ThrowCharge { get; private set; }
+        bool _throwArmed;
         public AccessoryInventory Inventory => _placer != null ? _placer.Inventory : null;
         [Tooltip("Loose field items are small; aim at them with a sphere cast of this radius (m).")]
         public float itemPickRadius = 0.12f;
@@ -278,26 +281,44 @@ namespace Snowfield.Player
                 return;
             }
 
-            // --- carrying: preview on snow or ground, LMB to set down / attach ---
+            // --- carrying: preview on snow or ground, LMB to set down / attach, hold RMB to charge a throw ---
             if (Roller.IsCarrying)
             {
                 HideBrushCursor();
+                bool rmbHeld = mouse != null && mouse.rightButton.isPressed;
+                bool rmbUp = mouse != null && mouse.rightButton.wasReleasedThisFrame;
+                if (!rmbHeld) _throwArmed = true; // the pick-up press must be released before a charge can start
+
+                bool charging = _throwArmed && rmbHeld;
+                if (charging) ThrowCharge = Mathf.Min(1f, ThrowCharge + Time.deltaTime / Mathf.Max(0.05f, Roller.chargeTime));
+
                 bool onSnow = HasHit && Target != null;
-                Vector3? preview = onSnow ? Roller.AttachCentre(BrushPoint, BrushNormal)
+                Vector3? preview = charging ? null
+                                 : onSnow ? Roller.AttachCentre(BrushPoint, BrushNormal)
                                  : HasGroundHit ? Roller.GroundCentre(GroundPoint) : (Vector3?)null;
                 Roller.UpdateCarrying(preview);
-                if (lmbDown)
+
+                if (rmbUp && _throwArmed && ThrowCharge > 0f)
+                {
+                    Roller.Throw(viewCamera.transform.forward, ThrowCharge);
+                    ThrowCharge = 0f;
+                    return;
+                }
+                if (!charging) ThrowCharge = 0f;
+
+                if (lmbDown && !charging)
                 {
                     if (onSnow) Roller.AttachTo(Target, BrushPoint, BrushNormal);
                     else if (HasGroundHit) Roller.PlaceOnGround(GroundPoint);
                 }
                 return;
             }
+            ThrowCharge = 0f;
 
             // --- free hands: RMB picks up anything pickable ---
             if (rmbDown)
             {
-                if (AimedSnowball != null) Roller.PickUp(AimedSnowball);
+                if (AimedSnowball != null) { Roller.PickUp(AimedSnowball); _throwArmed = false; }
                 else if (AimedWorldItem != null) _placer.Collect(AimedWorldItem);
                 else if (AimedProp != null) _placer.Retrieve(AimedProp);
                 return;

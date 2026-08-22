@@ -58,6 +58,9 @@ namespace Snowfield.Player
             public float gap = 5f;
             public float thickness = 2f;
             public float dotSize = 4f;
+            [Header("Throw charge ring")]
+            public float chargeRadius = 22f;
+            public float chargeThickness = 3f;
         }
 
         [Serializable]
@@ -84,6 +87,8 @@ namespace Snowfield.Player
             public Color reticleIdle = new Color(1f, 1f, 1f, 0.6f);
             public Color reticleOnSnow = new Color(0.35f, 0.75f, 1f, 0.95f);
             public Color reticleOnProp = new Color(1f, 0.45f, 0.35f, 0.95f);
+            public Color chargeRingBg = new Color(1f, 1f, 1f, 0.18f);
+            public Color chargeRingFill = new Color(1f, 0.85f, 0.3f, 0.95f);
             public Color thumbnailPlaceholder = new Color(0.5f, 0.55f, 0.65f, 0.6f);
             public Color countBg = new Color(0.2f, 0.45f, 0.8f, 0.95f);
             public Color countText = Color.white;
@@ -112,6 +117,7 @@ namespace Snowfield.Player
         public ToolMode previewMode = ToolMode.EmptyHand;
         public bool previewAccessoryBar = true;
         public int previewAccessoryIndex = 0;
+        public bool previewChargeRing = false;
 
         // ------------------------------------------------------------------ generated refs
 
@@ -127,6 +133,8 @@ namespace Snowfield.Player
         [SerializeField, HideInInspector] Image[] _reticleBars = new Image[4];
         [SerializeField, HideInInspector] Image[] _reticleShadows = new Image[4];
         [SerializeField, HideInInspector] Image _reticleDot, _reticleDotShadow;
+        [SerializeField, HideInInspector] Image _chargeBg, _chargeFill;
+        static Sprite _ringSprite;
         [SerializeField, HideInInspector] Text _statusLine1, _statusLine2;
 
         Font _font;
@@ -182,7 +190,7 @@ namespace Snowfield.Player
         bool IsBuilt() =>
             canvas != null && _modeBarRoot != null && _accessoryBarRoot != null && _reticleRoot != null && _statusRoot != null
             && _modes.Count == ToolModeInfo.All.Length && _accessories.Count == AccessoryCatalog.Entries.Count
-            && _statusLine1 != null && _reticleDot != null
+            && _statusLine1 != null && _reticleDot != null && _chargeFill != null
             && (_accessories.Count == 0 || _accessories[0].count != null);
 
         // ------------------------------------------------------------------ build
@@ -261,6 +269,12 @@ namespace Snowfield.Player
             }
             _reticleDotShadow = Img("DotShadow", _reticleRoot);
             _reticleDot = Img("Dot", _reticleRoot);
+            _chargeBg = Img("ChargeRingBg", _reticleRoot);
+            _chargeFill = Img("ChargeRingFill", _reticleRoot);
+            _chargeFill.type = Image.Type.Filled;
+            _chargeFill.fillMethod = Image.FillMethod.Radial360;
+            _chargeFill.fillOrigin = (int)Image.Origin360.Top;
+            _chargeFill.fillClockwise = true;
         }
 
         // ------------------------------------------------------------------ apply
@@ -362,6 +376,11 @@ namespace Snowfield.Player
             }
             Centre(_reticleDot.rectTransform, Vector2.zero, Vector2.one * reticle.dotSize);
             Centre(_reticleDotShadow.rectTransform, Vector2.zero, Vector2.one * (reticle.dotSize + ow * 2));
+            Centre(_chargeBg.rectTransform, Vector2.zero, Vector2.one * reticle.chargeRadius * 2f);
+            Centre(_chargeFill.rectTransform, Vector2.zero, Vector2.one * reticle.chargeRadius * 2f);
+            var ring = RingSprite();
+            _chargeBg.sprite = ring; _chargeFill.sprite = ring;
+            _chargeBg.color = c.chargeRingBg; _chargeFill.color = c.chargeRingFill;
         }
 
         void ApplyState()
@@ -414,6 +433,13 @@ namespace Snowfield.Player
             Color shadow = new Color(0, 0, 0, rc.a * 0.5f);
             for (int i = 0; i < 4; i++) { _reticleBars[i].color = rc; _reticleShadows[i].color = shadow; }
             _reticleDot.color = rc; _reticleDotShadow.color = shadow;
+
+            // throw charge ring
+            float charge = playing ? tool.ThrowCharge : 0f;
+            bool showRing = charge > 0f || (!playing && previewChargeRing);
+            _chargeBg.gameObject.SetActive(showRing);
+            _chargeFill.gameObject.SetActive(showRing);
+            _chargeFill.fillAmount = playing ? charge : 0.65f;
 
             // status text
             string line = "";
@@ -483,6 +509,27 @@ namespace Snowfield.Player
         {
             rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0.5f, 0.5f);
             rt.anchoredPosition = pos; rt.sizeDelta = size;
+        }
+
+        /// <summary>Procedural ring sprite (transparent centre) so the charge indicator reads as a dial, not a square.</summary>
+        Sprite RingSprite()
+        {
+            if (_ringSprite != null) return _ringSprite;
+            const int size = 64;
+            var tex = new Texture2D(size, size, TextureFormat.RGBA32, false) { name = "HudRing", filterMode = FilterMode.Bilinear, hideFlags = HideFlags.DontSave };
+            float outer = size * 0.5f, inner = outer - Mathf.Max(1f, reticle.chargeThickness / reticle.chargeRadius * outer);
+            var px = new Color[size * size];
+            for (int y = 0; y < size; y++)
+            for (int x = 0; x < size; x++)
+            {
+                float d = Vector2.Distance(new Vector2(x + 0.5f, y + 0.5f), new Vector2(outer, outer));
+                float a = Mathf.Clamp01(outer - d) * Mathf.Clamp01(d - inner + 1f);
+                px[y * size + x] = new Color(1f, 1f, 1f, a);
+            }
+            tex.SetPixels(px); tex.Apply();
+            _ringSprite = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 100f);
+            _ringSprite.hideFlags = HideFlags.DontSave;
+            return _ringSprite;
         }
 
         static void Kill(UnityEngine.Object o)
