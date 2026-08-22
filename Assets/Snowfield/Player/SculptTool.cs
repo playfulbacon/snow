@@ -17,7 +17,10 @@ namespace Snowfield.Player
         public SculptFeelConfig config;
         public Camera viewCamera;
         public LayerMask sculptMask = ~0;
+        [Tooltip("How far from the character the brush can reach (the ray itself starts at the camera).")]
         public float maxReach = 4f;
+        [Tooltip("Reach is measured from here. Defaults to the SnowCharacter in the scene, else the camera.")]
+        public Transform reachOrigin;
         [Tooltip("Visual cursor; scaled to brush diameter.")]
         public Transform cursor;
 
@@ -37,6 +40,11 @@ namespace Snowfield.Player
         void Awake()
         {
             if (viewCamera == null) viewCamera = Camera.main;
+            if (reachOrigin == null)
+            {
+                var ch = FindAnyObjectByType<SnowCharacter>();
+                reachOrigin = ch != null ? ch.transform : viewCamera.transform;
+            }
         }
 
         void Update()
@@ -57,10 +65,12 @@ namespace Snowfield.Player
             HasHit = false;
             Target = null;
             var ray = viewCamera.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
-            if (Physics.Raycast(ray, out var hit, maxReach, sculptMask, QueryTriggerInteraction.Ignore))
+            Vector3 origin = reachOrigin != null ? reachOrigin.position + Vector3.up : ray.origin;
+            float rayLength = maxReach + Vector3.Distance(ray.origin, origin);
+            if (Physics.Raycast(ray, out var hit, rayLength, sculptMask, QueryTriggerInteraction.Ignore))
             {
                 var s = hit.collider.GetComponentInParent<SnowSculpture>();
-                if (s != null)
+                if (s != null && Vector3.Distance(hit.point, origin) <= maxReach)
                 {
                     Target = s;
                     HasHit = true;
