@@ -15,6 +15,8 @@ namespace Snowfield.Player
         [Tooltip("What to orbit. Defaults to the SnowCharacter in this object's parents.")]
         public Transform target;
         public Vector3 targetOffset = new Vector3(0f, 1.4f, 0f);
+        [Tooltip("If the target is a SnowCharacter, use its animated eye height (crouch/tiptoe) instead of targetOffset.y.")]
+        public bool followEyeHeight = true;
         public float distance = 3.5f;
         public float minDistance = 1.5f, maxDistance = 7f;
         public float sensitivity = 0.12f;
@@ -78,7 +80,10 @@ namespace Snowfield.Player
         {
             if (target == null || cameraTransform == null) return;
             var rot = Quaternion.Euler(_pitch, _yaw, 0f);
-            Vector3 pivot = target.position + targetOffset;
+            Vector3 offset = targetOffset;
+            var ch = followEyeHeight ? target.GetComponent<SnowCharacter>() : null;
+            if (ch != null) offset.y = ch.EyeHeight;
+            Vector3 pivot = target.position + offset;
             Vector3 desired = pivot + rot * new Vector3(shoulder, 0f, -distance);
 
             // Pull in if something is between pivot and camera (ignore the player's own collider via mask).
