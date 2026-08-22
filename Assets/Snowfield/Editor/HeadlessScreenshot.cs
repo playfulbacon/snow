@@ -32,8 +32,11 @@ namespace Snowfield.Editor
             }
 
             var cam = Camera.main;
+            // LateUpdate does not run in edit mode, so place the camera by hand.
             var orbit = Object.FindAnyObjectByType<Snowfield.Player.OrbitCamera>();
-            if (orbit != null) orbit.Snap(); // LateUpdate does not run in edit mode
+            if (orbit != null) orbit.Snap();
+            var fp = Object.FindAnyObjectByType<Snowfield.Player.FirstPersonCamera>();
+            if (fp != null) fp.Snap();
             var rt = new RenderTexture(1280, 720, 24, RenderTextureFormat.ARGB32);
             cam.targetTexture = rt;
             cam.Render();

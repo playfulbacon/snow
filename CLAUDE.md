@@ -82,7 +82,7 @@ RLE compresses brutally well (density fields are mostly-empty or mostly-full). S
 Unity: `C:\Program Files\Unity\Hub\Editor\6000.3.19f1\Editor\Unity.exe`. All commands take `-batchmode -projectPath C:\Projects\snow -logFile <log>`.
 
 - Regenerate settings/scene (idempotent, never clobbers an existing scene): `-nographics -quit -executeMethod Snowfield.Editor.ProjectBootstrap.Run`
-- Re-wire player rig into the scene: `-nographics -quit -executeMethod Snowfield.Editor.SandboxActors.Run` (also menu Snowfield ▸ Ensure Sandbox Actors). Scene layout convention — one responsibility per GameObject: `Player` (SnowCharacter) › `OrbitCamera` (moves Main Camera) · `SculptTool` (+AccessoryPlacer); `Main Camera` is a bare camera; `HUD` is its own root with Canvas + ToolHud.
+- Re-wire player rig into the scene: `-nographics -quit -executeMethod Snowfield.Editor.SandboxActors.Run` (also menu Snowfield ▸ Ensure Sandbox Actors). Scene layout convention — one responsibility per GameObject: `Player` (SnowCharacter) › `CameraRig` (FirstPersonCamera, moves Main Camera; `OrbitCamera` kept as a third-person option) · `SculptTool` (+AccessoryPlacer); `Main Camera` is a bare camera; `HUD` is its own root with Canvas + ToolHud.
 - Render the scene to PNG (needs graphics, so no `-nographics`): `-executeMethod Snowfield.Editor.HeadlessScreenshot.Run -screenshotOut Screenshots/x.png`
 - Tests: `-runTests -testPlatform EditMode|PlayMode -testResults out.xml` (PlayMode needs graphics)
 
@@ -90,4 +90,4 @@ Gotchas learned: `SerializedProperty.objectReferenceValue` silently drops refs t
 
 ## Controls (Sandbox)
 
-Modes: **1 Snow** (LMB add · RMB carve · scroll radius) · **2 Empty Hand** (hold LMB on a snowball to push it, or on bare ground to start one · RMB picks up anything: snowball → LMB sets down / attaches to snow; loose twig/carrot/button/pebble or a placed accessory → inventory · LMB on snow smooths) · **3 Accessory** (scroll pick · LMB place from inventory · RMB retrieve). Left Shift cycles modes. WASD move · Tab toggle cursor lock · +/- zoom. `FieldScatter` litters the field with items at start.
+Modes: **1 Snow** (LMB add · RMB carve · scroll radius) · **2 Empty Hand** (LMB on snow smooths · RMB on snow carves · hold LMB on a snowball to push it, or on bare ground to start one · RMB picks up anything: snowball → LMB sets down / attaches to snow; loose twig/carrot/button/pebble or a placed accessory → inventory · LMB on snow smooths) · **3 Accessory** (scroll pick · LMB place from inventory · RMB retrieve). Left Shift cycles modes. First person: WASD move · mouse look · Q crouch · E tiptoe · Tab toggle cursor lock. Brush radius (scroll) is remembered per mode. `FieldScatter` litters the field with items at start.

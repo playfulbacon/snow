@@ -46,8 +46,15 @@ namespace Snowfield.Player
         [Tooltip("Loose field items are small; aim at them with a sphere cast of this radius (m).")]
         public float itemPickRadius = 0.12f;
 
-        /// <summary>Radius multiplier on top of config, driven by scroll. Session-only.</summary>
-        public float radiusScale = 1f;
+        /// <summary>Radius multipliers on top of config, driven by scroll; one per brush mode. Session-only.</summary>
+        public float snowRadiusScale = 1f;
+        public float handRadiusScale = 1f;
+        public float radiusScale
+        {
+            get => Mode == ToolMode.EmptyHand ? handRadiusScale : snowRadiusScale;
+            set { if (Mode == ToolMode.EmptyHand) handRadiusScale = value; else snowRadiusScale = value; }
+        }
+        bool _carveArmed;
 
         AccessoryPlacer _placer;
         float _tickAccumulator;
@@ -179,15 +186,15 @@ namespace Snowfield.Player
 
         // ---------- brush modes ----------
 
-        void UpdateBrush(Mouse mouse)
+        void UpdateBrush(Mouse mouse, bool allowCarve = true)
         {
             _placer.HidePreview();
             bool lmb = mouse != null && mouse.leftButton.isPressed;
-            bool rmb = mouse != null && mouse.rightButton.isPressed;
+            bool rmb = mouse != null && mouse.rightButton.isPressed && allowCarve;
 
             BrushOp op = BrushOp.None;
             if (Mode == ToolMode.Snow) op = lmb ? BrushOp.Add : (rmb ? BrushOp.Carve : BrushOp.None);
-            else if (Mode == ToolMode.EmptyHand) op = lmb ? BrushOp.Smooth : BrushOp.None;
+            else if (Mode == ToolMode.EmptyHand) op = lmb ? BrushOp.Smooth : (rmb ? BrushOp.Carve : BrushOp.None);
             CurrentOp = op;
 
             float radius = CurrentRadius();
@@ -284,20 +291,23 @@ namespace Snowfield.Player
                 return;
             }
 
-            // --- free hands: RMB always picks up ---
+            // --- free hands: RMB picks up anything pickable; otherwise RMB over snow carves ---
+            bool rmb = mouse != null && mouse.rightButton.isPressed;
             if (rmbDown)
             {
-                if (AimedSnowball != null) Roller.PickUp(AimedSnowball);
-                else if (AimedWorldItem != null) _placer.Collect(AimedWorldItem);
-                else if (AimedProp != null) _placer.Retrieve(AimedProp);
-                return;
+                _carveArmed = false;
+                if (AimedSnowball != null) { Roller.PickUp(AimedSnowball); return; }
+                if (AimedWorldItem != null) { _placer.Collect(AimedWorldItem); return; }
+                if (AimedProp != null) { _placer.Retrieve(AimedProp); return; }
+                _carveArmed = true; // pressed on nothing pickable: this press is a carve stroke
             }
+            if (!rmb) _carveArmed = false;
 
             // --- LMB: push a ball, start a ball on bare ground, or smooth snow ---
             if (lmbDown && AimedSnowball != null) { Roller.StartPushing(AimedSnowball); HideBrushCursor(); return; }
             if (lmbDown && !HasHit && HasGroundHit && AimedWorldItem == null) { Roller.StartNew(); HideBrushCursor(); return; }
 
-            UpdateBrush(mouse); // smoothing on snow
+            UpdateBrush(mouse, allowCarve: _carveArmed); // smooth (LMB) / carve (RMB) on snow
         }
 
         void HideBrushCursor()

@@ -10,7 +10,7 @@ namespace Snowfield.Editor
     /// Ensures the player rig and HUD exist in the Sandbox scene, grouped by responsibility:
     ///
     ///   Player          SnowCharacter
-    ///    ├ OrbitCamera  OrbitCamera   (moves Main Camera)
+    ///    ├ CameraRig    FirstPersonCamera (moves Main Camera)
     ///    └ SculptTool   SculptTool + AccessoryPlacer
     ///   Main Camera     Camera only
     ///   HUD             Canvas + CanvasScaler + ToolHud
@@ -56,18 +56,21 @@ namespace Snowfield.Editor
             var character = player.GetComponent<SnowCharacter>();
             if (character == null) character = player.AddComponent<SnowCharacter>();
             character.cameraRig = cam.transform;
+            character.faceMovementDirection = false; // first person: the rig sets yaw
 
             // The brush ray starts behind the player; keep the player out of every raycast.
             int ignore = LayerMask.NameToLayer("Ignore Raycast");
             foreach (Transform t in player.GetComponentsInChildren<Transform>(true)) t.gameObject.layer = ignore;
 
-            // --- orbit camera rig (child of player) ---
-            var orbitGo = Child(player.transform, "OrbitCamera");
-            var orbit = orbitGo.GetComponent<OrbitCamera>();
-            if (orbit == null) orbit = orbitGo.AddComponent<OrbitCamera>();
-            orbit.cameraTransform = cam.transform;
-            orbit.target = player.transform;
-            orbit.collisionMask = ~LayerMask.GetMask("Ignore Raycast");
+            // --- first-person camera rig (child of player); retire any orbit rig ---
+            var oldOrbit = player.transform.Find("OrbitCamera");
+            if (oldOrbit != null) Object.DestroyImmediate(oldOrbit.gameObject);
+            var rigGo = Child(player.transform, "CameraRig");
+            StripComponent<OrbitCamera>(rigGo);
+            var rig = rigGo.GetComponent<FirstPersonCamera>();
+            if (rig == null) rig = rigGo.AddComponent<FirstPersonCamera>();
+            rig.cameraTransform = cam.transform;
+            rig.character = character;
 
             // --- brush cursor ---
             var cursorGo = GameObject.Find("BrushCursor");
@@ -133,7 +136,7 @@ namespace Snowfield.Editor
             hud.placer = placer;
             hud.RebuildNow();
 
-            foreach (var o in new Object[] { character, orbit, tool, placer, hud }) EditorUtility.SetDirty(o);
+            foreach (var o in new Object[] { character, rig, tool, placer, hud }) EditorUtility.SetDirty(o);
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene);
             AssetDatabase.SaveAssets();

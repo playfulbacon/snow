@@ -430,7 +430,7 @@ namespace Snowfield.Player
                 };
             }
             _statusLine1.text = $"[{ToolModeInfo.DisplayName(mode)}]  {line}";
-            _statusLine2.text = $"{ToolModeInfo.Hint(mode)}   ·   Shift / 1-3 change mode · WASD move · Tab cursor · +/- zoom";
+            _statusLine2.text = $"{ToolModeInfo.Hint(mode)}   ·   Shift / 1-3 change mode · WASD move · Q crouch · E tiptoe · Tab cursor";
         }
 
         // ------------------------------------------------------------------ helpers
