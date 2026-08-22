@@ -1,7 +1,15 @@
 {
   "name": "Snowfield.Player",
   "rootNamespace": "Snowfield.Player",
-  "references": ["Snowfield.Voxel","Snowfield.Sculpture","Snowfield.Field","Snowfield.Config","Unity.Mathematics","Unity.InputSystem"],
+  "references": [
+    "Snowfield.Voxel",
+    "Snowfield.Sculpture",
+    "Snowfield.Field",
+    "Snowfield.Config",
+    "Unity.Mathematics",
+    "Unity.InputSystem",
+    "UnityEngine.UI"
+  ],
   "includePlatforms": [],
   "excludePlatforms": [],
   "allowUnsafeCode": true,

@@ -84,6 +84,15 @@ namespace Snowfield.Editor
             tool.cursor = cursorGo.transform;
             tool.sculptMask = ~LayerMask.GetMask("Ignore Raycast");
 
+            var placer = cam.GetComponent<AccessoryPlacer>();
+            if (placer == null) placer = cam.gameObject.AddComponent<AccessoryPlacer>();
+            var hud = cam.GetComponent<ToolHud>();
+            if (hud == null) hud = cam.gameObject.AddComponent<ToolHud>();
+            hud.tool = tool;
+            hud.placer = placer;
+            hud.RebuildNow();
+            EditorUtility.SetDirty(hud);
+
             EditorUtility.SetDirty(tool);
             EditorUtility.SetDirty(orbit);
             EditorSceneManager.MarkSceneDirty(scene);
