@@ -14,7 +14,6 @@ namespace Snowfield.Player
     /// A snowball in flight. Physics-driven until it either splats into a sculpture (density stamp, prop destroyed)
     /// or comes to rest, at which point the Rigidbody is removed and it is an ordinary <see cref="DroppedSnowball"/>.
     /// </summary>
-    [RequireComponent(typeof(Rigidbody))]
     public class ThrownSnowball : MonoBehaviour
     {
         public float radius;
@@ -23,6 +22,12 @@ namespace Snowfield.Player
         [Tooltip("Seconds below the rest speed before the ball is considered landed.")]
         public float restTime = 0.35f;
         public float restSpeed = 0.08f;
+        [Header("Snow landing")]
+        [Tooltip("Fraction of velocity kept on the first ground contact. Snow swallows most of it.")]
+        [Range(0f, 1f)] public float impactKeep = 0.25f;
+        [Tooltip("Linear damping applied while touching the ground (fresh snow drags hard).")]
+        public float groundDamping = 8f;
+        public float groundAngularDamping = 8f;
 
         Rigidbody _rb;
         float _slowFor;
@@ -38,7 +43,15 @@ namespace Snowfield.Player
         void OnCollisionEnter(Collision col)
         {
             var sculpture = col.collider.GetComponentInParent<SnowSculpture>();
-            if (sculpture == null) return;
+            if (sculpture == null)
+            {
+                // Landed in snow: bleed off most of the energy at once, then drag hard while in contact.
+                _rb.linearVelocity *= impactKeep;
+                _rb.angularVelocity *= impactKeep;
+                _rb.linearDamping = groundDamping;
+                _rb.angularDamping = groundAngularDamping;
+                return;
+            }
             var contact = col.GetContact(0);
             Vector3 centre = contact.point + contact.normal * (radius * (1f - attachSink));
             sculpture.StampSphere(centre, radius, attachShoulder);
@@ -47,8 +60,15 @@ namespace Snowfield.Player
             Destroy(gameObject);
         }
 
+        void OnCollisionExit(Collision col)
+        {
+            if (col.collider.GetComponentInParent<SnowSculpture>() != null) return;
+            if (_rb != null) { _rb.linearDamping = 0f; _rb.angularDamping = 1.5f; } // brief hop after a bounce
+        }
+
         void Land()
         {
+            Destroy(this); // first: the Rigidbody cannot go while this component still holds it
             Destroy(_rb);
             var dropped = GetComponent<DroppedSnowball>();
             if (dropped == null) dropped = gameObject.AddComponent<DroppedSnowball>();
