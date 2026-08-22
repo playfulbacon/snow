@@ -107,6 +107,12 @@ namespace Snowfield.Editor
             tool.sculptMask = ~LayerMask.GetMask("Ignore Raycast");
             var placer = toolGo.GetComponent<AccessoryPlacer>();
             if (placer == null) placer = toolGo.AddComponent<AccessoryPlacer>();
+            var roller = toolGo.GetComponent<SnowballRoller>();
+            if (roller == null) roller = toolGo.AddComponent<SnowballRoller>();
+            roller.config = config;
+            roller.character = character;
+            roller.groundMask = ~LayerMask.GetMask("Ignore Raycast");
+            EditorUtility.SetDirty(roller);
 
             // --- HUD (own root object) ---
             var hudGo = GameObject.Find("HUD");

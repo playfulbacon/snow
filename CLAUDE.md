@@ -90,4 +90,4 @@ Gotchas learned: `SerializedProperty.objectReferenceValue` silently drops refs t
 
 ## Controls (Sandbox)
 
-Modes: **1 Snow** (LMB add · RMB carve · scroll radius) · **2 Empty Hand** (LMB smooth · scroll radius) · **3 Accessory** (scroll pick · LMB place · RMB remove). Left Shift cycles modes. WASD move · Tab toggle cursor lock · +/- zoom
+Modes: **1 Snow** (LMB add · RMB carve · scroll radius) · **2 Empty Hand** (LMB on snow smooth · LMB on ground start snowball, walk to grow it · LMB on snow attach · RMB drop · scroll radius) · **3 Accessory** (scroll pick · LMB place · RMB remove). Left Shift cycles modes. WASD move · Tab toggle cursor lock · +/- zoom

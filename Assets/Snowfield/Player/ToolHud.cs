@@ -391,7 +391,9 @@ namespace Snowfield.Player
                 line = mode switch
                 {
                     ToolMode.Snow => $"radius {tool.CurrentRadius():0.00} m   rate {tool.config.addRatePerTick:0}/tick @ {tool.config.ticksPerSecond:0} Hz",
-                    ToolMode.EmptyHand => $"radius {tool.CurrentRadius():0.00} m   strength {tool.config.smoothStrength:0.00}",
+                    ToolMode.EmptyHand => tool.Roller != null && tool.Roller.IsHolding
+                        ? $"snowball {tool.Roller.Radius * 2f:0.00} m"
+                        : $"radius {tool.CurrentRadius():0.00} m   strength {tool.config.smoothStrength:0.00}",
                     ToolMode.Accessory => placer != null ? placer.Selected.DisplayName : "",
                     _ => "",
                 };

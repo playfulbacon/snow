@@ -36,6 +36,11 @@ namespace Snowfield.Player
         public float3 BrushPoint { get; private set; }
         public float3 BrushNormal { get; private set; }
         public bool HasHit { get; private set; }
+        /// <summary>Aimed at walkable ground (no sculpture) within reach.</summary>
+        public bool HasGroundHit { get; private set; }
+        public Vector3 GroundPoint { get; private set; }
+        public DroppedSnowball AimedSnowball { get; private set; }
+        public SnowballRoller Roller { get; private set; }
 
         /// <summary>Radius multiplier on top of config, driven by scroll. Session-only.</summary>
         public float radiusScale = 1f;
@@ -56,12 +61,16 @@ namespace Snowfield.Player
             }
             _placer = GetComponent<AccessoryPlacer>();
             if (_placer == null) _placer = gameObject.AddComponent<AccessoryPlacer>();
+            Roller = GetComponent<SnowballRoller>();
+            if (Roller == null) Roller = gameObject.AddComponent<SnowballRoller>();
+            if (Roller.config == null) Roller.config = config;
         }
 
         public void SetMode(ToolMode mode)
         {
             if (mode == Mode) return;
             if (IsSculpting) { IsSculpting = false; Flush(); }
+            if (Roller != null && Roller.IsHolding) Roller.Drop();
             Mode = mode;
             if (cursor != null) cursor.gameObject.SetActive(false);
             _placer.HidePreview();
@@ -80,8 +89,10 @@ namespace Snowfield.Player
             switch (Mode)
             {
                 case ToolMode.Snow:
-                case ToolMode.EmptyHand:
                     UpdateBrush(mouse);
+                    break;
+                case ToolMode.EmptyHand:
+                    UpdateEmptyHand(mouse);
                     break;
                 case ToolMode.Accessory:
                     UpdateAccessory(mouse);
@@ -129,17 +140,24 @@ namespace Snowfield.Player
         void Aim()
         {
             HasHit = false;
+            HasGroundHit = false;
             Target = null;
             AimedProp = null;
+            AimedSnowball = null;
             var ray = viewCamera.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
             Vector3 origin = reachOrigin != null ? reachOrigin.position + Vector3.up : ray.origin;
             float rayLength = maxReach + Vector3.Distance(ray.origin, origin);
             if (!Physics.Raycast(ray, out var hit, rayLength, sculptMask, QueryTriggerInteraction.Ignore)) return;
             if (Vector3.Distance(hit.point, origin) > maxReach) return;
 
+            AimedSnowball = hit.collider.GetComponentInParent<DroppedSnowball>();
             AimedProp = hit.collider.GetComponentInParent<SculptureProp>();
             var s = hit.collider.GetComponentInParent<SnowSculpture>();
-            if (s == null) return;
+            if (s == null)
+            {
+                if (AimedSnowball == null && hit.normal.y > 0.6f) { HasGroundHit = true; GroundPoint = hit.point; }
+                return;
+            }
             Target = s;
             BrushPoint = hit.point;
             BrushNormal = hit.normal;
@@ -217,6 +235,34 @@ namespace Snowfield.Player
             _dirtySculpture.RebuildColliders();
             _dirtySculpture = null;
             _remeshAccumulator = 0f;
+        }
+
+        // ---------- empty hand: smooth, or roll / attach / drop snowballs ----------
+
+        void UpdateEmptyHand(Mouse mouse)
+        {
+            bool lmbDown = mouse != null && mouse.leftButton.wasPressedThisFrame;
+            bool rmbDown = mouse != null && mouse.rightButton.wasPressedThisFrame;
+
+            if (Roller.IsHolding)
+            {
+                CurrentOp = BrushOp.None;
+                if (cursor != null) cursor.gameObject.SetActive(false);
+                _placer.HidePreview();
+
+                bool canAttach = HasHit && Target != null;
+                if (canAttach) Roller.UpdateAttachPreview(BrushPoint, BrushNormal);
+                else Roller.UpdateRolling();
+
+                if (lmbDown && canAttach) Roller.AttachTo(Target, BrushPoint, BrushNormal);
+                else if (rmbDown) Roller.Drop();
+                return;
+            }
+
+            if (lmbDown && AimedSnowball != null) { Roller.PickUp(AimedSnowball); return; }
+            if (lmbDown && !HasHit && HasGroundHit) { Roller.StartNew(); return; }
+
+            UpdateBrush(mouse); // smoothing on snow
         }
 
         // ---------- accessory mode ----------

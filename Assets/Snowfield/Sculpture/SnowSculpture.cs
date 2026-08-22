@@ -22,6 +22,7 @@ namespace Snowfield.Sculpture
         public VoxelGrid Grid { get; private set; }
         public VoxelGridInfo Info => Grid.Info;
         public SculptFeelConfig Config => config;
+        public Material SnowMaterial => snowMaterial;
 
         /// <summary>Editor/bootstrap hook for wiring references on a freshly added component.</summary>
         public void EditorAssign(SculptFeelConfig cfg, Material mat) { config = cfg; snowMaterial = mat; }
