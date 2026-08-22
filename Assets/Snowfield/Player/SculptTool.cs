@@ -177,6 +177,7 @@ namespace Snowfield.Player
             if (Vector3.Distance(hit.point, origin) > maxReach) return;
 
             AimedSnowball = hit.collider.GetComponentInParent<DroppedSnowball>();
+            if (AimedSnowball != null && AimedSnowball.GetComponent<ThrownSnowball>() != null) AimedSnowball = null; // in flight
             AimedProp = hit.collider.GetComponentInParent<SculptureProp>();
             var s = hit.collider.GetComponentInParent<SnowSculpture>();
             if (s == null)
