@@ -1,7 +1,11 @@
 {
   "name": "Snowfield.Field",
   "rootNamespace": "Snowfield.Field",
-  "references": ["Snowfield.Config","Unity.Mathematics"],
+  "references": [
+    "Snowfield.Config",
+    "Unity.Mathematics",
+    "Snowfield.Sculpture"
+  ],
   "includePlatforms": [],
   "excludePlatforms": [],
   "allowUnsafeCode": true,

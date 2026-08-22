@@ -107,12 +107,22 @@ namespace Snowfield.Editor
             tool.sculptMask = ~LayerMask.GetMask("Ignore Raycast");
             var placer = toolGo.GetComponent<AccessoryPlacer>();
             if (placer == null) placer = toolGo.AddComponent<AccessoryPlacer>();
+            var inventory = toolGo.GetComponent<AccessoryInventory>();
+            if (inventory == null) inventory = toolGo.AddComponent<AccessoryInventory>();
             var roller = toolGo.GetComponent<SnowballRoller>();
             if (roller == null) roller = toolGo.AddComponent<SnowballRoller>();
             roller.config = config;
             roller.character = character;
             roller.groundMask = ~LayerMask.GetMask("Ignore Raycast");
             EditorUtility.SetDirty(roller);
+
+            // --- loose items scattered over the field ---
+            var scatterGo = GameObject.Find("FieldScatter");
+            if (scatterGo == null) scatterGo = new GameObject("FieldScatter");
+            var scatter = scatterGo.GetComponent<Snowfield.Field.FieldScatter>();
+            if (scatter == null) scatter = scatterGo.AddComponent<Snowfield.Field.FieldScatter>();
+            scatter.groundMask = ~LayerMask.GetMask("Ignore Raycast");
+            EditorUtility.SetDirty(scatter);
 
             // --- HUD (own root object) ---
             var hudGo = GameObject.Find("HUD");

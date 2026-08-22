@@ -90,4 +90,4 @@ Gotchas learned: `SerializedProperty.objectReferenceValue` silently drops refs t
 
 ## Controls (Sandbox)
 
-Modes: **1 Snow** (LMB add · RMB carve · scroll radius) · **2 Empty Hand** (LMB on snow smooth · LMB on ground start snowball, walk to grow it · LMB on snow attach · RMB drop · scroll radius) · **3 Accessory** (scroll pick · LMB place · RMB remove). Left Shift cycles modes. WASD move · Tab toggle cursor lock · +/- zoom
+Modes: **1 Snow** (LMB add · RMB carve · scroll radius) · **2 Empty Hand** (hold LMB on a snowball to push it, or on bare ground to start one · RMB picks up anything: snowball → LMB sets down / attaches to snow; loose twig/carrot/button/pebble or a placed accessory → inventory · LMB on snow smooths) · **3 Accessory** (scroll pick · LMB place from inventory · RMB retrieve). Left Shift cycles modes. WASD move · Tab toggle cursor lock · +/- zoom. `FieldScatter` litters the field with items at start.

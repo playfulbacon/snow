@@ -45,6 +45,10 @@ namespace Snowfield.Player
             public float labelHeight = 20f;
             public int labelFontSize = 14;
             public float thumbnailPadding = 6f;
+            [Header("Count badge")]
+            public float countSize = 22f;
+            public int countFontSize = 13;
+            public Vector2 countOffset = new Vector2(-4f, -4f);
         }
 
         [Serializable]
@@ -81,6 +85,10 @@ namespace Snowfield.Player
             public Color reticleOnSnow = new Color(0.35f, 0.75f, 1f, 0.95f);
             public Color reticleOnProp = new Color(1f, 0.45f, 0.35f, 0.95f);
             public Color thumbnailPlaceholder = new Color(0.5f, 0.55f, 0.65f, 0.6f);
+            public Color countBg = new Color(0.2f, 0.45f, 0.8f, 0.95f);
+            public Color countText = Color.white;
+            [Tooltip("Tint applied to an accessory box whose inventory count is zero.")]
+            public Color emptyTint = new Color(1f, 1f, 1f, 0.35f);
         }
 
         [Header("Wiring")]
@@ -111,7 +119,7 @@ namespace Snowfield.Player
         class ModeItem { public RectTransform root; public Image box, boxOutline, badge, badgeOutline; public Text label, badgeLabel; }
 
         [Serializable]
-        class AccessoryItem { public RectTransform root; public Image box, boxOutline; public RawImage thumb; public Text label; }
+        class AccessoryItem { public RectTransform root; public Image box, boxOutline, countBox, countOutline; public RawImage thumb; public Text label, count; }
 
         [SerializeField, HideInInspector] RectTransform _modeBarRoot, _accessoryBarRoot, _reticleRoot, _statusRoot;
         [SerializeField, HideInInspector] List<ModeItem> _modes = new List<ModeItem>();
@@ -174,7 +182,8 @@ namespace Snowfield.Player
         bool IsBuilt() =>
             canvas != null && _modeBarRoot != null && _accessoryBarRoot != null && _reticleRoot != null && _statusRoot != null
             && _modes.Count == ToolModeInfo.All.Length && _accessories.Count == AccessoryCatalog.Entries.Count
-            && _statusLine1 != null && _reticleDot != null;
+            && _statusLine1 != null && _reticleDot != null
+            && (_accessories.Count == 0 || _accessories[0].count != null);
 
         // ------------------------------------------------------------------ build
 
@@ -234,6 +243,11 @@ namespace Snowfield.Player
                 item.thumb = thumbGo.GetComponent<RawImage>();
                 item.thumb.raycastTarget = false;
                 item.label = Txt("Label", item.root, TextAnchor.MiddleCenter);
+                var countRoot = MakeRect("Count", item.root, new Vector2(1, 1), new Vector2(1, 1), new Vector2(1, 1));
+                item.countOutline = Img("Outline", countRoot);
+                item.countBox = Img("Box", countRoot);
+                item.count = Txt("Label", countRoot, TextAnchor.MiddleCenter);
+                item.count.fontStyle = FontStyle.Bold;
                 _accessories.Add(item);
             }
 
@@ -324,6 +338,16 @@ namespace Snowfield.Player
                 a.label.fontSize = accessoryBar.labelFontSize;
                 a.label.text = AccessoryCatalog.Entries[i].DisplayName;
                 a.boxOutline.color = c.outline;
+                var cr = (RectTransform)a.countBox.transform.parent;
+                cr.anchoredPosition = accessoryBar.countOffset;
+                cr.sizeDelta = Vector2.one * accessoryBar.countSize;
+                Stretch(a.countOutline.rectTransform, -ow);
+                Stretch(a.countBox.rectTransform, 0);
+                Stretch(a.count.rectTransform, 0);
+                a.count.fontSize = accessoryBar.countFontSize;
+                a.countOutline.color = c.outline;
+                a.countBox.color = c.countBg;
+                a.count.color = c.countText;
             }
 
             // reticle
@@ -361,15 +385,22 @@ namespace Snowfield.Player
             if (accVisible)
             {
                 var thumbs = playing && placer != null ? placer.Thumbnails : null;
+                var inv = playing && placer != null ? placer.Inventory : null;
                 for (int i = 0; i < _accessories.Count; i++)
                 {
                     bool sel = i == accIndex;
                     var a = _accessories[i];
-                    a.box.color = sel ? c.selectedBg : c.boxBg;
-                    a.label.color = sel ? c.selectedText : c.boxText;
+                    int n = inv != null ? inv.Count(AccessoryCatalog.Entries[i].Id) : (playing ? 0 : 3);
+                    bool empty = n <= 0;
+                    Color tint = empty ? c.emptyTint : Color.white;
+                    a.box.color = (sel ? c.selectedBg : c.boxBg) * tint;
+                    a.label.color = (sel ? c.selectedText : c.boxText) * tint;
                     var tex = thumbs != null && i < thumbs.Count ? thumbs[i] : null;
                     a.thumb.texture = tex;
-                    a.thumb.color = tex != null ? Color.white : c.thumbnailPlaceholder;
+                    a.thumb.color = (tex != null ? Color.white : c.thumbnailPlaceholder) * tint;
+                    a.count.text = n.ToString();
+                    a.countBox.color = c.countBg * tint;
+                    a.count.color = c.countText * tint;
                 }
             }
 

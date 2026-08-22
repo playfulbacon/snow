@@ -40,7 +40,11 @@ namespace Snowfield.Player
         public bool HasGroundHit { get; private set; }
         public Vector3 GroundPoint { get; private set; }
         public DroppedSnowball AimedSnowball { get; private set; }
+        public WorldItem AimedWorldItem { get; private set; }
         public SnowballRoller Roller { get; private set; }
+        public AccessoryInventory Inventory => _placer != null ? _placer.Inventory : null;
+        [Tooltip("Loose field items are small; aim at them with a sphere cast of this radius (m).")]
+        public float itemPickRadius = 0.12f;
 
         /// <summary>Radius multiplier on top of config, driven by scroll. Session-only.</summary>
         public float radiusScale = 1f;
@@ -70,7 +74,7 @@ namespace Snowfield.Player
         {
             if (mode == Mode) return;
             if (IsSculpting) { IsSculpting = false; Flush(); }
-            if (Roller != null && Roller.IsHolding) Roller.Drop();
+            if (Roller != null && Roller.IsEngaged) Roller.Release();
             Mode = mode;
             if (cursor != null) cursor.gameObject.SetActive(false);
             _placer.HidePreview();
@@ -144,9 +148,18 @@ namespace Snowfield.Player
             Target = null;
             AimedProp = null;
             AimedSnowball = null;
+            AimedWorldItem = null;
             var ray = viewCamera.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
             Vector3 origin = reachOrigin != null ? reachOrigin.position + Vector3.up : ray.origin;
             float rayLength = maxReach + Vector3.Distance(ray.origin, origin);
+
+            // Loose items are thin; a fat cast makes them forgiving to aim at.
+            if (Physics.SphereCast(ray, itemPickRadius, out var fat, rayLength, sculptMask, QueryTriggerInteraction.Ignore))
+            {
+                var item = fat.collider.GetComponentInParent<WorldItem>();
+                if (item != null && Vector3.Distance(fat.point, origin) <= maxReach) AimedWorldItem = item;
+            }
+
             if (!Physics.Raycast(ray, out var hit, rayLength, sculptMask, QueryTriggerInteraction.Ignore)) return;
             if (Vector3.Distance(hit.point, origin) > maxReach) return;
 
@@ -241,28 +254,56 @@ namespace Snowfield.Player
 
         void UpdateEmptyHand(Mouse mouse)
         {
+            bool lmb = mouse != null && mouse.leftButton.isPressed;
             bool lmbDown = mouse != null && mouse.leftButton.wasPressedThisFrame;
             bool rmbDown = mouse != null && mouse.rightButton.wasPressedThisFrame;
+            _placer.HidePreview();
 
-            if (Roller.IsHolding)
+            // --- pushing: only while the button is held ---
+            if (Roller.IsPushing)
             {
-                CurrentOp = BrushOp.None;
-                if (cursor != null) cursor.gameObject.SetActive(false);
-                _placer.HidePreview();
-
-                bool canAttach = HasHit && Target != null;
-                if (canAttach) Roller.UpdateAttachPreview(BrushPoint, BrushNormal);
-                else Roller.UpdateRolling();
-
-                if (lmbDown && canAttach) Roller.AttachTo(Target, BrushPoint, BrushNormal);
-                else if (rmbDown) Roller.Drop();
+                HideBrushCursor();
+                if (!lmb) Roller.Release();
+                else Roller.UpdatePushing();
                 return;
             }
 
-            if (lmbDown && AimedSnowball != null) { Roller.PickUp(AimedSnowball); return; }
-            if (lmbDown && !HasHit && HasGroundHit) { Roller.StartNew(); return; }
+            // --- carrying: preview on snow or ground, LMB to set down / attach ---
+            if (Roller.IsCarrying)
+            {
+                HideBrushCursor();
+                bool onSnow = HasHit && Target != null;
+                Vector3? preview = onSnow ? Roller.AttachCentre(BrushPoint, BrushNormal)
+                                 : HasGroundHit ? Roller.GroundCentre(GroundPoint) : (Vector3?)null;
+                Roller.UpdateCarrying(preview);
+                if (lmbDown)
+                {
+                    if (onSnow) Roller.AttachTo(Target, BrushPoint, BrushNormal);
+                    else if (HasGroundHit) Roller.PlaceOnGround(GroundPoint);
+                }
+                return;
+            }
+
+            // --- free hands: RMB always picks up ---
+            if (rmbDown)
+            {
+                if (AimedSnowball != null) Roller.PickUp(AimedSnowball);
+                else if (AimedWorldItem != null) _placer.Collect(AimedWorldItem);
+                else if (AimedProp != null) _placer.Retrieve(AimedProp);
+                return;
+            }
+
+            // --- LMB: push a ball, start a ball on bare ground, or smooth snow ---
+            if (lmbDown && AimedSnowball != null) { Roller.StartPushing(AimedSnowball); HideBrushCursor(); return; }
+            if (lmbDown && !HasHit && HasGroundHit && AimedWorldItem == null) { Roller.StartNew(); HideBrushCursor(); return; }
 
             UpdateBrush(mouse); // smoothing on snow
+        }
+
+        void HideBrushCursor()
+        {
+            CurrentOp = BrushOp.None;
+            if (cursor != null) cursor.gameObject.SetActive(false);
         }
 
         // ---------- accessory mode ----------
@@ -272,13 +313,16 @@ namespace Snowfield.Player
             CurrentOp = BrushOp.None;
             if (cursor != null) cursor.gameObject.SetActive(false);
 
-            _placer.UpdatePreview(HasHit, BrushPoint, BrushNormal);
+            _placer.UpdatePreview(HasHit && _placer.CanPlaceSelected, BrushPoint, BrushNormal);
 
             if (mouse == null) return;
             if (mouse.leftButton.wasPressedThisFrame && HasHit && Target != null)
                 _placer.Place(Target, BrushPoint, BrushNormal);
-            if (mouse.rightButton.wasPressedThisFrame && AimedProp != null)
-                AimedProp.Remove();
+            if (mouse.rightButton.wasPressedThisFrame)
+            {
+                if (AimedProp != null) _placer.Retrieve(AimedProp);
+                else if (AimedWorldItem != null) _placer.Collect(AimedWorldItem);
+            }
         }
     }
 }

@@ -16,15 +16,19 @@ namespace Snowfield.Sculpture
             public string DisplayName;
             /// <summary>How far (m) to push the origin below the surface so it reads as stuck in, not floating.</summary>
             public float Sink;
+            /// <summary>Rotation that lays the item on flat ground (authored +Y = out of snow).</summary>
+            public Quaternion GroundRest;
+            /// <summary>Height above ground for the origin when resting, so it does not clip.</summary>
+            public float GroundLift;
             public System.Func<GameObject> Build;
         }
 
         public static readonly IReadOnlyList<Entry> Entries = new List<Entry>
         {
-            new Entry { Id = "twig",   DisplayName = "Twig",   Sink = 0.06f, Build = BuildTwig },
-            new Entry { Id = "carrot", DisplayName = "Carrot", Sink = 0.05f, Build = BuildCarrot },
-            new Entry { Id = "button", DisplayName = "Button", Sink = 0.01f, Build = BuildButton },
-            new Entry { Id = "pebble", DisplayName = "Pebble", Sink = 0.015f, Build = BuildPebble },
+            new Entry { Id = "twig",   DisplayName = "Twig",   Sink = 0.06f,  GroundRest = Quaternion.Euler(90f, 0f, 0f), GroundLift = 0.012f, Build = BuildTwig },
+            new Entry { Id = "carrot", DisplayName = "Carrot", Sink = 0.05f,  GroundRest = Quaternion.Euler(90f, 0f, 0f), GroundLift = 0.02f,  Build = BuildCarrot },
+            new Entry { Id = "button", DisplayName = "Button", Sink = 0.01f,  GroundRest = Quaternion.identity,          GroundLift = 0f,     Build = BuildButton },
+            new Entry { Id = "pebble", DisplayName = "Pebble", Sink = 0.015f, GroundRest = Quaternion.identity,          GroundLift = 0f,     Build = BuildPebble },
         };
 
         public static Entry Find(string id)
