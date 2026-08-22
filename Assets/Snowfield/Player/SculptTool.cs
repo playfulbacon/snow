@@ -28,7 +28,7 @@ namespace Snowfield.Player
         [Tooltip("Visual brush cursor; scaled to brush diameter.")]
         public Transform cursor;
 
-        public ToolMode Mode { get; private set; } = ToolMode.Snow;
+        public ToolMode Mode { get; private set; } = ToolModeInfo.Default;
         public BrushOp CurrentOp { get; private set; } = BrushOp.None;
         public bool IsSculpting { get; private set; }
         public SnowSculpture Target { get; private set; }
@@ -54,7 +54,6 @@ namespace Snowfield.Player
             get => Mode == ToolMode.EmptyHand ? handRadiusScale : snowRadiusScale;
             set { if (Mode == ToolMode.EmptyHand) handRadiusScale = value; else snowRadiusScale = value; }
         }
-        bool _carveArmed;
 
         AccessoryPlacer _placer;
         float _tickAccumulator;
@@ -77,11 +76,14 @@ namespace Snowfield.Player
             if (Roller.config == null) Roller.config = config;
         }
 
+        /// <summary>True while the hands are busy (pushing or carrying a snowball); modes are locked then.</summary>
+        public bool HandsFull => Roller != null && Roller.IsEngaged;
+
         public void SetMode(ToolMode mode)
         {
             if (mode == Mode) return;
+            if (HandsFull) return;
             if (IsSculpting) { IsSculpting = false; Flush(); }
-            if (Roller != null && Roller.IsEngaged) Roller.Release();
             Mode = mode;
             if (cursor != null) cursor.gameObject.SetActive(false);
             _placer.HidePreview();
@@ -127,11 +129,12 @@ namespace Snowfield.Player
         void HandleModeInput(Keyboard kb)
         {
             if (kb == null) return;
+            var all = ToolModeInfo.All;
             if (kb.leftShiftKey.wasPressedThisFrame)
-                SetMode(ToolModeInfo.All[((int)Mode + 1) % ToolModeInfo.All.Length]);
-            if (kb.digit1Key.wasPressedThisFrame || kb.numpad1Key.wasPressedThisFrame) SetMode(ToolMode.Snow);
-            if (kb.digit2Key.wasPressedThisFrame || kb.numpad2Key.wasPressedThisFrame) SetMode(ToolMode.EmptyHand);
-            if (kb.digit3Key.wasPressedThisFrame || kb.numpad3Key.wasPressedThisFrame) SetMode(ToolMode.Accessory);
+                SetMode(all[(ToolModeInfo.IndexOf(Mode) + 1) % all.Length]);
+            if (kb.digit1Key.wasPressedThisFrame || kb.numpad1Key.wasPressedThisFrame) SetMode(all[0]);
+            if (kb.digit2Key.wasPressedThisFrame || kb.numpad2Key.wasPressedThisFrame) SetMode(all[1]);
+            if (kb.digit3Key.wasPressedThisFrame || kb.numpad3Key.wasPressedThisFrame) SetMode(all[2]);
         }
 
         void HandleScroll(Mouse mouse)
@@ -291,23 +294,20 @@ namespace Snowfield.Player
                 return;
             }
 
-            // --- free hands: RMB picks up anything pickable; otherwise RMB over snow carves ---
-            bool rmb = mouse != null && mouse.rightButton.isPressed;
+            // --- free hands: RMB picks up anything pickable ---
             if (rmbDown)
             {
-                _carveArmed = false;
-                if (AimedSnowball != null) { Roller.PickUp(AimedSnowball); return; }
-                if (AimedWorldItem != null) { _placer.Collect(AimedWorldItem); return; }
-                if (AimedProp != null) { _placer.Retrieve(AimedProp); return; }
-                _carveArmed = true; // pressed on nothing pickable: this press is a carve stroke
+                if (AimedSnowball != null) Roller.PickUp(AimedSnowball);
+                else if (AimedWorldItem != null) _placer.Collect(AimedWorldItem);
+                else if (AimedProp != null) _placer.Retrieve(AimedProp);
+                return;
             }
-            if (!rmb) _carveArmed = false;
 
             // --- LMB: push a ball, start a ball on bare ground, or smooth snow ---
             if (lmbDown && AimedSnowball != null) { Roller.StartPushing(AimedSnowball); HideBrushCursor(); return; }
             if (lmbDown && !HasHit && HasGroundHit && AimedWorldItem == null) { Roller.StartNew(); HideBrushCursor(); return; }
 
-            UpdateBrush(mouse, allowCarve: _carveArmed); // smooth (LMB) / carve (RMB) on snow
+            UpdateBrush(mouse, allowCarve: false); // smoothing on snow
         }
 
         void HideBrushCursor()

@@ -1,6 +1,6 @@
 namespace Snowfield.Player
 {
-    /// <summary>Top-level interaction modes. Order = number key and cycle order.</summary>
+    /// <summary>Top-level interaction modes. <see cref="ToolModeInfo.All"/> defines number-key and cycle order.</summary>
     public enum ToolMode
     {
         Snow = 0,
@@ -10,7 +10,10 @@ namespace Snowfield.Player
 
     public static class ToolModeInfo
     {
-        public static readonly ToolMode[] All = { ToolMode.Snow, ToolMode.EmptyHand, ToolMode.Accessory };
+        /// <summary>Display/cycle order: index 0 is key 1 and the starting mode.</summary>
+        public static readonly ToolMode[] All = { ToolMode.EmptyHand, ToolMode.Snow, ToolMode.Accessory };
+        public static ToolMode Default => All[0];
+        public static int IndexOf(ToolMode m) => System.Array.IndexOf(All, m);
 
         public static string DisplayName(ToolMode m) => m switch
         {
@@ -23,7 +26,7 @@ namespace Snowfield.Player
         public static string Hint(ToolMode m) => m switch
         {
             ToolMode.Snow => "LMB add · RMB carve · scroll size",
-            ToolMode.EmptyHand => "LMB on snow smooth · RMB on snow carve · hold LMB push snowball (or start one on ground) · RMB pick up · LMB place/attach",
+            ToolMode.EmptyHand => "LMB on snow smooth · hold LMB push snowball (or start one on ground) · RMB pick up · LMB place/attach",
             ToolMode.Accessory => "scroll pick · LMB place · RMB remove",
             _ => "",
         };

@@ -109,7 +109,7 @@ namespace Snowfield.Player
         public Palette colors = new Palette();
 
         [Header("Edit-mode preview")]
-        public ToolMode previewMode = ToolMode.Snow;
+        public ToolMode previewMode = ToolMode.EmptyHand;
         public bool previewAccessoryBar = true;
         public int previewAccessoryIndex = 0;
 
