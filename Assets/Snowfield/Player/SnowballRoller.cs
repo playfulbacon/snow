@@ -226,7 +226,9 @@ namespace Snowfield.Player
             if (moved > 0.0005f && config != null)
             {
                 var terrain = SnowTerrain.Instance;
-                bool fresh = terrain == null || terrain.IsFreshAt(goal, config.footprintDepth * 1.5f);
+                // Sample the snow the ball is rolling ONTO (leading edge), not the trench it just pressed under itself.
+                Vector3 ahead = goal + delta.normalized * Ball.radius;
+                bool fresh = terrain == null || terrain.IsFreshAt(ahead, config.footprintDepth * 1.5f);
                 Vector3 axis = Vector3.Cross(Vector3.up, delta.normalized);
                 t.Rotate(axis, moved / Ball.radius * Mathf.Rad2Deg, Space.World);
                 if (fresh && Ball.radius < config.snowballMaxRadius)
