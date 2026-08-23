@@ -123,6 +123,8 @@ namespace Snowfield.Player
             public Color promptBg = new Color(0.08f, 0.1f, 0.14f, 0.72f);
             public Color promptText = new Color(0.9f, 0.92f, 0.97f);
             public Color promptIconTint = Color.white;
+            [Tooltip("Tint for the LMB/RMB input icons on both prompts.")]
+            public Color inputIconTint = Color.white;
             public Color thumbnailPlaceholder = new Color(0.5f, 0.55f, 0.65f, 0.6f);
             public Color countBg = new Color(0.2f, 0.45f, 0.8f, 0.95f);
             public Color countText = Color.white;
@@ -625,7 +627,7 @@ namespace Snowfield.Player
             p.input.gameObject.SetActive(input != null);
             if (input != null)
             {
-                p.input.sprite = input; p.input.color = colors.promptIconTint;
+                p.input.sprite = input; p.input.color = colors.inputIconTint;
                 p.input.rectTransform.anchoredPosition = new Vector2(x, 0);
                 x += cursor.inputIconSize + pad;
             }
