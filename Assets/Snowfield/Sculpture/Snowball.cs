@@ -126,7 +126,7 @@ namespace Snowfield.Sculpture
 
         void Land()
         {
-            if (_rb != null) Destroy(_rb);
+            if (_rb != null) { _rb.isKinematic = true; Destroy(_rb); } // Destroy is deferred; kinematic bodies accept concave meshes meanwhile
             if (_flightCollider != null) Destroy(_flightCollider);
             _rb = null; _flightCollider = null;
             Sculpture.SetCollidersEnabled(true);
