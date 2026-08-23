@@ -73,6 +73,7 @@ namespace Snowfield.Sculpture
                 int3 c = Grid.Info.ChunkCoord(i);
                 var go = new GameObject($"Chunk_{c.x}_{c.y}_{c.z}");
                 go.transform.SetParent(transform, false);
+                go.transform.localPosition = gridOffset; // meshes are emitted from the grid's min corner
                 go.layer = gameObject.layer;
                 var mf = go.AddComponent<MeshFilter>();
                 var mr = go.AddComponent<MeshRenderer>();
