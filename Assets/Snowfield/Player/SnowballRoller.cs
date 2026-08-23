@@ -56,6 +56,7 @@ namespace Snowfield.Player
         Vector3 _lastTrenchPos;
         float _remeshAccumulator;
         Vector3 _grabLocal;         // grab point in the carried object's frame
+        Vector3 _bottomLocal;       // lowest point of the carried object (under the grab point), in its frame
         float _footOffset;          // carried object's transform height above the ground under it at pick-up
 
         void Awake()
@@ -132,6 +133,11 @@ namespace Snowfield.Player
             SetInteractable(sculpture, false);
             _grabLocal = sculpture.transform.InverseTransformPoint(grabPoint);
             _footOffset = sculpture.transform.position.y - GroundHeightAt(grabPoint);
+            // Bottom: a ball's underside; a sculpture's grid floor (its snow starts at ground level).
+            Vector3 bottomWorld = Ball != null
+                ? Ball.Centre - Vector3.up * Ball.radius
+                : new Vector3(grabPoint.x, sculpture.transform.TransformPoint(sculpture.gridOffset).y, grabPoint.z);
+            _bottomLocal = sculpture.transform.InverseTransformPoint(bottomWorld);
             _lastCharPos = character != null ? character.transform.position : Vector3.zero;
             _lastTrenchPos = grabPoint;
             _remeshAccumulator = 0f;
@@ -262,23 +268,26 @@ namespace Snowfield.Player
             StampTrenchAt(ballCentre, radius);
         }
 
-        /// <summary>Carrying: the grab point floats at the anchor, or at a preview position.</summary>
+        /// <summary>Carrying: the object's bottom sits on the anchor, or its grab point goes to a preview position.</summary>
         public void UpdateCarrying(Vector3? previewGrabPoint)
         {
             if (!IsCarrying) return;
-            Vector3 goal = previewGrabPoint ?? CarryPosition();
             var t = Carried.transform;
-            Vector3 grabWorld = t.TransformPoint(_grabLocal);
-            Vector3 desired = t.position + (goal - grabWorld);
+            Vector3 desired;
+            if (previewGrabPoint.HasValue)
+                desired = t.position + (previewGrabPoint.Value - t.TransformPoint(_grabLocal));
+            else
+                desired = t.position + (CarryPosition() - t.TransformPoint(_bottomLocal));
             t.position = Vector3.Lerp(t.position, desired, 1f - Mathf.Exp(-18f * Time.deltaTime));
         }
 
+        /// <summary>Where the carried object's bottom rests while held.</summary>
         public Vector3 CarryPosition()
         {
             if (carryAnchor != null) return carryAnchor.position;
             var t = character != null ? character.transform : transform;
             float eye = character != null ? character.EyeHeight : 1.6f;
-            return t.position + t.forward * carryOffset.x + Vector3.up * (eye + carryOffset.y + Radius);
+            return t.position + t.forward * carryOffset.x + Vector3.up * (eye + carryOffset.y);
         }
 
         /// <summary>Launch the carried ball from <paramref name="origin"/> along <paramref name="direction"/> with power 0..1. Sculptures are not thrown.</summary>

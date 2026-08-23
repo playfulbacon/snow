@@ -24,7 +24,7 @@ MonoBehaviour:
   remeshHz: 10
   snowballStartRadius: 0.15
   snowballMaxRadius: 0.6
-  snowballGrowthPerMetre: 0.1
+  snowballGrowthPerMetre: 0.05
   snowballGridSize: 48
   terrainFieldSize: 40
   terrainCellSize: 0.05
