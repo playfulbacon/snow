@@ -1,5 +1,7 @@
 using Snowfield.Config;
+using Snowfield.Field;
 using Snowfield.Sculpture;
+using Snowfield.Voxel;
 using Unity.Mathematics;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -7,12 +9,13 @@ using UnityEngine.InputSystem;
 namespace Snowfield.Player
 {
     /// <summary>
-    /// The player's hands. Aims a screen-centre ray at sculptures and dispatches to the active <see cref="ToolMode"/>:
-    ///   Sculpt     — LMB add (accumulates), RMB carve, scroll = radius
-    ///   Empty Hand — LMB smooth/pat, scroll = radius
-    ///   Accessory  — scroll picks, hover ghost, LMB place, RMB remove (via <see cref="AccessoryPlacer"/>)
-    /// Left Shift cycles modes; 1/2/3 select. Remesh on a timer while sculpting; colliders rebuild on release.
-    /// Lives on the Player (or a child); the HUD is a separate object that reads this component.
+    /// The player's hands. Aims a screen-centre ray and dispatches to the active <see cref="ToolMode"/>:
+    ///   Sculpt     — LMB add, RMB carve on sculptures, resting snowballs (converted first) and the ground; scroll = radius
+    ///   Empty Hand — LMB smooth on snow; hold LMB to push a snowball (or start one on the ground); RMB picks up anything;
+    ///                carrying: LMB set down / attach / stack, hold RMB to throw
+    ///   Accessory  — scroll picks, hover ghost, LMB place, RMB retrieve (via <see cref="AccessoryPlacer"/>)
+    /// Left Shift cycles modes; 1/2/3 select (locked while hands are full). Remesh on a timer while stroking;
+    /// colliders rebuild on release. Lives on the Player (or a child); the HUD is a separate object that reads this.
     /// </summary>
     public class SculptTool : MonoBehaviour
     {
@@ -27,31 +30,36 @@ namespace Snowfield.Player
         public Transform reachOrigin;
         [Tooltip("Visual brush cursor; scaled to brush diameter.")]
         public Transform cursor;
+        [Tooltip("Loose field items are small; aim at them with a sphere cast of this radius (m).")]
+        public float itemPickRadius = 0.12f;
 
         public ToolMode Mode { get; private set; } = ToolModeInfo.Default;
         public BrushOp CurrentOp { get; private set; } = BrushOp.None;
         public bool IsSculpting { get; private set; }
+
+        // ---- aim results (refreshed every frame) ----
         public SnowSculpture Target { get; private set; }
+        public SnowTerrain TargetTerrain { get; private set; }
         public SculptureProp AimedProp { get; private set; }
-        public float3 BrushPoint { get; private set; }
-        public float3 BrushNormal { get; private set; }
-        public bool HasHit { get; private set; }
-        /// <summary>Aimed at walkable ground (no sculpture) within reach.</summary>
-        public bool HasGroundHit { get; private set; }
-        public Vector3 GroundPoint { get; private set; }
         public DroppedSnowball AimedSnowball { get; private set; }
         public WorldItem AimedWorldItem { get; private set; }
+        /// <summary>Hit point/normal of whatever the centre ray struck (sculpture, ball, ground...).</summary>
+        public float3 BrushPoint { get; private set; }
+        public float3 BrushNormal { get; private set; }
+        /// <summary>Aiming at sculpture snow (not a prop).</summary>
+        public bool HasHit { get; private set; }
+        /// <summary>Aiming at the ground within reach.</summary>
+        public bool HasGroundHit { get; private set; }
+        public Vector3 GroundPoint { get; private set; }
+
         public SnowballRoller Roller { get; private set; }
+        public AccessoryInventory Inventory => _placer != null ? _placer.Inventory : null;
         /// <summary>0..1 while charging a throw (RMB held with a carried ball); 0 otherwise. Drives the HUD ring.</summary>
         public float ThrowCharge { get; private set; }
         /// <summary>What LMB would do right now (HUD prompt). Recomputed every frame.</summary>
         public CursorAction PrimaryAction { get; private set; }
         /// <summary>What RMB would do right now (HUD prompt). Recomputed every frame.</summary>
         public CursorAction SecondaryAction { get; private set; }
-        bool _throwArmed;
-        public AccessoryInventory Inventory => _placer != null ? _placer.Inventory : null;
-        [Tooltip("Loose field items are small; aim at them with a sphere cast of this radius (m).")]
-        public float itemPickRadius = 0.12f;
 
         /// <summary>Radius multipliers on top of config, driven by scroll; one per brush mode. Session-only.</summary>
         public float snowRadiusScale = 1f;
@@ -63,9 +71,10 @@ namespace Snowfield.Player
         }
 
         AccessoryPlacer _placer;
+        bool _throwArmed;
         float _tickAccumulator;
         float _remeshAccumulator;
-        SnowSculpture _dirtySculpture;
+        IBrushTarget _dirtyTarget;
 
         void Awake()
         {
@@ -109,7 +118,7 @@ namespace Snowfield.Player
             switch (Mode)
             {
                 case ToolMode.Sculpt:
-                    UpdateBrush(mouse);
+                    UpdateSculpt(mouse);
                     break;
                 case ToolMode.EmptyHand:
                     UpdateEmptyHand(mouse);
@@ -122,13 +131,13 @@ namespace Snowfield.Player
             ComputeActions();
 
             // timed remesh while a stroke is in progress
-            if (_dirtySculpture != null)
+            if (_dirtyTarget != null)
             {
                 _remeshAccumulator += Time.deltaTime;
                 if (_remeshAccumulator >= 1f / config.remeshHz)
                 {
                     _remeshAccumulator = 0f;
-                    _dirtySculpture.Remesh();
+                    _dirtyTarget.Remesh();
                 }
             }
         }
@@ -142,7 +151,7 @@ namespace Snowfield.Player
             switch (Mode)
             {
                 case ToolMode.Sculpt:
-                    if (Target != null) { p = CursorAction.AddSnow; s = CursorAction.Carve; }
+                    if (Target != null || TargetTerrain != null || AimedSnowball != null) { p = CursorAction.AddSnow; s = CursorAction.Carve; }
                     break;
 
                 case ToolMode.EmptyHand:
@@ -152,17 +161,18 @@ namespace Snowfield.Player
                         s = CursorAction.Throw;
                         if (ThrowCharge <= 0f)
                         {
-                            if (onSnow) p = CursorAction.AttachSnowball;
+                            if (AimedSnowball != null) p = CursorAction.StackSnowball;
+                            else if (onSnow) p = CursorAction.AttachSnowball;
                             else if (HasGroundHit) p = CursorAction.SetDownSnowball;
                         }
                     }
                     else
                     {
-                        if (AimedSnowball != null) { p = CursorAction.PushSnowball; s = CursorAction.PickUpSnowball; }
+                        if (AimedSnowball != null) { if (Roller.CanPush(AimedSnowball)) p = CursorAction.PushSnowball; s = CursorAction.PickUpSnowball; }
                         else if (AimedWorldItem != null) { s = CursorAction.PickUpItem; }
                         else if (AimedProp != null) { s = CursorAction.RetrieveAccessory; if (Target != null) p = CursorAction.Smooth; }
                         else if (onSnow) p = CursorAction.Smooth;
-                        else if (HasGroundHit) p = CursorAction.StartSnowball;
+                        else if (HasGroundHit && Roller.CanReachGround(GroundPoint)) p = CursorAction.StartSnowball;
                     }
                     break;
 
@@ -208,6 +218,7 @@ namespace Snowfield.Player
             HasHit = false;
             HasGroundHit = false;
             Target = null;
+            TargetTerrain = null;
             AimedProp = null;
             AimedSnowball = null;
             AimedWorldItem = null;
@@ -225,24 +236,47 @@ namespace Snowfield.Player
             if (!Physics.Raycast(ray, out var hit, rayLength, sculptMask, QueryTriggerInteraction.Ignore)) return;
             if (Vector3.Distance(hit.point, origin) > maxReach) return;
 
+            BrushPoint = hit.point;
+            BrushNormal = hit.normal;
+
             AimedSnowball = hit.collider.GetComponentInParent<DroppedSnowball>();
             if (AimedSnowball != null && AimedSnowball.GetComponent<ThrownSnowball>() != null) AimedSnowball = null; // in flight
             AimedProp = hit.collider.GetComponentInParent<SculptureProp>();
             var s = hit.collider.GetComponentInParent<SnowSculpture>();
-            if (s == null)
+            if (s != null)
             {
-                if (AimedSnowball == null && hit.normal.y > 0.6f) { HasGroundHit = true; GroundPoint = hit.point; }
+                Target = s;
+                HasHit = AimedProp == null; // aiming at a prop is not a snow hit
                 return;
             }
-            Target = s;
-            BrushPoint = hit.point;
-            BrushNormal = hit.normal;
-            HasHit = AimedProp == null; // aiming at a prop is not a snow hit
+            if (AimedSnowball != null) return;
+            var terrain = hit.collider.GetComponentInParent<SnowTerrain>();
+            if (terrain != null || hit.normal.y > 0.6f)
+            {
+                TargetTerrain = terrain;
+                HasGroundHit = true;
+                GroundPoint = hit.point;
+            }
         }
 
-        // ---------- brush modes ----------
+        // ---------- sculpt mode: brush on sculptures, resting snowballs, or the ground ----------
 
-        void UpdateBrush(Mouse mouse, bool allowCarve = true)
+        void UpdateSculpt(Mouse mouse)
+        {
+            bool lmbDown = mouse != null && mouse.leftButton.wasPressedThisFrame;
+            bool rmbDown = mouse != null && mouse.rightButton.wasPressedThisFrame;
+
+            // A resting snowball becomes a sculpture the moment the brush touches it.
+            if ((lmbDown || rmbDown) && Target == null && AimedSnowball != null)
+            {
+                var s = Roller.ConvertToSculpture(AimedSnowball);
+                if (s != null) { Target = s; HasHit = true; AimedSnowball = null; }
+            }
+            UpdateBrush(mouse, allowCarve: true, allowTerrain: true);
+        }
+
+        /// <summary>Shared stroke loop for Sculpt (add/carve) and Empty Hand (smooth).</summary>
+        void UpdateBrush(Mouse mouse, bool allowCarve, bool allowTerrain)
         {
             _placer.HidePreview();
             bool lmb = mouse != null && mouse.leftButton.isPressed;
@@ -250,14 +284,18 @@ namespace Snowfield.Player
 
             BrushOp op = BrushOp.None;
             if (Mode == ToolMode.Sculpt) op = lmb ? BrushOp.Add : (rmb ? BrushOp.Carve : BrushOp.None);
-            else if (Mode == ToolMode.EmptyHand) op = lmb ? BrushOp.Smooth : (rmb ? BrushOp.Carve : BrushOp.None);
+            else if (Mode == ToolMode.EmptyHand) op = lmb ? BrushOp.Smooth : BrushOp.None;
             CurrentOp = op;
+
+            IBrushTarget target = Target;
+            bool onTerrain = false;
+            if (target == null && allowTerrain && TargetTerrain != null) { target = TargetTerrain; onTerrain = true; }
 
             float radius = CurrentRadius();
             if (cursor != null)
             {
                 // Aiming at a prop still shows the cursor so the brush feels continuous over accessories.
-                bool show = Target != null;
+                bool show = target != null;
                 cursor.gameObject.SetActive(show);
                 if (show)
                 {
@@ -267,15 +305,16 @@ namespace Snowfield.Player
             }
 
             bool pressing = op != BrushOp.None;
-            if (pressing && Target != null)
+            if (pressing && target != null)
             {
                 if (!IsSculpting) { IsSculpting = true; _tickAccumulator = 1f / config.ticksPerSecond; } // first tick immediate
-                _dirtySculpture = Target;
+                if (_dirtyTarget != null && _dirtyTarget != target) Flush();
+                _dirtyTarget = target;
                 _tickAccumulator += Time.deltaTime;
                 float tickDt = 1f / config.ticksPerSecond;
                 int ticks = 0;
                 while (_tickAccumulator >= tickDt && ticks < 8) { _tickAccumulator -= tickDt; ticks++; }
-                for (int i = 0; i < ticks; i++) ApplyTick(Target, op, BrushPoint, radius);
+                for (int i = 0; i < ticks; i++) ApplyTick(target, onTerrain, op, BrushPoint, radius);
             }
             else if (IsSculpting && !pressing)
             {
@@ -287,18 +326,19 @@ namespace Snowfield.Player
         public float CurrentRadius() =>
             (Mode == ToolMode.EmptyHand ? config.smoothRadius : config.addRadius) * radiusScale;
 
-        public void ApplyTick(SnowSculpture s, BrushOp op, float3 point, float radius)
+        public void ApplyTick(IBrushTarget t, bool terrain, BrushOp op, float3 point, float radius)
         {
+            float addRate = terrain ? config.terrainAddPerTick : config.addRatePerTick;
             switch (op)
             {
                 case BrushOp.Add:
-                    s.ApplyAdd(point, radius, config.addRatePerTick, config.addShoulder);
+                    t.ApplyAdd(point, radius, addRate, config.addShoulder);
                     break;
                 case BrushOp.Carve:
-                    s.ApplyAdd(point, radius, -config.addRatePerTick, config.addShoulder);
+                    t.ApplyAdd(point, radius, -addRate, config.addShoulder);
                     break;
                 case BrushOp.Smooth:
-                    s.ApplySmooth(point, radius, config.smoothStrength, config.smoothShoulder);
+                    t.ApplySmooth(point, radius, config.smoothStrength, config.smoothShoulder);
                     break;
             }
         }
@@ -306,14 +346,14 @@ namespace Snowfield.Player
         /// <summary>Finish a stroke: final remesh + collider cook.</summary>
         public void Flush()
         {
-            if (_dirtySculpture == null) return;
-            _dirtySculpture.Remesh();
-            _dirtySculpture.RebuildColliders();
-            _dirtySculpture = null;
+            if (_dirtyTarget == null) return;
+            _dirtyTarget.Remesh();
+            _dirtyTarget.RebuildColliders();
+            _dirtyTarget = null;
             _remeshAccumulator = 0f;
         }
 
-        // ---------- empty hand: smooth, or roll / attach / drop snowballs ----------
+        // ---------- empty hand: smooth, push / carry / stack / throw snowballs, pick things up ----------
 
         void UpdateEmptyHand(Mouse mouse)
         {
@@ -322,7 +362,7 @@ namespace Snowfield.Player
             bool rmbDown = mouse != null && mouse.rightButton.wasPressedThisFrame;
             _placer.HidePreview();
 
-            // --- pushing: only while the button is held ---
+            // --- pushing: only while the button is held; the ball stays where it is on release ---
             if (Roller.IsPushing)
             {
                 HideBrushCursor();
@@ -331,7 +371,7 @@ namespace Snowfield.Player
                 return;
             }
 
-            // --- carrying: preview on snow or ground, LMB to set down / attach, hold RMB to charge a throw ---
+            // --- carrying: preview on snow / ground / another ball, LMB to act, hold RMB to charge a throw ---
             if (Roller.IsCarrying)
             {
                 HideBrushCursor();
@@ -344,6 +384,7 @@ namespace Snowfield.Player
 
                 bool onSnow = HasHit && Target != null;
                 Vector3? preview = charging ? null
+                                 : AimedSnowball != null ? Roller.StackCentre(AimedSnowball)
                                  : onSnow ? Roller.AttachCentre(BrushPoint, BrushNormal)
                                  : HasGroundHit ? Roller.GroundCentre(GroundPoint) : (Vector3?)null;
                 Roller.UpdateCarrying(preview);
@@ -358,7 +399,8 @@ namespace Snowfield.Player
 
                 if (lmbDown && !charging)
                 {
-                    if (onSnow) Roller.AttachTo(Target, BrushPoint, BrushNormal);
+                    if (AimedSnowball != null) Roller.StackOnto(AimedSnowball);
+                    else if (onSnow) Roller.AttachTo(Target, BrushPoint, BrushNormal);
                     else if (HasGroundHit) Roller.PlaceOnGround(GroundPoint);
                 }
                 return;
@@ -374,11 +416,19 @@ namespace Snowfield.Player
                 return;
             }
 
-            // --- LMB: push a ball, start a ball on bare ground, or smooth snow ---
-            if (lmbDown && AimedSnowball != null) { Roller.StartPushing(AimedSnowball); HideBrushCursor(); return; }
-            if (lmbDown && !HasHit && HasGroundHit && AimedWorldItem == null) { Roller.StartNew(GroundPoint); HideBrushCursor(); return; }
+            // --- LMB: push a ball (within reach), start a ball on bare ground, or smooth snow ---
+            if (lmbDown && AimedSnowball != null)
+            {
+                if (Roller.CanPush(AimedSnowball)) { Roller.StartPushing(AimedSnowball); HideBrushCursor(); }
+                return;
+            }
+            if (lmbDown && !HasHit && HasGroundHit && AimedWorldItem == null)
+            {
+                if (Roller.CanReachGround(GroundPoint)) { Roller.StartNew(GroundPoint); HideBrushCursor(); }
+                return;
+            }
 
-            UpdateBrush(mouse, allowCarve: false); // smoothing on snow
+            UpdateBrush(mouse, allowCarve: false, allowTerrain: false); // smoothing on sculpture snow only
         }
 
         void HideBrushCursor()

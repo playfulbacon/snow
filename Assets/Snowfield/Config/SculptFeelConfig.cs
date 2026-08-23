@@ -36,5 +36,33 @@ namespace Snowfield.Config
         public float snowballMaxRadius = 0.6f;
         [Tooltip("Radius gained per metre rolled over fresh snow.")]
         public float snowballGrowthPerMetre = 0.04f;
+
+        [Header("Terrain (heightmap field)")]
+        [Tooltip("Field side length in metres.")]
+        public float terrainFieldSize = 40f;
+        [Tooltip("Heightmap cell size in metres.")]
+        public float terrainCellSize = 0.05f;
+        [Tooltip("Cells per chunk side. Field is rounded up to whole chunks.")]
+        public int terrainChunkCells = 200;
+        [Tooltip("Deepest the brush can carve below the untouched surface (m).")]
+        public float terrainMaxCarveDepth = 0.6f;
+        [Tooltip("Highest the brush can raise above the untouched surface (m).")]
+        public float terrainMaxRaise = 0.8f;
+        [Tooltip("Metres added per tick by the Sculpt brush on the ground (carve uses the negative).")]
+        public float terrainAddPerTick = 0.004f;
+        [Tooltip("Remesh dirty ground chunks at this rate (Hz).")]
+        [Range(1f, 60f)] public float terrainRemeshHz = 10f;
+        [Tooltip("Re-cook ground colliders at this rate (Hz). You walk on these, so not only on brush release.")]
+        [Range(0.5f, 20f)] public float terrainColliderHz = 2f;
+
+        [Header("Paths")]
+        public float footprintRadius = 0.12f;
+        public float footprintDepth = 0.02f;
+        [Tooltip("Metres walked between footprints.")]
+        public float footstepSpacing = 0.45f;
+        [Tooltip("Trench depth under a rolling snowball as a fraction of its radius.")]
+        [Range(0f, 1f)] public float rollTrenchDepthFraction = 0.25f;
+        [Tooltip("Footprints and trenches cannot pack the snow deeper than this (m). Carving can.")]
+        public float terrainPathDepthCap = 0.12f;
     }
 }

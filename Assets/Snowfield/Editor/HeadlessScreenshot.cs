@@ -23,12 +23,28 @@ namespace Snowfield.Editor
 
             EditorSceneManager.OpenScene("Assets/Scenes/Sandbox.unity", OpenSceneMode.Single);
 
-            // Start() does not run in edit mode, so drive the sculpture by hand.
+            // Start() does not run in edit mode, so drive things by hand: the terrain builds itself (ExecuteAlways);
+            // any leftover sculptures get initialised; and a temporary mound is stamped so the shot has a subject.
             foreach (var s in Object.FindObjectsByType<SnowSculpture>(FindObjectsSortMode.None))
             {
                 s.Initialise(s.Config.gridSize, s.Config.voxelSize);
                 var spawner = s.GetComponent<SculptureSpawner>();
                 if (spawner != null) spawner.SpawnNow();
+            }
+            var factory = Object.FindAnyObjectByType<SculptureFactory>();
+            if (factory != null)
+            {
+                var demo = factory.CreateAt(Vector3.zero);
+                if (demo.Grid == null) demo.Initialise(factory.config.gridSize, factory.config.voxelSize); // no Awake in edit mode
+                demo.StampSphere(new Vector3(0f, -0.2f, 0f), 0.8f, 0.7f, clipBelowWorldY: 0f);
+                demo.Remesh();
+            }
+            var terrain = Object.FindAnyObjectByType<Snowfield.Field.SnowTerrain>();
+            if (terrain != null && terrain.IsCreated)
+            {
+                // a carved mark so terrain shading is visible in the shot
+                for (int i = 0; i < 40; i++) terrain.ApplyAdd(new Vector3(1.5f + i * 0.05f, 0f, 1f), 0.2f, -0.01f, 0.6f);
+                terrain.Remesh();
             }
 
             var cam = Camera.main;

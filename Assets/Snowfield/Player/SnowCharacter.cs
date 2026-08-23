@@ -1,3 +1,4 @@
+using Snowfield.Field;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -34,6 +35,8 @@ namespace Snowfield.Player
 
         CharacterController _cc;
         float _verticalVelocity;
+        float _walkedSinceStep;
+        int _stepSide = 1;
 
         public Vector3 Velocity { get; private set; }
         public bool IsMoving => Velocity.sqrMagnitude > 0.01f;
@@ -92,9 +95,26 @@ namespace Snowfield.Player
             if (_cc.isGrounded && _verticalVelocity < 0f) _verticalVelocity = -2f;
             _verticalVelocity += gravity * Time.deltaTime;
 
+            Vector3 before = transform.position;
             Vector3 delta = (move + Vector3.up * _verticalVelocity) * Time.deltaTime;
             _cc.Move(delta);
             Velocity = move;
+            StampFootprints(transform.position - before);
+        }
+
+        /// <summary>Press alternating footprints into the field every footstepSpacing metres walked on the ground.</summary>
+        void StampFootprints(Vector3 worldDelta)
+        {
+            var terrain = SnowTerrain.Instance;
+            if (terrain == null || terrain.Config == null || !_cc.isGrounded) return;
+            worldDelta.y = 0f;
+            _walkedSinceStep += worldDelta.magnitude;
+            var cfg = terrain.Config;
+            if (_walkedSinceStep < cfg.footstepSpacing) return;
+            _walkedSinceStep = 0f;
+            _stepSide = -_stepSide;
+            Vector3 foot = transform.position + transform.right * (_stepSide * 0.12f);
+            terrain.StampDepression(foot, cfg.footprintRadius, cfg.footprintDepth, 0.5f);
         }
 
         void ApplyHeight()

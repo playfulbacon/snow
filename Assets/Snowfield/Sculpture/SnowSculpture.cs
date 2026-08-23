@@ -14,7 +14,7 @@ namespace Snowfield.Sculpture
     /// Grid origin = this transform's position; grid axes = this transform's axes (keep it unrotated/unscaled).
     /// Call <see cref="Remesh"/> to rebuild dirty chunks; <see cref="RebuildColliders"/> on brush release.
     /// </summary>
-    public class SnowSculpture : MonoBehaviour
+    public class SnowSculpture : MonoBehaviour, IBrushTarget
     {
         [SerializeField] SculptFeelConfig config;
         [SerializeField] Material snowMaterial;

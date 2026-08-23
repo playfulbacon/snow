@@ -135,10 +135,10 @@ namespace Snowfield.Editor
             sun.shadows = LightShadows.Soft;
             sun.transform.rotation = Quaternion.Euler(38f, -35f, 0f);
 
-            var ground = GameObject.CreatePrimitive(PrimitiveType.Plane);
-            ground.name = "Ground";
-            ground.transform.localScale = Vector3.one * 6f; // 60 m field
-            ground.GetComponent<MeshRenderer>().sharedMaterial = groundMat;
+            var ground = new GameObject("Ground");
+            ground.transform.position = new Vector3(-config.terrainFieldSize * 0.5f, 0f, -config.terrainFieldSize * 0.5f);
+            var terrain = ground.AddComponent<Snowfield.Field.SnowTerrain>();
+            terrain.EditorAssign(config, groundMat);
 
             var camGo = new GameObject("Main Camera");
             camGo.tag = "MainCamera";
@@ -148,13 +148,12 @@ namespace Snowfield.Editor
             camGo.transform.position = new Vector3(0f, 2.2f, -4.5f);
             camGo.transform.LookAt(new Vector3(0f, 0.6f, 0f));
 
-            float extent = config.gridSize * config.voxelSize;
-            var sculptGo = new GameObject("Sculpture");
-            sculptGo.transform.position = new Vector3(-extent * 0.5f, 0f, -extent * 0.5f);
-            var sculpt = sculptGo.AddComponent<SnowSculpture>();
-            sculpt.EditorAssign(config, snow); // direct assignment: SerializedProperty drops custom SO refs in batchmode
-            EditorUtility.SetDirty(sculpt);
-            sculptGo.AddComponent<SculptureSpawner>();
+            var sculpturesGo = new GameObject("Sculptures");
+            var factory = sculpturesGo.AddComponent<SculptureFactory>();
+            factory.config = config; // direct assignment: SerializedProperty drops custom SO refs in batchmode
+            factory.snowMaterial = snow;
+            factory.container = sculpturesGo.transform;
+            EditorUtility.SetDirty(factory);
 
             EditorSceneManager.SaveScene(scene, ScenePath);
             EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(ScenePath, true) };

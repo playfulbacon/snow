@@ -1,0 +1,14 @@
+{
+  "name": "Snowfield.Field.Tests",
+  "rootNamespace": "Snowfield.Field.Tests",
+  "references": ["Snowfield.Field","Snowfield.Voxel","Snowfield.Config","UnityEngine.TestRunner","UnityEditor.TestRunner","Unity.Collections","Unity.Mathematics","Unity.Burst"],
+  "includePlatforms": ["Editor"],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": true,
+  "precompiledReferences": ["nunit.framework.dll"],
+  "autoReferenced": false,
+  "defineConstraints": ["UNITY_INCLUDE_TESTS"],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

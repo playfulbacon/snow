@@ -27,7 +27,7 @@ A small, seasonal multiplayer game about sculpting snow in a shared field. Live 
 - Normals from the **density gradient (central differences)**, not from mesh geometry — smooth-shaded for free. Faceted snow reads as geometry; smooth snow reads as snow.
 - MeshColliders update lazily (on brush release, not per frame).
 
-### Terrain = ordinary heightmap, not voxels
+### Terrain = ordinary heightmap, not voxels (built: `Snowfield.Field.SnowTerrain`, 40 m @ 5 cm, 16 chunks; brush raise/carve via `IBrushTarget`, footprints + snowball trenches via `StampDepression`)
 - Ground is a heightmap mesh or Unity Terrain with a **path layer**: a RenderTexture the character stamps footprints/trails into; shader displaces/darkens. Periodic snowfall lerps the RT back toward zero over hours.
 - Snowfall also adds a shader-level dusting on upward-facing normals of sculptures (visual only — never modifies voxel data / anyone's work).
 
@@ -90,4 +90,4 @@ Gotchas learned: `SerializedProperty.objectReferenceValue` silently drops refs t
 
 ## Controls (Sandbox)
 
-Modes (start in Empty Hand; locked while pushing/carrying a snowball): **1 Empty Hand** (LMB on snow smooths · hold LMB on a snowball to push it, or on bare ground to start one · RMB picks up anything: snowball → carried at the `CarryAnchor` child of Player (author its transform); LMB sets down / attaches to snow, hold RMB to charge and release to throw (splats into sculptures); loose twig/carrot/button/pebble or a placed accessory → inventory · LMB on snow smooths) · **2 Sculpt** (LMB add · RMB carve · scroll radius) · **3 Accessory** (scroll pick · LMB place from inventory · RMB retrieve). Left Shift cycles modes. First person: WASD move · mouse look · Q crouch · E tiptoe · Tab toggle cursor lock. Brush radius (scroll) is remembered per mode. `FieldScatter` litters the field with items at start.
+Modes (start in Empty Hand; locked while pushing/carrying a snowball): **1 Empty Hand** (LMB on snow smooths · hold LMB on a snowball to push it, or on bare ground to start one · RMB picks up anything: snowball → carried at the `CarryAnchor` child of Player (author its transform); LMB sets down / attaches to snow, hold RMB to charge and release to throw (splats into sculptures); loose twig/carrot/button/pebble or a placed accessory → inventory · LMB on snow smooths) · **2 Sculpt** (LMB add · RMB carve · scroll radius) · **3 Accessory** (scroll pick · LMB place from inventory · RMB retrieve). Left Shift cycles modes. First person: WASD move · mouse look · Q crouch · E tiptoe · Tab toggle cursor lock. Brush radius (scroll) is remembered per mode. `FieldScatter` litters the field with items at start. Sculptures are created by the player: stack a carried snowball on a resting one, or brush a resting ball in Sculpt mode (`SculptureFactory`). Sculpt mode also raises/carves the ground (draw in the snow); walking and rolling press paths into it.

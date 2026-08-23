@@ -23,6 +23,8 @@ namespace Snowfield.Editor
         const string ScenePath = "Assets/Scenes/Sandbox.unity";
         const string ConfigPath = "Assets/Settings/SculptFeelConfig.asset";
         const string CursorMatPath = "Assets/Settings/BrushCursor.mat";
+        const string SnowMatPath = "Assets/Settings/Snow.mat";
+        const string GroundMatPath = "Assets/Settings/Ground.mat";
 
         [MenuItem("Snowfield/Ensure Sandbox Actors")]
         public static void Run()
@@ -38,6 +40,36 @@ namespace Snowfield.Editor
             StripComponent<AccessoryPlacer>(cam.gameObject);
             StripComponent<ToolHud>(cam.gameObject);
             StripComponent<OrbitCamera>(cam.gameObject);
+
+            // --- ground: heightmap field replaces the old Plane ---
+            var groundGo = GameObject.Find("Ground");
+            if (groundGo == null) groundGo = new GameObject("Ground");
+            if (groundGo.GetComponent<Snowfield.Field.SnowTerrain>() == null)
+            {
+                // strip the primitive plane parts
+                foreach (var c in new System.Type[] { typeof(MeshCollider), typeof(MeshRenderer), typeof(MeshFilter) })
+                {
+                    var comp = groundGo.GetComponent(c);
+                    if (comp != null) Object.DestroyImmediate(comp);
+                }
+                groundGo.transform.localScale = Vector3.one;
+                var terrain = groundGo.AddComponent<Snowfield.Field.SnowTerrain>();
+                terrain.EditorAssign(config, AssetDatabase.LoadAssetAtPath<Material>(GroundMatPath));
+                EditorUtility.SetDirty(terrain);
+            }
+            groundGo.transform.position = new Vector3(-config.terrainFieldSize * 0.5f, 0f, -config.terrainFieldSize * 0.5f);
+
+            // --- sculptures: factory root; the pre-placed starter mound is retired ---
+            var starter = GameObject.Find("Sculpture");
+            if (starter != null && starter.GetComponent<Snowfield.Sculpture.SculptureSpawner>() != null) Object.DestroyImmediate(starter);
+            var sculpturesGo = GameObject.Find("Sculptures");
+            if (sculpturesGo == null) sculpturesGo = new GameObject("Sculptures");
+            var factory = sculpturesGo.GetComponent<Snowfield.Sculpture.SculptureFactory>();
+            if (factory == null) factory = sculpturesGo.AddComponent<Snowfield.Sculpture.SculptureFactory>();
+            factory.config = config;
+            factory.snowMaterial = AssetDatabase.LoadAssetAtPath<Material>(SnowMatPath);
+            factory.container = sculpturesGo.transform;
+            EditorUtility.SetDirty(factory);
 
             // --- player ---
             var player = GameObject.Find("Player");

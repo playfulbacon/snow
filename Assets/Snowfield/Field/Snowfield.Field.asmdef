@@ -4,7 +4,10 @@
   "references": [
     "Snowfield.Config",
     "Unity.Mathematics",
-    "Snowfield.Sculpture"
+    "Snowfield.Sculpture",
+    "Snowfield.Voxel",
+    "Unity.Burst",
+    "Unity.Collections"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],
