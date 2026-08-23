@@ -163,6 +163,13 @@ namespace Snowfield.Sculpture
             _colliderDirty.Clear();
         }
 
+        /// <summary>Drop the cooked meshes from every chunk collider (a dynamic Rigidbody may not carry concave meshes, even disabled ones).</summary>
+        public void ClearColliderMeshes()
+        {
+            if (_colliders == null) return;
+            foreach (var c in _colliders) if (c != null) c.sharedMesh = null;
+        }
+
         /// <summary>Enable/disable every chunk MeshCollider (a flying ball uses a sphere instead).</summary>
         public void SetCollidersEnabled(bool on)
         {

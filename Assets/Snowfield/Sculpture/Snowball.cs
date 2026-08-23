@@ -67,7 +67,8 @@ namespace Snowfield.Sculpture
         public void Launch(Vector3 velocity)
         {
             SetInteractable(true);
-            Sculpture.SetCollidersEnabled(false); // a dynamic body cannot carry concave mesh colliders
+            Sculpture.SetCollidersEnabled(false);
+            Sculpture.ClearColliderMeshes(); // a dynamic body may not carry concave mesh colliders, even disabled ones
             _flightCollider = gameObject.AddComponent<SphereCollider>();
             _flightCollider.radius = radius;
             _rb = gameObject.AddComponent<Rigidbody>();
