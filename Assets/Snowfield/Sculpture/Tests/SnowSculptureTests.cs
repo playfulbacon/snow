@@ -73,6 +73,40 @@ namespace Snowfield.Sculpture.Tests
         }
 
         [UnityTest]
+        public IEnumerator Absorb_CopiesSnowInWorldSpace_AndLeavesSourceIntact()
+        {
+            float extent = _s.Info.WorldExtent;
+            // Source: a small offset grid (like a snowball) centred 0.5 m to the side, rotated to prove world-space sampling.
+            var srcGo = new GameObject("Source");
+            srcGo.SetActive(false);
+            var src = srcGo.AddComponent<SnowSculpture>();
+            src.EditorAssign(_cfg, new Material(Shader.Find("Universal Render Pipeline/Lit")));
+            src.gridSizeOverride = 32;
+            float srcExtent = 32 * _cfg.voxelSize;
+            src.gridOffset = Vector3.one * (-srcExtent * 0.5f);
+            srcGo.transform.position = new Vector3(extent * 0.5f + 0.3f, extent * 0.5f, extent * 0.5f);
+            srcGo.transform.rotation = Quaternion.Euler(0f, 37f, 0f);
+            srcGo.SetActive(true);
+            src.StampSphere(srcGo.transform.position, 0.3f, 0.7f);
+            src.Remesh();
+            int srcVerts = 0;
+            foreach (var mf in srcGo.GetComponentsInChildren<MeshFilter>()) srcVerts += mf.sharedMesh.vertexCount;
+            Assert.Greater(srcVerts, 0);
+
+            _s.Absorb(src);
+            _s.Remesh();
+            yield return null;
+
+            Assert.Greater(TotalVertices(), 0, "target should now contain the sphere");
+            // Density at the source centre should be solid in the target, and nothing far away.
+            Assert.Greater(_s.SampleDensityWorld(srcGo.transform.position), 200f);
+            Assert.AreEqual(0f, _s.SampleDensityWorld(new Vector3(0.2f, 0.2f, 0.2f)), 1e-3f);
+            // Source untouched.
+            Assert.Greater(src.SampleDensityWorld(srcGo.transform.position), 200f);
+            Object.Destroy(srcGo);
+        }
+
+        [UnityTest]
         public IEnumerator SmoothBrush_ReducesVertexCountOnNoisyBlob()
         {
             float extent = _s.Info.WorldExtent;
