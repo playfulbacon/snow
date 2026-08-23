@@ -222,23 +222,24 @@ namespace Snowfield.Player
 
             Vector3 goal = character.transform.TransformPoint(_pushLocalOffset);
             var t = Ball.transform;
+            var terrain = SnowTerrain.Instance;
+            Vector3 dir = moved > 0.0005f ? delta.normalized : character.transform.forward;
+            // Ride on the snow the ball is rolling ONTO (leading edge), not the trench it just pressed under itself.
+            Vector3 ahead = goal + dir * Ball.radius;
 
             if (moved > 0.0005f && config != null)
             {
-                var terrain = SnowTerrain.Instance;
-                // Sample the snow the ball is rolling ONTO (leading edge), not the trench it just pressed under itself.
-                Vector3 ahead = goal + delta.normalized * Ball.radius;
                 bool fresh = terrain == null || terrain.IsFreshAt(ahead, config.footprintDepth * 1.5f);
-                Vector3 axis = Vector3.Cross(Vector3.up, delta.normalized);
+                Vector3 axis = Vector3.Cross(Vector3.up, dir);
                 t.Rotate(axis, moved / Ball.radius * Mathf.Rad2Deg, Space.World);
                 if (fresh && Ball.radius < config.snowballMaxRadius)
-                {
-                    goal.y = GroundHeightAt(goal) + Ball.radius;
-                    t.position = goal;
                     Ball.Grow(Mathf.Min(config.snowballMaxRadius, Ball.radius + config.snowballGrowthPerMetre * moved));
-                }
             }
-            goal.y = GroundHeightAt(goal) + Ball.radius;
+            // Height from the heightmap itself (continuous), not the collider (re-cooked only a few times a second).
+            float sink = config != null ? Ball.radius * config.rollTrenchDepthFraction * 0.5f : 0f;
+            float groundY = terrain != null ? terrain.SampleHeight(ahead) : GroundHeightAt(goal);
+            float targetY = groundY + Ball.radius - sink;
+            goal.y = Mathf.Lerp(t.position.y, targetY, 1f - Mathf.Exp(-12f * Time.deltaTime));
             t.position = goal;
             StampTrench(t.position, Ball.radius, ref _lastTrenchPos);
 
