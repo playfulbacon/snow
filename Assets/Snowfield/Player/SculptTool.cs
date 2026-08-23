@@ -52,6 +52,8 @@ namespace Snowfield.Player
         /// <summary>Aiming at the ground within reach.</summary>
         public bool HasGroundHit { get; private set; }
         public Vector3 GroundPoint { get; private set; }
+        /// <summary>Diagnostic: collider the centre ray hit this frame.</summary>
+        public string AimedColliderPath { get; private set; } = "";
 
         public SnowballRoller Roller { get; private set; }
         public AccessoryInventory Inventory => _placer != null ? _placer.Inventory : null;
@@ -222,6 +224,7 @@ namespace Snowfield.Player
             AimedProp = null;
             AimedSnowball = null;
             AimedWorldItem = null;
+            AimedColliderPath = "";
             var ray = viewCamera.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
             Vector3 origin = reachOrigin != null ? reachOrigin.position + Vector3.up : ray.origin;
             float rayLength = maxReach + Vector3.Distance(ray.origin, origin);
@@ -238,6 +241,8 @@ namespace Snowfield.Player
 
             BrushPoint = hit.point;
             BrushNormal = hit.normal;
+            AimedColliderPath = hit.collider.transform.parent != null
+                ? hit.collider.transform.parent.name + "/" + hit.collider.name : hit.collider.name;
 
             AimedProp = hit.collider.GetComponentInParent<SculptureProp>();
             var s = hit.collider.GetComponentInParent<SnowSculpture>();

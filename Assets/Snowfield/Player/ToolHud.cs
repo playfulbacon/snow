@@ -525,7 +525,7 @@ namespace Snowfield.Player
                            : tool.Target != null ? (tool.Target.GetComponent<Snowball>() != null ? "fixed snowball" : "sculpture")
                            : tool.AimedWorldItem != null ? "item"
                            : tool.HasGroundHit ? "ground" : "nothing";
-                line += $"   ·   aim: {aim}{(tool.AimedProp != null ? " (prop)" : "")}";
+                line += $"   ·   aim: {aim}{(tool.AimedProp != null ? " (prop)" : "")} [{tool.AimedColliderPath}]";
             }
             _statusLine1.text = $"[{ToolModeInfo.DisplayName(mode)}]  {line}";
             _statusLine2.text = $"{ToolModeInfo.Hint(mode)}   ·   Shift / 1-3 change mode · WASD move · Q crouch · E tiptoe · Tab cursor";
