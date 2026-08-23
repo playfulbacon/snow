@@ -78,6 +78,11 @@ namespace Snowfield.Player
             public Sprite defaultIcon;
             public float iconSize = 28f;
             [Header("Prompts (primary = LMB, secondary = RMB)")]
+            [Tooltip("Sprite shown at the left of the primary (LMB) prompt.")]
+            public Sprite primaryInputIcon;
+            [Tooltip("Sprite shown at the left of the secondary (RMB) prompt.")]
+            public Sprite secondaryInputIcon;
+            public float inputIconSize = 22f;
             public Vector2 primaryOffset = new Vector2(-110f, -48f);
             public Vector2 secondaryOffset = new Vector2(110f, -48f);
             public float promptIconSize = 26f;
@@ -166,7 +171,7 @@ namespace Snowfield.Player
         [SerializeField, HideInInspector] Image[] _reticleShadows = new Image[4];
         [SerializeField, HideInInspector] Image _reticleDot, _reticleDotShadow;
         [SerializeField, HideInInspector] Image _chargeBg, _chargeFill, _cursorIcon;
-        [Serializable] class Prompt { public RectTransform root; public Image bg, outline, icon; public Text label; }
+        [Serializable] class Prompt { public RectTransform root; public Image bg, outline, input, icon; public Text label; }
         [SerializeField, HideInInspector] Prompt _primary, _secondary;
         static Sprite _ringSprite;
         [SerializeField, HideInInspector] Text _statusLine1, _statusLine2;
@@ -226,7 +231,7 @@ namespace Snowfield.Player
             canvas != null && _modeBarRoot != null && _accessoryBarRoot != null && _reticleRoot != null && _statusRoot != null
             && _modes.Count == ToolModeInfo.All.Length && _accessories.Count == AccessoryCatalog.Entries.Count
             && _statusLine1 != null && _reticleDot != null && _chargeFill != null
-            && _cursorIcon != null && _primary != null && _primary.root != null && _secondary != null && _secondary.root != null
+            && _cursorIcon != null && _primary != null && _primary.root != null && _primary.input != null && _secondary != null && _secondary.root != null
             && (_accessories.Count == 0 || _accessories[0].count != null);
 
         // ------------------------------------------------------------------ build
@@ -362,7 +367,6 @@ namespace Snowfield.Player
                 Stretch(m.badge.rectTransform, 0);
                 Stretch(m.badgeLabel.rectTransform, 0);
                 m.badgeLabel.fontSize = modeBar.badgeFontSize;
-                m.boxOutline.color = m.badgeOutline.color = c.outline;
                 m.badgeLabel.color = c.badgeText;
                 m.badgeLabel.text = (i + 1).ToString();
                 m.label.text = ToolModeInfo.DisplayName(ToolModeInfo.All[i]);
@@ -392,7 +396,6 @@ namespace Snowfield.Player
                 lr.sizeDelta = new Vector2(0, accessoryBar.labelHeight);
                 a.label.fontSize = accessoryBar.labelFontSize;
                 a.label.text = AccessoryCatalog.Entries[i].DisplayName;
-                a.boxOutline.color = c.outline;
                 var cr = (RectTransform)a.countBox.transform.parent;
                 cr.anchoredPosition = accessoryBar.countOffset;
                 cr.sizeDelta = Vector2.one * accessoryBar.countSize;
@@ -400,9 +403,6 @@ namespace Snowfield.Player
                 Stretch(a.countBox.rectTransform, 0);
                 Stretch(a.count.rectTransform, 0);
                 a.count.fontSize = accessoryBar.countFontSize;
-                a.countOutline.color = c.outline;
-                a.countBox.color = c.countBg;
-                a.count.color = c.countText;
             }
 
             // reticle
@@ -427,6 +427,9 @@ namespace Snowfield.Player
             _chargeBg.color = c.chargeRingBg; _chargeFill.color = c.chargeRingFill;
         }
 
+        /// <summary>An outline/shadow colour that fades with the element it frames, so alpha 0 hides the whole thing.</summary>
+        static Color Frame(Color outline, Color body) => new Color(outline.r, outline.g, outline.b, outline.a * body.a);
+
         void ApplyState()
         {
             bool playing = Application.isPlaying && tool != null;
@@ -442,6 +445,8 @@ namespace Snowfield.Player
                 m.box.color = sel ? c.selectedBg : c.boxBg;
                 m.label.color = sel ? c.selectedText : c.boxText;
                 m.badge.color = sel ? c.badgeBg : c.badgeBgIdle;
+                m.boxOutline.color = Frame(c.outline, m.box.color);
+                m.badgeOutline.color = Frame(c.outline, m.badge.color);
             }
 
             _accessoryBarRoot.gameObject.SetActive(accVisible);
@@ -464,6 +469,8 @@ namespace Snowfield.Player
                     a.count.text = n.ToString();
                     a.countBox.color = c.countBg * tint;
                     a.count.color = c.countText * tint;
+                    a.boxOutline.color = Frame(c.outline, a.box.color);
+                    a.countOutline.color = Frame(c.outline, a.countBox.color);
                 }
             }
 
@@ -572,6 +579,8 @@ namespace Snowfield.Player
             p.root = MakeRect(name, parent, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
             p.outline = Img("Outline", p.root);
             p.bg = Img("Box", p.root);
+            p.input = Img("Input", p.root);
+            p.input.preserveAspect = true;
             p.icon = Img("Icon", p.root);
             p.icon.preserveAspect = true;
             p.label = Txt("Label", p.root, TextAnchor.MiddleLeft);
@@ -585,15 +594,18 @@ namespace Snowfield.Player
             p.root.sizeDelta = new Vector2(cursor.promptMinWidth, h);
             Stretch(p.outline.rectTransform, -outlineWidth);
             Stretch(p.bg.rectTransform, 0);
+            var inr = p.input.rectTransform;
+            inr.anchorMin = inr.anchorMax = new Vector2(0, 0.5f); inr.pivot = new Vector2(0, 0.5f);
+            inr.sizeDelta = Vector2.one * cursor.inputIconSize;
             var ir = p.icon.rectTransform;
             ir.anchorMin = ir.anchorMax = new Vector2(0, 0.5f); ir.pivot = new Vector2(0, 0.5f);
-            ir.anchoredPosition = new Vector2(pad, 0); ir.sizeDelta = Vector2.one * ico;
+            ir.sizeDelta = Vector2.one * ico;
             var lr = p.label.rectTransform;
             lr.anchorMin = new Vector2(0, 0); lr.anchorMax = new Vector2(1, 1); lr.pivot = new Vector2(0.5f, 0.5f);
-            lr.offsetMin = new Vector2(pad + ico + pad, 0); lr.offsetMax = new Vector2(-pad, 0);
+            lr.offsetMax = new Vector2(-pad, 0);
             p.label.fontSize = cursor.promptFontSize;
-            p.outline.color = colors.outline;
             p.bg.color = colors.promptBg;
+            p.outline.color = Frame(colors.outline, colors.promptBg);
             p.label.color = colors.promptText;
         }
 
@@ -605,16 +617,29 @@ namespace Snowfield.Player
             var entry = FindPrompt(action);
             string label = entry != null && !string.IsNullOrEmpty(entry.label) ? entry.label : CursorActionInfo.DefaultLabel(action);
             var icon = entry != null ? entry.icon : null;
-            p.icon.gameObject.SetActive(icon != null);
-            if (icon != null) { p.icon.sprite = icon; p.icon.color = colors.promptIconTint; }
-            p.label.text = label;
-            // no icon: let the text start at the left pad
-            var lr = p.label.rectTransform;
+            var input = p == _primary ? cursor.primaryInputIcon : cursor.secondaryInputIcon;
             float pad = cursor.promptPadding;
-            lr.offsetMin = new Vector2(icon != null ? pad + cursor.promptIconSize + pad : pad, 0);
-            // grow to fit the label
-            float textW = p.label.preferredWidth;
-            float w = Mathf.Max(cursor.promptMinWidth, lr.offsetMin.x + textW + pad);
+
+            // Row: [input icon] [action icon] [label], each part skipped when absent.
+            float x = pad;
+            p.input.gameObject.SetActive(input != null);
+            if (input != null)
+            {
+                p.input.sprite = input; p.input.color = colors.promptIconTint;
+                p.input.rectTransform.anchoredPosition = new Vector2(x, 0);
+                x += cursor.inputIconSize + pad;
+            }
+            p.icon.gameObject.SetActive(icon != null);
+            if (icon != null)
+            {
+                p.icon.sprite = icon; p.icon.color = colors.promptIconTint;
+                p.icon.rectTransform.anchoredPosition = new Vector2(x, 0);
+                x += cursor.promptIconSize + pad;
+            }
+            p.label.text = label;
+            var lr = p.label.rectTransform;
+            lr.offsetMin = new Vector2(x, 0);
+            float w = Mathf.Max(cursor.promptMinWidth, x + p.label.preferredWidth + pad);
             p.root.sizeDelta = new Vector2(w, cursor.promptHeight);
         }
 
