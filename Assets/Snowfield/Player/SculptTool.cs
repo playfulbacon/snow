@@ -41,7 +41,8 @@ namespace Snowfield.Player
         public SnowSculpture Target { get; private set; }
         public SnowTerrain TargetTerrain { get; private set; }
         public SculptureProp AimedProp { get; private set; }
-        public DroppedSnowball AimedSnowball { get; private set; }
+        /// <summary>A loose, resting snowball under the reticle (it is also <see cref="Target"/>).</summary>
+        public Snowball AimedSnowball { get; private set; }
         public WorldItem AimedWorldItem { get; private set; }
         /// <summary>Hit point/normal of whatever the centre ray struck (sculpture, ball, ground...).</summary>
         public float3 BrushPoint { get; private set; }
@@ -151,7 +152,7 @@ namespace Snowfield.Player
             switch (Mode)
             {
                 case ToolMode.Sculpt:
-                    if (Target != null || TargetTerrain != null || AimedSnowball != null) { p = CursorAction.AddSnow; s = CursorAction.Carve; }
+                    if (Target != null || TargetTerrain != null) { p = CursorAction.AddSnow; s = CursorAction.Carve; }
                     break;
 
                 case ToolMode.EmptyHand:
@@ -161,8 +162,7 @@ namespace Snowfield.Player
                         s = CursorAction.Throw;
                         if (ThrowCharge <= 0f)
                         {
-                            if (AimedSnowball != null) p = CursorAction.StackSnowball;
-                            else if (onSnow) p = CursorAction.AttachSnowball;
+                            if (onSnow) p = CursorAction.AttachSnowball;
                             else if (HasGroundHit) p = CursorAction.SetDownSnowball;
                         }
                     }
@@ -239,17 +239,16 @@ namespace Snowfield.Player
             BrushPoint = hit.point;
             BrushNormal = hit.normal;
 
-            AimedSnowball = hit.collider.GetComponentInParent<DroppedSnowball>();
-            if (AimedSnowball != null && AimedSnowball.GetComponent<ThrownSnowball>() != null) AimedSnowball = null; // in flight
             AimedProp = hit.collider.GetComponentInParent<SculptureProp>();
             var s = hit.collider.GetComponentInParent<SnowSculpture>();
             if (s != null)
             {
                 Target = s;
                 HasHit = AimedProp == null; // aiming at a prop is not a snow hit
+                var ball = s.GetComponent<Snowball>();
+                if (ball != null && ball.IsLoose && !ball.IsFlying) AimedSnowball = ball;
                 return;
             }
-            if (AimedSnowball != null) return;
             var terrain = hit.collider.GetComponentInParent<SnowTerrain>();
             if (terrain != null || hit.normal.y > 0.6f)
             {
@@ -263,15 +262,7 @@ namespace Snowfield.Player
 
         void UpdateSculpt(Mouse mouse)
         {
-            bool lmbDown = mouse != null && mouse.leftButton.wasPressedThisFrame;
-            bool rmbDown = mouse != null && mouse.rightButton.wasPressedThisFrame;
-
-            // A resting snowball becomes a sculpture the moment the brush touches it.
-            if ((lmbDown || rmbDown) && Target == null && AimedSnowball != null)
-            {
-                var s = Roller.ConvertToSculpture(AimedSnowball);
-                if (s != null) { Target = s; HasHit = true; AimedSnowball = null; }
-            }
+            // Loose snowballs are sculptures too, so the brush simply strokes Target.
             UpdateBrush(mouse, allowCarve: true, allowTerrain: true);
         }
 
@@ -384,7 +375,6 @@ namespace Snowfield.Player
 
                 bool onSnow = HasHit && Target != null;
                 Vector3? preview = charging ? null
-                                 : AimedSnowball != null ? Roller.StackCentre(AimedSnowball)
                                  : onSnow ? Roller.AttachCentre(BrushPoint, BrushNormal)
                                  : HasGroundHit ? Roller.GroundCentre(GroundPoint) : (Vector3?)null;
                 Roller.UpdateCarrying(preview);
@@ -399,8 +389,7 @@ namespace Snowfield.Player
 
                 if (lmbDown && !charging)
                 {
-                    if (AimedSnowball != null) Roller.StackOnto(AimedSnowball);
-                    else if (onSnow) Roller.AttachTo(Target, BrushPoint, BrushNormal);
+                    if (onSnow) Roller.AttachTo(Target, BrushPoint, BrushNormal);
                     else if (HasGroundHit) Roller.PlaceOnGround(GroundPoint);
                 }
                 return;
@@ -422,7 +411,7 @@ namespace Snowfield.Player
                 if (Roller.CanPush(AimedSnowball)) { Roller.StartPushing(AimedSnowball); HideBrushCursor(); }
                 return;
             }
-            if (lmbDown && !HasHit && HasGroundHit && AimedWorldItem == null)
+            if (lmbDown && HasGroundHit && AimedWorldItem == null)
             {
                 if (Roller.CanReachGround(GroundPoint)) { Roller.StartNew(GroundPoint); HideBrushCursor(); }
                 return;

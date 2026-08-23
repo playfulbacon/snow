@@ -654,6 +654,7 @@ namespace Snowfield.Player
         /// <summary>Make sure the inspector list has one row per action, with default labels filled in.</summary>
         void EnsurePromptList()
         {
+            cursor.prompts.RemoveAll(e => !Enum.IsDefined(typeof(CursorAction), e.action) || e.action == CursorAction.None);
             foreach (CursorAction a in Enum.GetValues(typeof(CursorAction)))
             {
                 if (a == CursorAction.None) continue;

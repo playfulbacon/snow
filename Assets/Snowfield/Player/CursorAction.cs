@@ -16,7 +16,6 @@ namespace Snowfield.Player
         PickUpItem,
         RetrieveAccessory,
         PlaceAccessory,
-        StackSnowball,
     }
 
     public static class CursorActionInfo
@@ -35,7 +34,6 @@ namespace Snowfield.Player
             CursorAction.PickUpItem => "Pick up",
             CursorAction.RetrieveAccessory => "Take back",
             CursorAction.PlaceAccessory => "Place",
-            CursorAction.StackSnowball => "Stack",
             _ => "",
         };
     }

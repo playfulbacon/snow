@@ -11,13 +11,18 @@ namespace Snowfield.Sculpture
 {
     /// <summary>
     /// One sculpture: a VoxelGrid plus one child GameObject per chunk (MeshFilter/Renderer/Collider).
-    /// Grid origin = this transform's position; grid axes = this transform's axes (keep it unrotated/unscaled).
+    /// Grid origin = this transform's position + <see cref="gridOffset"/> (local); grid axes = this transform's axes.
+    /// Rotation is fine (snowballs roll); keep scale at 1.
     /// Call <see cref="Remesh"/> to rebuild dirty chunks; <see cref="RebuildColliders"/> on brush release.
     /// </summary>
     public class SnowSculpture : MonoBehaviour, IBrushTarget
     {
         [SerializeField] SculptFeelConfig config;
         [SerializeField] Material snowMaterial;
+        [Tooltip("Voxels per axis; 0 = config.gridSize. Snowballs use a small grid.")]
+        public int gridSizeOverride = 0;
+        [Tooltip("Local offset of the grid's min corner from this transform. Snowballs centre the grid on the transform.")]
+        public Vector3 gridOffset = Vector3.zero;
 
         public VoxelGrid Grid { get; private set; }
         public VoxelGridInfo Info => Grid.Info;
@@ -49,7 +54,7 @@ namespace Snowfield.Sculpture
         void Awake()
         {
             if (config == null) { Debug.LogError($"{name}: SnowSculpture needs a SculptFeelConfig", this); enabled = false; return; }
-            Initialise(config.gridSize, config.voxelSize);
+            Initialise(gridSizeOverride > 0 ? gridSizeOverride : config.gridSize, config.voxelSize);
         }
 
         public void Initialise(int size, float voxelSize)
@@ -93,8 +98,62 @@ namespace Snowfield.Sculpture
 
         // ---------- coordinate helpers ----------
 
-        public float3 WorldToVoxel(float3 world) => (float3)transform.InverseTransformPoint(world) / Info.voxelSize;
-        public float3 VoxelToWorld(float3 voxel) => transform.TransformPoint((Vector3)(voxel * Info.voxelSize));
+        public float3 WorldToVoxel(float3 world) => ((float3)transform.InverseTransformPoint(world) - (float3)gridOffset) / Info.voxelSize;
+        public float3 VoxelToWorld(float3 voxel) => transform.TransformPoint((Vector3)(voxel * Info.voxelSize) + gridOffset);
+
+        /// <summary>Trilinear density (0-255) at a world position; 0 outside the grid.</summary>
+        public float SampleDensityWorld(float3 world) => DensitySampler.Trilinear(Grid.Density, Info, WorldToVoxel(world));
+
+        /// <summary>Axis-aligned world bounds of the grid cube (rotation-aware via the corners).</summary>
+        public Bounds WorldBounds
+        {
+            get
+            {
+                float e = Info.WorldExtent;
+                var b = new Bounds(VoxelToWorld(float3.zero), Vector3.zero);
+                for (int i = 1; i < 8; i++)
+                    b.Encapsulate(transform.TransformPoint(gridOffset + new Vector3((i & 1) * e, ((i >> 1) & 1) * e, ((i >> 2) & 1) * e)));
+                return b;
+            }
+        }
+
+        /// <summary>Max-merge another sculpture's density into this grid, in world space (handles offset/rotation).</summary>
+        public void Absorb(SnowSculpture other)
+        {
+            if (other == null || other == this || other.Grid == null) return;
+            // Voxel range of this grid covered by the other's world bounds.
+            var ob = other.WorldBounds;
+            float3 lo = float.MaxValue, hi = float.MinValue;
+            for (int i = 0; i < 8; i++)
+            {
+                var corner = new Vector3((i & 1) == 0 ? ob.min.x : ob.max.x, ((i >> 1) & 1) == 0 ? ob.min.y : ob.max.y, ((i >> 2) & 1) == 0 ? ob.min.z : ob.max.z);
+                float3 v = WorldToVoxel(corner);
+                lo = math.min(lo, v); hi = math.max(hi, v);
+            }
+            int3 min = math.clamp((int3)math.floor(lo), 0, Info.size - 1);
+            int3 max = math.clamp((int3)math.ceil(hi) + 1, 0, Info.size);
+            if (!math.all(max > min)) return;
+
+            var density = Grid.Density;
+            for (int z = min.z; z < max.z; z++)
+            for (int y = min.y; y < max.y; y++)
+            for (int x = min.x; x < max.x; x++)
+            {
+                float d = other.SampleDensityWorld(VoxelToWorld(new float3(x, y, z)));
+                if (d <= 0f) continue;
+                int idx = Info.Index(x, y, z);
+                byte v = (byte)math.round(math.clamp(d, 0f, 255f));
+                if (v > density[idx]) density[idx] = v;
+            }
+            Grid.MarkDirty(min, max);
+        }
+
+        /// <summary>Enable/disable every chunk MeshCollider (a flying ball uses a sphere instead).</summary>
+        public void SetCollidersEnabled(bool on)
+        {
+            if (_colliders == null) return;
+            foreach (var c in _colliders) if (c != null) c.enabled = on;
+        }
         public float MetresToVoxels(float metres) => metres / Info.voxelSize;
 
         // ---------- brush ops (synchronous; the AABBs are small) ----------
@@ -208,7 +267,7 @@ namespace Snowfield.Sculpture
         }
 
         /// <summary>Sculpture-local bounds of the whole grid, in metres.</summary>
-        public Bounds LocalBounds => new Bounds(Vector3.one * (Info.WorldExtent * 0.5f), Vector3.one * Info.WorldExtent);
+        public Bounds LocalBounds => new Bounds(gridOffset + Vector3.one * (Info.WorldExtent * 0.5f), Vector3.one * Info.WorldExtent);
 
         void OnDrawGizmosSelected()
         {

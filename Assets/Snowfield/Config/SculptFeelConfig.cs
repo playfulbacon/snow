@@ -36,6 +36,8 @@ namespace Snowfield.Config
         public float snowballMaxRadius = 0.6f;
         [Tooltip("Radius gained per metre rolled over fresh snow.")]
         public float snowballGrowthPerMetre = 0.04f;
+        [Tooltip("Voxels per axis for a loose snowball's own grid (multiple of 16). Must hold the max diameter plus brush room.")]
+        public int snowballGridSize = 48;
 
         [Header("Terrain (heightmap field)")]
         [Tooltip("Field side length in metres.")]
