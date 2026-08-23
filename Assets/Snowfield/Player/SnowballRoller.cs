@@ -20,6 +20,8 @@ namespace Snowfield.Player
         public SnowCharacter character;
         [Tooltip("Max gap between the character's capsule and the ball surface to start pushing (m).")]
         public float pushReach = 1.2f;
+        [Tooltip("Max distance from the character to start a new ball on the ground (m). The ball spawns under the reticle.")]
+        public float startReach = 3.5f;
         [Tooltip("Authored hold point: the carried ball's centre sits here. Make it a child of the Player so it turns with you.")]
         public Transform carryAnchor;
         [Tooltip("Fallback if no anchor is set: forward of the character, and above the eye line (m).")]
@@ -77,7 +79,7 @@ namespace Snowfield.Player
         {
             if (character == null) return false;
             Vector3 d = groundPoint - character.transform.position; d.y = 0f;
-            return d.magnitude - CapsuleRadius <= pushReach + (config != null ? config.snowballStartRadius : 0.15f);
+            return d.magnitude - CapsuleRadius <= startReach;
         }
 
         // ---------- engage / release ----------
