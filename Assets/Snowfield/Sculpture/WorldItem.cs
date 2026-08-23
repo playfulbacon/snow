@@ -13,6 +13,7 @@ namespace Snowfield.Sculpture
             var go = entry.Build();
             go.name = "Item_" + entry.Id;
             AccessoryCatalog.SetColliders(go, true);
+            AccessoryCatalog.AddPickCollider(go, entry);
             go.transform.SetPositionAndRotation(groundPoint + Vector3.up * entry.GroundLift, Quaternion.Euler(0f, yaw, 0f) * entry.GroundRest);
             var item = go.AddComponent<WorldItem>();
             item.prefabId = entry.Id;

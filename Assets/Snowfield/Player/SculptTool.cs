@@ -232,13 +232,13 @@ namespace Snowfield.Player
             float rayLength = maxReach + Vector3.Distance(ray.origin, origin);
 
             // Loose items are thin; a fat cast makes them forgiving to aim at.
-            if (Physics.SphereCast(ray, itemPickRadius, out var fat, rayLength, sculptMask, QueryTriggerInteraction.Ignore))
+            if (Physics.SphereCast(ray, itemPickRadius, out var fat, rayLength, sculptMask, QueryTriggerInteraction.Collide))
             {
                 var item = fat.collider.GetComponentInParent<WorldItem>();
                 if (item != null && Vector3.Distance(fat.point, origin) <= maxReach) AimedWorldItem = item;
             }
 
-            if (!Physics.Raycast(ray, out var hit, rayLength, sculptMask, QueryTriggerInteraction.Ignore)) return;
+            if (!Physics.Raycast(ray, out var hit, rayLength, sculptMask, QueryTriggerInteraction.Collide)) return;
             if (Vector3.Distance(hit.point, origin) > maxReach) return;
 
             BrushPoint = hit.point;
@@ -425,7 +425,7 @@ namespace Snowfield.Player
                 return;
             }
 
-            UpdateBrush(mouse, allowCarve: false, allowTerrain: false, showCursor: false); // smoothing on sculpture snow only
+            UpdateBrush(mouse, allowCarve: false, allowTerrain: false, showCursor: true); // smoothing on sculpture snow only
         }
 
         void HideBrushCursor()
