@@ -32,6 +32,8 @@ namespace Snowfield.Player
         public Transform cursor;
         [Tooltip("Loose field items are small; aim at them with a sphere cast of this radius (m).")]
         public float itemPickRadius = 0.12f;
+        [Tooltip("Let Sculpt mode raise/carve the ground (draw in the snow).")]
+        public bool allowGroundSculpting = false;
 
         public ToolMode Mode { get; private set; } = ToolModeInfo.Default;
         public BrushOp CurrentOp { get; private set; } = BrushOp.None;
@@ -154,17 +156,17 @@ namespace Snowfield.Player
             switch (Mode)
             {
                 case ToolMode.Sculpt:
-                    if (Target != null || TargetTerrain != null) { p = CursorAction.AddSnow; s = CursorAction.Carve; }
+                    if (Target != null || (allowGroundSculpting && TargetTerrain != null)) { p = CursorAction.AddSnow; s = CursorAction.Carve; }
                     break;
 
                 case ToolMode.EmptyHand:
                     if (Roller.IsPushing) { p = CursorAction.PushSnowball; }
                     else if (Roller.IsCarrying)
                     {
-                        s = CursorAction.Throw;
+                        if (Roller.IsCarryingBall) s = CursorAction.Throw;
                         if (ThrowCharge <= 0f)
                         {
-                            if (onSnow) p = CursorAction.AttachSnowball;
+                            if (onSnow && Target != Roller.Carried) p = CursorAction.AttachSnowball;
                             else if (HasGroundHit) p = CursorAction.SetDownSnowball;
                         }
                     }
@@ -173,7 +175,7 @@ namespace Snowfield.Player
                         if (AimedSnowball != null) { if (Roller.CanPush(AimedSnowball)) p = CursorAction.PushSnowball; s = CursorAction.PickUpSnowball; }
                         else if (AimedWorldItem != null) { s = CursorAction.PickUpItem; }
                         else if (AimedProp != null) { s = CursorAction.RetrieveAccessory; if (Target != null) p = CursorAction.Smooth; }
-                        else if (onSnow) p = CursorAction.Smooth;
+                        else if (onSnow) { p = CursorAction.Smooth; s = CursorAction.PickUpSculpture; }
                         else if (HasGroundHit && Roller.CanReachGround(GroundPoint)) p = CursorAction.StartSnowball;
                     }
                     break;
@@ -268,11 +270,11 @@ namespace Snowfield.Player
         void UpdateSculpt(Mouse mouse)
         {
             // Loose snowballs are sculptures too, so the brush simply strokes Target.
-            UpdateBrush(mouse, allowCarve: true, allowTerrain: true);
+            UpdateBrush(mouse, allowCarve: true, allowTerrain: allowGroundSculpting, showCursor: true);
         }
 
         /// <summary>Shared stroke loop for Sculpt (add/carve) and Empty Hand (smooth).</summary>
-        void UpdateBrush(Mouse mouse, bool allowCarve, bool allowTerrain)
+        void UpdateBrush(Mouse mouse, bool allowCarve, bool allowTerrain, bool showCursor)
         {
             _placer.HidePreview();
             bool lmb = mouse != null && mouse.leftButton.isPressed;
@@ -291,7 +293,7 @@ namespace Snowfield.Player
             if (cursor != null)
             {
                 // Aiming at a prop still shows the cursor so the brush feels continuous over accessories.
-                bool show = target != null;
+                bool show = showCursor && target != null;
                 cursor.gameObject.SetActive(show);
                 if (show)
                 {
@@ -375,7 +377,7 @@ namespace Snowfield.Player
                 bool rmbUp = mouse != null && mouse.rightButton.wasReleasedThisFrame;
                 if (!rmbHeld) _throwArmed = true; // the pick-up press must be released before a charge can start
 
-                bool charging = _throwArmed && rmbHeld;
+                bool charging = _throwArmed && rmbHeld && Roller.IsCarryingBall;
                 if (charging) ThrowCharge = Mathf.Min(1f, ThrowCharge + Time.deltaTime / Mathf.Max(0.05f, Roller.chargeTime));
 
                 bool onSnow = HasHit && Target != null;
@@ -384,7 +386,7 @@ namespace Snowfield.Player
                                  : HasGroundHit ? Roller.GroundCentre(GroundPoint) : (Vector3?)null;
                 Roller.UpdateCarrying(preview);
 
-                if (rmbUp && _throwArmed && ThrowCharge > 0f)
+                if (rmbUp && _throwArmed && ThrowCharge > 0f && Roller.IsCarryingBall)
                 {
                     Roller.Throw(viewCamera.transform.position, viewCamera.transform.forward, ThrowCharge);
                     ThrowCharge = 0f;
@@ -394,7 +396,7 @@ namespace Snowfield.Player
 
                 if (lmbDown && !charging)
                 {
-                    if (onSnow) Roller.AttachTo(Target, BrushPoint, BrushNormal);
+                    if (onSnow && Target != Roller.Carried) Roller.AttachTo(Target, BrushPoint, BrushNormal);
                     else if (HasGroundHit) Roller.PlaceOnGround(GroundPoint);
                 }
                 return;
@@ -404,9 +406,10 @@ namespace Snowfield.Player
             // --- free hands: RMB picks up anything pickable ---
             if (rmbDown)
             {
-                if (AimedSnowball != null) { Roller.PickUp(AimedSnowball); _throwArmed = false; }
+                if (AimedSnowball != null) { Roller.PickUp(AimedSnowball.Sculpture, BrushPoint); _throwArmed = false; }
                 else if (AimedWorldItem != null) _placer.Collect(AimedWorldItem);
                 else if (AimedProp != null) _placer.Retrieve(AimedProp);
+                else if (HasHit && Target != null) { Roller.PickUp(Target, BrushPoint); _throwArmed = false; }
                 return;
             }
 
@@ -422,7 +425,7 @@ namespace Snowfield.Player
                 return;
             }
 
-            UpdateBrush(mouse, allowCarve: false, allowTerrain: false); // smoothing on sculpture snow only
+            UpdateBrush(mouse, allowCarve: false, allowTerrain: false, showCursor: false); // smoothing on sculpture snow only
         }
 
         void HideBrushCursor()

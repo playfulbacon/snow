@@ -6,10 +6,11 @@ using UnityEngine;
 namespace Snowfield.Player
 {
     /// <summary>
-    /// Moves loose snowballs (which are small <see cref="SnowSculpture"/>s with a <see cref="Snowball"/> component):
-    ///   Pushing  — the ball keeps its offset in the character's frame while the button is held, growing over fresh
-    ///              snow (re-stamping its sphere) and pressing a trench into the field.
-    ///   Carrying — the ball floats at the carry anchor; set down, fuse onto any sculpture surface, or throw.
+    /// Moves snow around the field:
+    ///   Pushing  — a loose snowball keeps its offset in the character's frame while the button is held, growing over
+    ///              fresh snow (re-stamping its sphere) and pressing a trench into the field.
+    ///   Carrying — a loose snowball OR a whole fixed sculpture floats at the carry anchor (held by the grab point);
+    ///              set it down on the ground, fuse it into another sculpture, or (balls only) throw it.
     /// Fusing goes through <see cref="SculptureFactory.Fuse"/>, which promotes a loose target to a full grid.
     /// Driven by <see cref="SculptTool"/> in Empty Hand mode; owns no input itself.
     /// </summary>
@@ -22,7 +23,7 @@ namespace Snowfield.Player
         public float pushReach = 1.2f;
         [Tooltip("Max distance from the character to start a new ball on the ground (m). The ball spawns under the reticle.")]
         public float startReach = 3.5f;
-        [Tooltip("Authored hold point: the carried ball's centre sits here. Make it a child of the Player so it turns with you.")]
+        [Tooltip("Authored hold point: the carried object's grab point sits here. Make it a child of the Player so it turns with you.")]
         public Transform carryAnchor;
         [Tooltip("Fallback if no anchor is set: forward of the character, and above the eye line (m).")]
         public Vector2 carryOffset = new Vector2(0.55f, 0.35f);
@@ -39,16 +40,23 @@ namespace Snowfield.Player
         [Tooltip("Raycast mask used to find the ground under the ball.")]
         public LayerMask groundMask = ~0;
 
+        /// <summary>Whatever is engaged (ball or sculpture); null when hands are free.</summary>
+        public SnowSculpture Carried { get; private set; }
+        /// <summary>The engaged object as a loose snowball, or null when carrying a fixed sculpture.</summary>
         public Snowball Ball { get; private set; }
+        public bool IsEngaged => Carried != null;
         public bool IsPushing => Ball != null && Ball.Current == Snowball.State.Pushing;
-        public bool IsCarrying => Ball != null && Ball.Current == Snowball.State.Carrying;
-        public bool IsEngaged => Ball != null;
+        public bool IsCarrying => Carried != null && !IsPushing;
+        public bool IsCarryingBall => IsCarrying && Ball != null;
+        public bool IsCarryingSculpture => IsCarrying && Ball == null;
         public float Radius => Ball != null ? Ball.radius : 0f;
 
         Vector3 _lastCharPos;
         Vector3 _pushLocalOffset;   // ball centre in the character's frame (y ignored)
         Vector3 _lastTrenchPos;
         float _remeshAccumulator;
+        Vector3 _grabLocal;         // grab point in the carried object's frame
+        float _footOffset;          // carried object's transform height above the ground under it at pick-up
 
         void Awake()
         {
@@ -92,65 +100,113 @@ namespace Snowfield.Player
             if (factory == null) { Debug.LogWarning("[Snowfield] No SculptureFactory in the scene"); return; }
             float r = config != null ? config.snowballStartRadius : 0.15f;
             var ball = factory.CreateSnowball(groundPoint + Vector3.up * r, r);
-            Engage(ball, Snowball.State.Pushing);
+            Engage(ball.Sculpture, ball.Centre);
+            ball.SetState(Snowball.State.Pushing);
         }
 
-        public void StartPushing(Snowball ball) => Engage(ball, Snowball.State.Pushing);
-        public void PickUp(Snowball ball) => Engage(ball, Snowball.State.Carrying);
-
-        void Engage(Snowball ball, Snowball.State state)
+        public void StartPushing(Snowball ball)
         {
             if (IsEngaged || ball == null || !ball.IsLoose || ball.IsFlying) return;
-            Ball = ball;
-            ball.SetInteractable(false);
-            ball.SetState(state);
+            Engage(ball.Sculpture, ball.Centre);
+            ball.SetState(Snowball.State.Pushing);
+        }
+
+        /// <summary>Pick up a loose ball (by its centre) or a fixed sculpture (by the aimed point).</summary>
+        public void PickUp(SnowSculpture sculpture, Vector3 grabPoint)
+        {
+            if (IsEngaged || sculpture == null) return;
+            var ball = sculpture.GetComponent<Snowball>();
+            if (ball != null)
+            {
+                if (!ball.IsLoose || ball.IsFlying) return;
+                grabPoint = ball.Centre;
+            }
+            Engage(sculpture, grabPoint);
+            if (ball != null) ball.SetState(Snowball.State.Carrying);
+        }
+
+        void Engage(SnowSculpture sculpture, Vector3 grabPoint)
+        {
+            Carried = sculpture;
+            Ball = sculpture.GetComponent<Snowball>();
+            SetInteractable(sculpture, false);
+            _grabLocal = sculpture.transform.InverseTransformPoint(grabPoint);
+            _footOffset = sculpture.transform.position.y - GroundHeightAt(grabPoint);
             _lastCharPos = character != null ? character.transform.position : Vector3.zero;
-            _lastTrenchPos = ball.Centre;
+            _lastTrenchPos = grabPoint;
             _remeshAccumulator = 0f;
             if (character != null)
             {
-                _pushLocalOffset = character.transform.InverseTransformPoint(ball.Centre);
+                _pushLocalOffset = character.transform.InverseTransformPoint(grabPoint);
                 _pushLocalOffset.y = 0f;
             }
         }
 
-        /// <summary>Leave the ball exactly where it is (push release / mode change).</summary>
+        /// <summary>Leave the carried object exactly where it is (push release / mode change).</summary>
         public void Release()
         {
             if (!IsEngaged) return;
             Rest();
         }
 
-        /// <summary>Set a carried ball down resting on the ground at a point.</summary>
+        /// <summary>Set the carried object down so its grab point is over <paramref name="groundPoint"/> at its original ground clearance.</summary>
         public void PlaceOnGround(Vector3 groundPoint)
         {
             if (!IsCarrying) return;
-            Ball.transform.position = groundPoint + Vector3.up * Ball.radius;
+            var t = Carried.transform;
+            if (Ball != null)
+            {
+                t.position = groundPoint + Vector3.up * Ball.radius;
+            }
+            else
+            {
+                Vector3 grabWorld = t.TransformPoint(_grabLocal);
+                Vector3 shift = groundPoint - grabWorld;
+                shift.y = (groundPoint.y + _footOffset) - t.position.y;
+                t.position += shift;
+            }
             Rest();
         }
 
-        /// <summary>Fuse the carried ball into a sculpture surface at the aimed point (loose balls included).</summary>
+        /// <summary>Fuse the carried object into a sculpture surface at the aimed point (loose balls included).</summary>
         public void AttachTo(SnowSculpture target, Vector3 surfacePoint, Vector3 surfaceNormal)
         {
-            if (!IsCarrying || target == null) return;
+            if (!IsCarrying || target == null || target == Carried) return;
             var factory = SculptureFactory.Instance;
             if (factory == null) return;
+            var carried = Carried;
             var ball = Ball;
-            Ball = null;
-            ball.transform.position = AttachCentre(ball, surfacePoint, surfaceNormal);
-            ball.SetInteractable(true);
-            factory.Fuse(target, ball);
+            Carried = null; Ball = null;
+            if (ball != null)
+                carried.transform.position = AttachCentre(ball, surfacePoint, surfaceNormal);
+            else
+            {
+                Vector3 grabWorld = carried.transform.TransformPoint(_grabLocal);
+                carried.transform.position += surfacePoint - grabWorld;
+            }
+            SetInteractable(carried, true);
+            factory.Fuse(target, carried);
         }
 
         void Rest()
         {
+            var carried = Carried;
             var ball = Ball;
-            Ball = null;
-            ball.SetInteractable(true);               // enable first: PhysX only tracks live colliders
-            ball.Sculpture.Remesh();
-            ball.Sculpture.ForceRebuildAllColliders(); // the ball moved/grew while its colliders were off
+            Carried = null; Ball = null;
+            SetInteractable(carried, true);          // enable first: PhysX only tracks live colliders
+            carried.Remesh();
+            carried.ForceRebuildAllColliders();      // it moved/grew while its colliders were off
             Physics.SyncTransforms();
-            ball.SetState(Snowball.State.Resting);
+            if (ball != null) ball.SetState(Snowball.State.Resting);
+        }
+
+        static void SetInteractable(SnowSculpture s, bool on)
+        {
+            int layer = on ? 0 : LayerMask.NameToLayer("Ignore Raycast");
+            foreach (var t in s.GetComponentsInChildren<Transform>(true)) t.gameObject.layer = layer;
+            s.SetCollidersEnabled(on);
+            foreach (var c in s.GetComponentsInChildren<Collider>(true))
+                if (c.GetComponentInParent<SculptureProp>() != null) c.enabled = on; // props ride along
         }
 
         // ---------- per-frame ----------
@@ -208,13 +264,15 @@ namespace Snowfield.Player
             StampTrenchAt(ballCentre, radius);
         }
 
-        /// <summary>Carrying: float at the anchor, or preview at a target position.</summary>
-        public void UpdateCarrying(Vector3? previewCentre)
+        /// <summary>Carrying: the grab point floats at the anchor, or at a preview position.</summary>
+        public void UpdateCarrying(Vector3? previewGrabPoint)
         {
             if (!IsCarrying) return;
-            Vector3 goal = previewCentre ?? CarryPosition();
-            var t = Ball.transform;
-            t.position = Vector3.Lerp(t.position, goal, 1f - Mathf.Exp(-18f * Time.deltaTime));
+            Vector3 goal = previewGrabPoint ?? CarryPosition();
+            var t = Carried.transform;
+            Vector3 grabWorld = t.TransformPoint(_grabLocal);
+            Vector3 desired = t.position + (goal - grabWorld);
+            t.position = Vector3.Lerp(t.position, desired, 1f - Mathf.Exp(-18f * Time.deltaTime));
         }
 
         public Vector3 CarryPosition()
@@ -225,21 +283,32 @@ namespace Snowfield.Player
             return t.position + t.forward * carryOffset.x + Vector3.up * (eye + carryOffset.y + Radius);
         }
 
-        /// <summary>Launch the carried ball from <paramref name="origin"/> along <paramref name="direction"/> with power 0..1.</summary>
+        /// <summary>Launch the carried ball from <paramref name="origin"/> along <paramref name="direction"/> with power 0..1. Sculptures are not thrown.</summary>
         public void Throw(Vector3 origin, Vector3 direction, float power)
         {
-            if (!IsCarrying) return;
+            if (!IsCarryingBall) return;
             direction = direction.normalized;
             var ball = Ball;
-            Ball = null;
+            Carried = null; Ball = null;
             ball.transform.position = origin + direction * (throwStartDistance + ball.radius);
             float speed = Mathf.Lerp(throwSpeedMin, throwSpeedMax, Mathf.Clamp01(power));
             ball.Launch(direction * speed + Vector3.up * throwLift);
         }
 
-        public Vector3 AttachCentre(Vector3 point, Vector3 normal) => Ball != null ? AttachCentre(Ball, point, normal) : point;
+        /// <summary>Where the carried object's grab point previews when aimed at a surface.</summary>
+        public Vector3 AttachCentre(Vector3 point, Vector3 normal) =>
+            Ball != null ? AttachCentre(Ball, point, normal) : point + normal * 0.02f;
         static Vector3 AttachCentre(Snowball b, Vector3 point, Vector3 normal) => point + normal * (b.radius * (1f - b.fuseSink));
-        public Vector3 GroundCentre(Vector3 groundPoint) => groundPoint + Vector3.up * Radius;
+
+        /// <summary>Where the carried object's grab point previews when aimed at the ground.</summary>
+        public Vector3 GroundCentre(Vector3 groundPoint)
+        {
+            if (Ball != null) return groundPoint + Vector3.up * Ball.radius;
+            var t = Carried.transform;
+            Vector3 grabWorld = t.TransformPoint(_grabLocal);
+            float grabAboveRoot = grabWorld.y - t.position.y;
+            return new Vector3(groundPoint.x, groundPoint.y + _footOffset + grabAboveRoot, groundPoint.z);
+        }
 
         float GroundHeightAt(Vector3 p)
         {

@@ -513,7 +513,7 @@ namespace Snowfield.Player
                 {
                     ToolMode.Sculpt => $"radius {tool.CurrentRadius():0.00} m   rate {tool.config.addRatePerTick:0}/tick @ {tool.config.ticksPerSecond:0} Hz",
                     ToolMode.EmptyHand => tool.Roller != null && tool.Roller.IsEngaged
-                        ? $"snowball {tool.Roller.Radius * 2f:0.00} m"
+                        ? (tool.Roller.Ball != null ? $"snowball {tool.Roller.Radius * 2f:0.00} m" : "carrying sculpture")
                         : $"radius {tool.CurrentRadius():0.00} m   strength {tool.config.smoothStrength:0.00}",
                     ToolMode.Accessory => placer != null ? placer.Selected.DisplayName : "",
                     _ => "",

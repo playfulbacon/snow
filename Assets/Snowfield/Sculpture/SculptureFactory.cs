@@ -90,17 +90,25 @@ namespace Snowfield.Sculpture
             return target;
         }
 
-        /// <summary>Fuse <paramref name="ball"/> (at its current transform) into <paramref name="target"/>; the ball is consumed.</summary>
-        public SnowSculpture Fuse(SnowSculpture target, Snowball ball)
+        /// <summary>Fuse a snowball (at its current transform) into <paramref name="target"/>; the ball is consumed.</summary>
+        public SnowSculpture Fuse(SnowSculpture target, Snowball ball) => Fuse(target, ball != null ? ball.Sculpture : null);
+
+        /// <summary>Fuse any sculpture (at its current transform) into <paramref name="target"/>; the source is consumed, its props move across.</summary>
+        public SnowSculpture Fuse(SnowSculpture target, SnowSculpture source)
         {
-            if (target == null || ball == null) return target;
+            if (target == null || source == null || target == source) return target;
             target = EnsureRoom(target);
-            target.Absorb(ball.Sculpture);
+            target.Absorb(source);
+            foreach (var prop in source.Props.ToArray())
+            {
+                prop.transform.SetParent(target.transform, true);
+                prop.Reattach(target);
+            }
             target.Remesh();
             target.RebuildColliders();
             var targetBall = target.GetComponent<Snowball>();
             if (targetBall != null) targetBall.Fix();
-            Destroy(ball.gameObject);
+            Destroy(source.gameObject);
             return target;
         }
     }
