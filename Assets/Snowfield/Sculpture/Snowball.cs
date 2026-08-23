@@ -129,6 +129,8 @@ namespace Snowfield.Sculpture
             if (_flightCollider != null) Destroy(_flightCollider);
             _rb = null; _flightCollider = null;
             Sculpture.SetCollidersEnabled(true);
+            Sculpture.ForceRebuildAllColliders();
+            Physics.SyncTransforms();
             Current = State.Resting;
         }
     }

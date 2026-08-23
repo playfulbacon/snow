@@ -146,9 +146,10 @@ namespace Snowfield.Player
         {
             var ball = Ball;
             Ball = null;
+            ball.SetInteractable(true);               // enable first: PhysX only tracks live colliders
             ball.Sculpture.Remesh();
-            ball.Sculpture.RebuildColliders();
-            ball.SetInteractable(true);
+            ball.Sculpture.ForceRebuildAllColliders(); // the ball moved/grew while its colliders were off
+            Physics.SyncTransforms();
             ball.SetState(Snowball.State.Resting);
         }
 

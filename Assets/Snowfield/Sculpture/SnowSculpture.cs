@@ -149,6 +149,20 @@ namespace Snowfield.Sculpture
             Grid.MarkDirty(min, max);
         }
 
+        /// <summary>Re-cook every chunk collider from scratch (after the sculpture moved while its colliders were off).</summary>
+        public void ForceRebuildAllColliders()
+        {
+            if (_colliders == null) return;
+            for (int i = 0; i < _colliders.Length; i++)
+            {
+                var mc = _colliders[i];
+                var mesh = _meshes[i];
+                mc.sharedMesh = null;
+                mc.sharedMesh = mesh != null && mesh.vertexCount > 0 ? mesh : null;
+            }
+            _colliderDirty.Clear();
+        }
+
         /// <summary>Enable/disable every chunk MeshCollider (a flying ball uses a sphere instead).</summary>
         public void SetCollidersEnabled(bool on)
         {
