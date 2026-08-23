@@ -701,6 +701,9 @@ MonoBehaviour:
     - action: 12
       icon: {fileID: 0}
       label: Place
+    - action: 13
+      icon: {fileID: 0}
+      label: Pick up
   status:
     margin: {x: 14, y: 12}
     fontSize: 16
@@ -2729,11 +2732,12 @@ MonoBehaviour:
   viewCamera: {fileID: 490223059}
   sculptMask:
     serializedVersion: 2
-    m_Bits: 4294967291
+    m_Bits: 51
   maxReach: 4
   reachOrigin: {fileID: 1058274123}
   cursor: {fileID: 729799333}
   itemPickRadius: 0.12
+  allowGroundSculpting: 0
   snowRadiusScale: 1
   handRadiusScale: 1
 --- !u!114 &681495301
@@ -2755,13 +2759,13 @@ MonoBehaviour:
   carryAnchor: {fileID: 1467024059}
   carryOffset: {x: 0.75, y: 1.05}
   throwStartDistance: 0.25
-  throwSpeedMin: 3
-  throwSpeedMax: 11
+  throwSpeedMin: 7
+  throwSpeedMax: 30
   throwLift: 1.5
   chargeTime: 1.2
   groundMask:
     serializedVersion: 2
-    m_Bits: 4294967291
+    m_Bits: 51
 --- !u!114 &681495302
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -5018,7 +5022,7 @@ MonoBehaviour:
   seed: 0
   groundMask:
     serializedVersion: 2
-    m_Bits: 4294967291
+    m_Bits: 51
 --- !u!4 &1326737637
 Transform:
   m_ObjectHideFlags: 0

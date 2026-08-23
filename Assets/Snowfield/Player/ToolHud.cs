@@ -120,6 +120,8 @@ namespace Snowfield.Player
             public Color reticleOnProp = new Color(1f, 0.45f, 0.35f, 0.95f);
             public Color chargeRingBg = new Color(1f, 1f, 1f, 0.18f);
             public Color chargeRingFill = new Color(1f, 0.85f, 0.3f, 0.95f);
+            [Tooltip("Ring colour once the throw is fully charged.")]
+            public Color chargeRingFull = new Color(1f, 0.35f, 0.25f, 1f);
             public Color promptBg = new Color(0.08f, 0.1f, 0.14f, 0.72f);
             public Color promptText = new Color(0.9f, 0.92f, 0.97f);
             public Color promptIconTint = Color.white;
@@ -504,6 +506,7 @@ namespace Snowfield.Player
             _chargeBg.gameObject.SetActive(showRing);
             _chargeFill.gameObject.SetActive(showRing);
             _chargeFill.fillAmount = playing ? charge : 0.65f;
+            _chargeFill.color = charge >= 0.999f ? c.chargeRingFull : c.chargeRingFill;
 
             // status text
             string line = "";
