@@ -250,6 +250,8 @@ namespace Snowfield.Player
             var s = hit.collider.GetComponentInParent<SnowSculpture>();
             if (s != null)
             {
+                var flying = s.GetComponent<Snowball>();
+                if (flying != null && flying.IsFlying) { AimedColliderPath = ""; return; } // airborne: not a target for anything
                 Target = s;
                 HasHit = AimedProp == null; // aiming at a prop is not a snow hit
                 var ball = s.GetComponent<Snowball>();
