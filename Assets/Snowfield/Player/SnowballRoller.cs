@@ -240,12 +240,7 @@ namespace Snowfield.Player
             t.position = goal;
             StampTrench(t.position, Ball.radius, ref _lastTrenchPos);
 
-            _remeshAccumulator += Time.deltaTime;
-            if (config != null && _remeshAccumulator >= 1f / config.remeshHz)
-            {
-                _remeshAccumulator = 0f;
-                Ball.Sculpture.Remesh();
-            }
+            Ball.Sculpture.Remesh(); // every frame: the ball's grid is small and stepped growth reads as snapping
         }
 
         static void StampTrenchAt(Vector3 ballCentre, float radius)

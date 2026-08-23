@@ -64,27 +64,33 @@ namespace Snowfield.Sculpture
             _lookup = MarchingCubesLookup.Create(Allocator.Persistent);
             _scratch = new NativeArray<byte>(Grid.Info.VoxelCount, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
 
+            // Chunk objects are created lazily the first time a chunk has geometry (most of a 96³ grid stays empty).
             int n = Grid.Info.ChunkCount;
             _meshes = new Mesh[n];
             _filters = new MeshFilter[n];
             _colliders = new MeshCollider[n];
-            for (int i = 0; i < n; i++)
-            {
-                int3 c = Grid.Info.ChunkCoord(i);
-                var go = new GameObject($"Chunk_{c.x}_{c.y}_{c.z}");
-                go.transform.SetParent(transform, false);
-                go.transform.localPosition = gridOffset; // meshes are emitted from the grid's min corner
-                go.layer = gameObject.layer;
-                var mf = go.AddComponent<MeshFilter>();
-                var mr = go.AddComponent<MeshRenderer>();
-                mr.sharedMaterial = snowMaterial;
-                var mc = go.AddComponent<MeshCollider>();
-                var mesh = new Mesh { name = go.name };
-                mesh.MarkDynamic();
-                mf.sharedMesh = mesh;
-                _meshes[i] = mesh; _filters[i] = mf; _colliders[i] = mc;
-            }
         }
+
+        void EnsureChunkObject(int i)
+        {
+            if (_meshes[i] != null) return;
+            int3 c = Grid.Info.ChunkCoord(i);
+            var go = new GameObject($"Chunk_{c.x}_{c.y}_{c.z}");
+            go.transform.SetParent(transform, false);
+            go.transform.localPosition = gridOffset; // meshes are emitted from the grid's min corner
+            go.layer = gameObject.layer;
+            var mf = go.AddComponent<MeshFilter>();
+            var mr = go.AddComponent<MeshRenderer>();
+            mr.sharedMaterial = snowMaterial;
+            var mc = go.AddComponent<MeshCollider>();
+            mc.enabled = _collidersEnabled;
+            var mesh = new Mesh { name = go.name };
+            mesh.MarkDynamic();
+            mf.sharedMesh = mesh;
+            _meshes[i] = mesh; _filters[i] = mf; _colliders[i] = mc;
+        }
+
+        bool _collidersEnabled = true;
 
         void OnDestroy() => Teardown();
 
@@ -135,17 +141,17 @@ namespace Snowfield.Sculpture
             int3 max = math.clamp((int3)math.ceil(hi) + 1, 0, Info.size);
             if (!math.all(max > min)) return;
 
-            var density = Grid.Density;
-            for (int z = min.z; z < max.z; z++)
-            for (int y = min.y; y < max.y; y++)
-            for (int x = min.x; x < max.x; x++)
+            // this voxel -> this local -> world -> other local -> other voxel, as one matrix
+            float4x4 thisVoxelToWorld = math.mul((float4x4)transform.localToWorldMatrix,
+                math.mul(float4x4.Translate(gridOffset), float4x4.Scale(Info.voxelSize)));
+            float4x4 worldToOtherVoxel = math.mul(float4x4.Scale(1f / other.Info.voxelSize),
+                math.mul(float4x4.Translate(-(float3)other.gridOffset), (float4x4)other.transform.worldToLocalMatrix));
+            int3 ext = max - min;
+            new AbsorbJob
             {
-                float d = other.SampleDensityWorld(VoxelToWorld(new float3(x, y, z)));
-                if (d <= 0f) continue;
-                int idx = Info.Index(x, y, z);
-                byte v = (byte)math.round(math.clamp(d, 0f, 255f));
-                if (v > density[idx]) density[idx] = v;
-            }
+                Density = Grid.Density, Info = Info, Source = other.Grid.Density, SourceInfo = other.Info,
+                AabbMin = min, AabbExtent = ext, ToSourceVoxel = math.mul(worldToOtherVoxel, thisVoxelToWorld),
+            }.Schedule(ext.x * ext.y * ext.z, 256).Complete();
             Grid.MarkDirty(min, max);
         }
 
@@ -156,6 +162,7 @@ namespace Snowfield.Sculpture
             for (int i = 0; i < _colliders.Length; i++)
             {
                 var mc = _colliders[i];
+                if (mc == null) continue;
                 var mesh = _meshes[i];
                 mc.sharedMesh = null;
                 mc.sharedMesh = mesh != null && mesh.vertexCount > 0 ? mesh : null;
@@ -173,6 +180,7 @@ namespace Snowfield.Sculpture
         /// <summary>Enable/disable every chunk MeshCollider (a flying ball uses a sphere instead).</summary>
         public void SetCollidersEnabled(bool on)
         {
+            _collidersEnabled = on;
             if (_colliders == null) return;
             foreach (var c in _colliders) if (c != null) c.enabled = on;
         }
@@ -255,6 +263,8 @@ namespace Snowfield.Sculpture
             for (int k = 0; k < dirty.Count; k++)
             {
                 int ci = dirty[k];
+                if (_meshes[ci] == null && verts[k].Length == 0) { Grid.ChunkDirty[ci] = false; verts[k].Dispose(); inds[k].Dispose(); continue; }
+                EnsureChunkObject(ci);
                 Upload(_meshes[ci], verts[k], inds[k]);
                 verts[k].Dispose();
                 inds[k].Dispose();
@@ -281,6 +291,7 @@ namespace Snowfield.Sculpture
             foreach (int ci in _colliderDirty)
             {
                 var mc = _colliders[ci];
+                if (mc == null) continue;
                 var mesh = _meshes[ci];
                 mc.sharedMesh = null;
                 mc.sharedMesh = mesh.vertexCount > 0 ? mesh : null;

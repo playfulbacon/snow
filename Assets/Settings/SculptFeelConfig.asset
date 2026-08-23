@@ -24,4 +24,18 @@ MonoBehaviour:
   remeshHz: 10
   snowballStartRadius: 0.15
   snowballMaxRadius: 0.6
-  snowballGrowthPerMetre: 0.04
+  snowballGrowthPerMetre: 0.1
+  snowballGridSize: 48
+  terrainFieldSize: 40
+  terrainCellSize: 0.05
+  terrainChunkCells: 200
+  terrainMaxCarveDepth: 0.6
+  terrainMaxRaise: 0.8
+  terrainAddPerTick: 0.004
+  terrainRemeshHz: 10
+  terrainColliderHz: 2
+  footprintRadius: 0.12
+  footprintDepth: 0.02
+  footstepSpacing: 0.45
+  rollTrenchDepthFraction: 0.25
+  terrainPathDepthCap: 0.12
