@@ -50,7 +50,10 @@ Sculpture: { id, fieldPos, densityBlob (RLE-compressed), props[], authorId, neig
 RLE compresses brutally well (density fields are mostly-empty or mostly-full). Sync = poll "sculptures in my neighborhood modified since T" on login + lazy interval.
 
 ### Friend co-op (Phase 4)
-- Sync **brush strokes** (pos, radius, strength, timestamp), not density data. Each client applies deterministically. If drift appears: periodic chunk checksums, loser re-downloads blob. Jam-grade is fine.
+- Transport: **Netcode for GameObjects 2.x + Unity Relay** (same stack as the minstrels project — invite links are Relay join codes; characters are NetworkTransforms).
+- Sync **brush strokes** (pos, radius, strength, timestamp) as RPCs, not density data. Each client applies deterministically. Structural events (fuse, promote, throw *impact*, prop attach) are also sent as events — physics flights don't replay identically, so send the resulting splat, not the flight.
+- If drift appears: periodic chunk checksums, loser re-downloads blob (same RLE blob as save/load). Jam-grade is fine.
+- Session end state still uploads to PocketBase so it persists for the neighborhood. Phase 3 stays PocketBase polling — a live session is not persistence.
 
 ## Phases (build in order; each phase is independently valuable)
 
