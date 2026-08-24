@@ -170,6 +170,14 @@ namespace Snowfield.Editor
             scatter.groundMask = ~LayerMask.GetMask("Ignore Raycast");
             EditorUtility.SetDirty(scatter);
 
+            // --- snowfall cycle (own root object) ---
+            var snowfallGo = GameObject.Find("Snowfall");
+            if (snowfallGo == null) snowfallGo = new GameObject("Snowfall");
+            var cycle = snowfallGo.GetComponent<Snowfield.Field.SnowfallCycle>();
+            if (cycle == null) cycle = snowfallGo.AddComponent<Snowfield.Field.SnowfallCycle>();
+            cycle.config = config;
+            EditorUtility.SetDirty(cycle);
+
             // --- HUD (own root object) ---
             var hudGo = GameObject.Find("HUD");
             if (hudGo == null) hudGo = new GameObject("HUD", typeof(RectTransform));

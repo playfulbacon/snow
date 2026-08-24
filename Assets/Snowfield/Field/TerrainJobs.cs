@@ -106,6 +106,30 @@ namespace Snowfield.Field
 
     /// <summary>Copy a sample-space AABB from Src to Dst (snapshot for the smooth job).</summary>
     [BurstCompile]
+    /// <summary>Snowfall: lift heights below the fresh surface (0) up by Amount, clamped to 0. Flags changed chunks.</summary>
+    [BurstCompile]
+    public struct HeightRecoverJob : IJobParallelFor
+    {
+        public NativeArray<float> Height;
+        [NativeDisableParallelForRestriction] public NativeArray<bool> ChunkChanged;
+        public int Samples;
+        public int ChunkCells;
+        public int ChunksPerAxis;
+        public float Amount;
+
+        public void Execute(int i)
+        {
+            float h = Height[i];
+            if (h >= 0f) return;
+            Height[i] = math.min(0f, h + Amount);
+            int x = i % Samples, z = i / Samples;
+            int cx = math.min(x / ChunkCells, ChunksPerAxis - 1);
+            int cz = math.min(z / ChunkCells, ChunksPerAxis - 1);
+            ChunkChanged[cx + cz * ChunksPerAxis] = true;
+        }
+    }
+
+    [BurstCompile]
     public struct HeightCopyJob : IJobParallelFor
     {
         [ReadOnly] public NativeArray<float> Src;

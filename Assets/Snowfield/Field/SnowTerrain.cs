@@ -207,6 +207,22 @@ namespace Snowfield.Field
             MarkDirty(min, max);
         }
 
+        /// <summary>Snowfall: raise every below-fresh sample by <paramref name="metres"/> toward the untouched surface.</summary>
+        public void RecoverTowardFresh(float metres)
+        {
+            if (!IsCreated || metres <= 0f) return;
+            int chunkCount = _chunksPerAxis * _chunksPerAxis;
+            var changed = new NativeArray<bool>(chunkCount, Allocator.TempJob, NativeArrayOptions.ClearMemory);
+            new HeightRecoverJob
+            {
+                Height = _height, ChunkChanged = changed, Samples = _samples,
+                ChunkCells = _chunkCells, ChunksPerAxis = _chunksPerAxis, Amount = metres,
+            }.Schedule(_height.Length, 4096).Complete();
+            for (int i = 0; i < chunkCount; i++)
+                if (changed[i]) { _dirty[i] = true; _colliderDirty.Add(i); }
+            changed.Dispose();
+        }
+
         /// <summary>Press a footprint/trench. Never raises; cumulative packing capped by terrainPathDepthCap.</summary>
         public void StampDepression(float3 worldCenter, float radiusMetres, float depthMetres, float shoulder)
         {

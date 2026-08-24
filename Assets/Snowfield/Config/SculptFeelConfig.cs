@@ -66,5 +66,13 @@ namespace Snowfield.Config
         [Range(0f, 1f)] public float rollTrenchDepthFraction = 0.25f;
         [Tooltip("Footprints and trenches cannot pack the snow deeper than this (m). Carving can.")]
         public float terrainPathDepthCap = 0.12f;
+
+        [Header("Snowfall")]
+        [Tooltip("Hours of snowfall to refill a full-depth path. 0 disables recovery.")]
+        public float snowfallRecoverHours = 2f;
+        [Tooltip("How often the recovery pass runs (s).")]
+        public float snowfallTickSeconds = 2f;
+        [Tooltip("Recovery speed while holding the debug 'let it snow' key (m/s).")]
+        public float letItSnowPerSecond = 0.05f;
     }
 }
