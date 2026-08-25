@@ -13,6 +13,7 @@ namespace Snowfield.Player
         RetrieveAccessory,
         PlaceAccessory,
         ScoopSnow,
+        MakeMound,
         Grab,
         Drop,
     }
@@ -30,6 +31,7 @@ namespace Snowfield.Player
             CursorAction.RetrieveAccessory => "Take back",
             CursorAction.PlaceAccessory => "Place",
             CursorAction.ScoopSnow => "Scoop",
+            CursorAction.MakeMound => "Start mound",
             CursorAction.Grab => "Pick up",
             CursorAction.Drop => "Drop (hold: throw)",
             _ => "",

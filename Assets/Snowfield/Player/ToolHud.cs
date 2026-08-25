@@ -145,8 +145,8 @@ namespace Snowfield.Player
         public bool previewAccessoryBar = true;
         public int previewAccessoryIndex = 0;
         public bool previewChargeRing = false;
-        public CursorAction previewPrimary = CursorAction.Smooth;
-        public CursorAction previewSecondary = CursorAction.Carve;
+        public CursorAction previewPrimary = CursorAction.AddSnow;
+        public CursorAction previewSecondary = CursorAction.Grab;
         public CursorAction previewTertiary = CursorAction.Grab;
 
         // ------------------------------------------------------------------ generated refs

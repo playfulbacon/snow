@@ -53,6 +53,16 @@ namespace Snowfield.Sculpture
             return s;
         }
 
+        /// <summary>New fixed sculpture pre-stamped with a small hemisphere mound at the ground point.</summary>
+        public SnowSculpture CreateMound(Vector3 groundPoint, float radius)
+        {
+            var s = CreateAt(groundPoint);
+            s.StampSphere(groundPoint, radius, 0.7f, clipBelowWorldY: groundPoint.y - config.voxelSize);
+            s.Remesh();
+            s.RebuildColliders();
+            return s;
+        }
+
         /// <summary>
         /// New loose snowball: a small sculpture whose grid is centred on <paramref name="centre"/>, pre-stamped with a sphere.
         /// The root transform is the ball centre (so rolling can rotate it).
