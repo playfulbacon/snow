@@ -36,10 +36,10 @@ namespace Snowfield.Voxel
         {
             if (data == null || data.Length < 1) throw new ArgumentException("empty blob");
             if (data[0] != Version) throw new ArgumentException($"unknown blob version {data[0]}");
+            if ((data.Length - 1) % 3 != 0) throw new ArgumentException("truncated blob");
             int write = 0;
-            for (int i = 1; i + 2 < data.Length + 1 && i + 2 <= data.Length - 0; i += 3)
+            for (int i = 1; i + 3 <= data.Length; i += 3)
             {
-                if (i + 2 >= data.Length + 1 && i + 2 > data.Length) break;
                 byte v = data[i];
                 int run = data[i + 1] | (data[i + 2] << 8);
                 if (write + run > into.Length) throw new ArgumentException("blob longer than grid");
