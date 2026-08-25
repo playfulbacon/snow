@@ -89,9 +89,10 @@ namespace Snowfield.Sculpture
             var factory = SculptureFactory.Instance;
             if (factory == null || !Directory.Exists(Dir)) return;
 
-            // wipe current runtime sculptures (props are children, they go with them)
+            // wipe current runtime sculptures (props are children, they go with them).
+            // Immediate: a deferred Destroy would let a save in the same frame see both old and new copies.
             foreach (var s in FindObjectsByType<SnowSculpture>(FindObjectsSortMode.None))
-                Destroy(s.gameObject);
+                DestroyImmediate(s.gameObject);
 
             int n = 0;
             foreach (var file in Directory.GetFiles(Dir, "*.json"))

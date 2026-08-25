@@ -319,10 +319,12 @@ namespace Snowfield.Player
 
         float GroundHeightAt(Vector3 p)
         {
+            // Terrain data first: a raycast can land on another sculpture's snow and inflate the "ground" height.
+            var terrain = SnowTerrain.Instance;
+            if (terrain != null && terrain.IsCreated) return terrain.SampleHeight(p);
             if (Physics.Raycast(p + Vector3.up * 3f, Vector3.down, out var hit, 8f, groundMask, QueryTriggerInteraction.Ignore))
                 return hit.point.y;
-            var terrain = SnowTerrain.Instance;
-            return terrain != null ? terrain.SampleHeight(p) : (character != null ? character.transform.position.y : 0f);
+            return character != null ? character.transform.position.y : 0f;
         }
     }
 }
