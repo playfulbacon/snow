@@ -186,6 +186,14 @@ namespace Snowfield.Editor
             if (saveGo.GetComponent<Snowfield.Sculpture.SaveLoadManager>() == null)
                 saveGo.AddComponent<Snowfield.Sculpture.SaveLoadManager>();
 
+            // --- grid bounds indicator (own root object) ---
+            var boundsGo = GameObject.Find("GridBounds");
+            if (boundsGo == null) boundsGo = new GameObject("GridBounds");
+            var bounds = boundsGo.GetComponent<GridBoundsIndicator>();
+            if (bounds == null) bounds = boundsGo.AddComponent<GridBoundsIndicator>();
+            bounds.tool = tool;
+            EditorUtility.SetDirty(bounds);
+
             // --- HUD (own root object) ---
             var hudGo = GameObject.Find("HUD");
             if (hudGo == null) hudGo = new GameObject("HUD", typeof(RectTransform));
