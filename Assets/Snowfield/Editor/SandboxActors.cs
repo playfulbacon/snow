@@ -86,6 +86,8 @@ namespace Snowfield.Editor
                 body.transform.localPosition = new Vector3(0f, 0.9f, 0f);
                 body.transform.localScale = new Vector3(0.7f, 0.9f, 0.7f);
             }
+            var playerCc = player.GetComponent<CharacterController>();
+            if (playerCc != null) { playerCc.slopeLimit = 60f; playerCc.stepOffset = 0.4f; } // snow lumps are climbable
             var character = player.GetComponent<SnowCharacter>();
             if (character == null) character = player.AddComponent<SnowCharacter>();
             character.cameraRig = cam.transform;
