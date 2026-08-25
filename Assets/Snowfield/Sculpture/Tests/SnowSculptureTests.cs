@@ -107,6 +107,38 @@ namespace Snowfield.Sculpture.Tests
         }
 
         [UnityTest]
+        public IEnumerator Regrow_PreservesSnow_AndCoversRequestedBounds()
+        {
+            var factoryGo = new GameObject("Factory");
+            factoryGo.SetActive(false);
+            var factory = factoryGo.AddComponent<SculptureFactory>();
+            factory.config = _cfg;
+            factory.snowMaterial = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+            _cfg.maxGridSize = 96;
+            factoryGo.SetActive(true);
+            yield return null; // Awake → Instance
+
+            var s = factory.CreateAt(new Vector3(10f, 0f, 10f));
+            float extent = s.Info.WorldExtent;
+            // Snow near the +X wall.
+            Vector3 centre = new Vector3(10f + extent * 0.5f - 0.25f, 0.4f, 10f);
+            s.StampSphere(centre, 0.3f, 0.7f);
+            Assert.Greater(s.SampleDensityWorld(centre), 200f);
+            Assert.IsFalse(s.ContainsWorldSphere(centre + Vector3.right * 0.4f, 0.3f, 2f));
+
+            var needed = new Bounds(centre + Vector3.right * 0.6f, Vector3.one * 0.7f);
+            var grown = factory.Regrow(s, needed);
+            yield return null;
+
+            Assert.AreNotEqual(s, grown, "should have produced a new sculpture");
+            Assert.Greater(grown.Info.size, 48, "grid should be larger");
+            Assert.Greater(grown.SampleDensityWorld(centre), 200f, "snow must survive the regrow at the same world position");
+            Assert.IsTrue(grown.WorldBounds.Contains(needed.min) && grown.WorldBounds.Contains(needed.max), "requested bounds covered");
+            Object.Destroy(grown.gameObject);
+            Object.Destroy(factoryGo);
+        }
+
+        [UnityTest]
         public IEnumerator SmoothBrush_ReducesVertexCountOnNoisyBlob()
         {
             float extent = _s.Info.WorldExtent;

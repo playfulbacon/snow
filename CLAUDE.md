@@ -25,7 +25,9 @@ A small, seasonal multiplayer game about sculpting snow in a shared field. Live 
 - Chunked into 16³ chunks (6³ = 216 chunks per sculpture). Dirty-flag chunks; remesh only dirty chunks.
 - Meshing: **classic marching cubes**. Snow's aesthetic hides all MC artifacts. No dual contouring, no octrees.
 - Normals from the **density gradient (central differences)**, not from mesh geometry — smooth-shaded for free. Faceted snow reads as geometry; smooth snow reads as snow.
-- MeshColliders update lazily (on brush release, not per frame).
+- MeshColliders update lazily (on brush release, not per frame). Chunk GameObjects are created lazily (only chunks with geometry).
+- Brush strokes are **multi-target**: every grid under the kernel receives the stroke, so overlapping objects have no dead seams. A wire box (`GridBoundsIndicator`) fades in when the brush nears the aimed grid's wall.
+- Fixed sculptures **auto-regrow**: an additive stroke or fuse that needs room rebuilds the sculpture into a larger, re-centred grid (Burst `Absorb`), capped at `maxGridSize` (192 ≈ 7.7 m). Loose snowballs never regrow; promotion covers them.
 
 ### Terrain = ordinary heightmap, not voxels (built: `Snowfield.Field.SnowTerrain`, 40 m @ 5 cm, 16 chunks; brush raise/carve via `IBrushTarget`, footprints + snowball trenches via `StampDepression`)
 - Ground is a heightmap mesh or Unity Terrain with a **path layer**: a RenderTexture the character stamps footprints/trails into; shader displaces/darkens. Periodic snowfall lerps the RT back toward zero over hours.
