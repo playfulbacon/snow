@@ -34,8 +34,13 @@ namespace Snowfield.Player
         public Transform cursor;
         [Tooltip("Let the brush raise/carve the ground (draw in the snow).")]
         public bool allowGroundSculpting = false;
-        [Tooltip("Holding RMB longer than this starts a throw charge; a shorter tap drops the carried object.")]
+        [Tooltip("Holding RMB longer than this starts a throw charge; a shorter tap places/drops the carried object.")]
         public float throwTapThreshold = 0.2f;
+        [Tooltip("A carried ball rolls on the ground only while the cursor points within this distance of you; otherwise it is held overhead.")]
+        public float rollEngageDistance = 2.2f;
+        [Header("Brush cursor colours")]
+        public Color cursorAddColor = new Color(0.4f, 0.7f, 1f, 0.25f);
+        public Color cursorCarveColor = new Color(1f, 0.35f, 0.3f, 0.3f);
 
         public ToolMode Mode { get; private set; } = ToolMode.Hand;
         public BrushOp CurrentOp { get; private set; } = BrushOp.None;
@@ -143,12 +148,10 @@ namespace Snowfield.Player
             }
             else if (Roller.IsCarrying)
             {
-                if (ThrowCharge <= 0f)
-                {
-                    if (onSnow && Target != Roller.Carried) p = CursorAction.AttachSnowball;
-                    else if (HasGroundHit) p = CursorAction.SetDownSnowball;
-                }
-                s = ThrowCharge > 0f ? CursorAction.Throw : CursorAction.Drop;
+                s = ThrowCharge > 0f ? CursorAction.Throw
+                  : (onSnow && Target != Roller.Carried) ? CursorAction.AttachSnowball
+                  : HasGroundHit ? CursorAction.SetDownSnowball
+                  : CursorAction.Drop;
             }
             else
             {
@@ -241,7 +244,7 @@ namespace Snowfield.Player
             bool shift = kb != null && kb.leftShiftKey.isPressed;
             _placer.HidePreview();
 
-            // --- carrying: the ball rolls at your feet; LMB acts at aim; RMB drops (hold = charge a throw) ---
+            // --- carrying: RMB tap places/drops at aim, hold charges a throw; ball rolls only when the cursor is near ---
             if (Roller.IsCarrying)
             {
                 HideBrushCursor();
@@ -253,26 +256,31 @@ namespace Snowfield.Player
                     : 0f;
 
                 bool onSnow = HasHit && Target != null && Target != Roller.Carried;
+                bool cursorNear = false;
+                if (HasGroundHit && reachOrigin != null)
+                {
+                    Vector3 d = GroundPoint - reachOrigin.position; d.y = 0f;
+                    cursorNear = d.magnitude <= rollEngageDistance;
+                }
                 Vector3? preview = charging ? null
                                  : onSnow ? Roller.AttachCentre(BrushPoint, BrushNormal) : (Vector3?)null;
-                Roller.UpdateCarrying(preview, liftToHand: charging);
+                Roller.UpdateCarrying(preview, liftToHand: charging, rollOnGround: cursorNear && !charging && !onSnow);
 
                 if (rmbUp && _rmbDownTime >= 0f)
                 {
                     float held = Time.time - _rmbDownTime;
                     _rmbDownTime = -1f;
+                    ThrowCharge = 0f;
                     if (Roller.IsCarryingBall && held > throwTapThreshold)
-                        Roller.Throw(viewCamera.transform.position, viewCamera.transform.forward, ThrowCharge);
+                        Roller.Throw(viewCamera.transform.position, viewCamera.transform.forward,
+                            Mathf.Min(1f, (held - throwTapThreshold) / Mathf.Max(0.05f, Roller.chargeTime)));
+                    else if (onSnow)
+                        Roller.AttachTo(Target, BrushPoint, BrushNormal);
+                    else if (HasGroundHit)
+                        Roller.PlaceOnGround(GroundPoint);
                     else
                         Roller.DropHere();
-                    ThrowCharge = 0f;
                     return;
-                }
-
-                if (lmbDown && !charging)
-                {
-                    if (onSnow) Roller.AttachTo(Target, BrushPoint, BrushNormal);
-                    else if (HasGroundHit) Roller.PlaceOnGround(GroundPoint);
                 }
                 return;
             }
@@ -326,6 +334,7 @@ namespace Snowfield.Player
                 {
                     cursor.position = BrushPoint;
                     cursor.localScale = Vector3.one * radius * 2f;
+                    SetCursorColor(shift ? cursorCarveColor : cursorAddColor);
                 }
             }
 
@@ -415,6 +424,16 @@ namespace Snowfield.Player
             }
             _dirtyTargets.Clear();
             _remeshAccumulator = 0f;
+        }
+
+        MaterialPropertyBlock _cursorBlock;
+        void SetCursorColor(Color c)
+        {
+            var mr = cursor != null ? cursor.GetComponent<MeshRenderer>() : null;
+            if (mr == null) return;
+            _cursorBlock ??= new MaterialPropertyBlock();
+            _cursorBlock.SetColor("_BaseColor", c);
+            mr.SetPropertyBlock(_cursorBlock);
         }
 
         void HideBrushCursor()

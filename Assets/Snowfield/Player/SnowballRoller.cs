@@ -203,16 +203,16 @@ namespace Snowfield.Player
         // ---------- per-frame ----------
 
         /// <summary>
-        /// Carrying: a ball rides the ground in front and rolls; a sculpture floats at the anchor.
-        /// <paramref name="previewGrabPoint"/> overrides (attach preview); <paramref name="liftToHand"/> raises a
-        /// charging ball to the anchor.
+        /// Carrying: a ball rolls on the ground only while <paramref name="rollOnGround"/> (cursor near the player);
+        /// otherwise it is held overhead at the anchor. <paramref name="previewGrabPoint"/> overrides (attach preview);
+        /// <paramref name="liftToHand"/> raises a charging ball to the anchor.
         /// </summary>
-        public void UpdateCarrying(Vector3? previewGrabPoint, bool liftToHand = false)
+        public void UpdateCarrying(Vector3? previewGrabPoint, bool liftToHand = false, bool rollOnGround = false)
         {
             if (!IsCarrying) return;
             var t = Carried.transform;
 
-            if (Ball != null && !liftToHand && !previewGrabPoint.HasValue)
+            if (Ball != null && rollOnGround && !liftToHand && !previewGrabPoint.HasValue)
             {
                 RollAtFeet();
                 return;

@@ -587,9 +587,18 @@ namespace Snowfield.Player
             return null;
         }
 
+        /// <summary>Bump whenever CursorAction values are added/removed/reordered: stored rows are keyed by the enum's int.</summary>
+        const int PromptSchemaVersion = 3;
+        [SerializeField, HideInInspector] int _promptSchemaVersion;
+
         /// <summary>Make sure the inspector list has one row per action, with default labels filled in.</summary>
         void EnsurePromptList()
         {
+            if (_promptSchemaVersion != PromptSchemaVersion)
+            {
+                cursor.prompts.Clear(); // enum ints shifted: stored labels/icons would attach to the wrong actions
+                _promptSchemaVersion = PromptSchemaVersion;
+            }
             cursor.prompts.RemoveAll(e => !Enum.IsDefined(typeof(CursorAction), e.action) || e.action == CursorAction.None);
             foreach (CursorAction a in Enum.GetValues(typeof(CursorAction)))
             {
