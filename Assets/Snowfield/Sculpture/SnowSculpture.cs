@@ -177,6 +177,31 @@ namespace Snowfield.Sculpture
             foreach (var c in _colliders) if (c != null) c.sharedMesh = null;
         }
 
+        /// <summary>True if a world-space sphere (plus a margin in voxels) fits inside the grid.</summary>
+        public bool ContainsWorldSphere(float3 worldCentre, float radiusMetres, float marginVoxels)
+        {
+            float3 c = WorldToVoxel(worldCentre);
+            float r = radiusMetres / Info.voxelSize + marginVoxels;
+            return math.all(c - r >= 0f) && math.all(c + r <= Info.size - 1);
+        }
+
+        /// <summary>World-space AABB of the actual snow (non-empty density). Zero-size at the transform when empty.</summary>
+        public Bounds SnowBoundsWorld()
+        {
+            var result = new NativeArray<int3>(2, Allocator.TempJob);
+            new DensityBoundsJob { Density = Grid.Density, Info = Info, Result = result }.Schedule().Complete();
+            int3 min = result[0], max = result[1];
+            result.Dispose();
+            if (math.any(min > max)) return new Bounds(transform.position, Vector3.zero);
+            var b = new Bounds(VoxelToWorld((float3)min), Vector3.zero);
+            for (int i = 1; i < 8; i++)
+            {
+                float3 corner = math.select((float3)min, (float3)(max + 1), new bool3((i & 1) != 0, (i & 2) != 0, (i & 4) != 0));
+                b.Encapsulate(VoxelToWorld(corner));
+            }
+            return b;
+        }
+
         /// <summary>Enable/disable every chunk MeshCollider (a flying ball uses a sphere instead).</summary>
         public void SetCollidersEnabled(bool on)
         {

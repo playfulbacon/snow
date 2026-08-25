@@ -97,6 +97,46 @@ namespace Snowfield.Sculpture
             return big;
         }
 
+        /// <summary>
+        /// Rebuild a fixed sculpture into a larger, re-centred (unrotated) grid that also covers
+        /// <paramref name="neededWorld"/>. Capped at config.maxGridSize; returns the sculpture unchanged at the cap.
+        /// The old object is destroyed; props migrate.
+        /// </summary>
+        public SnowSculpture Regrow(SnowSculpture s, Bounds neededWorld)
+        {
+            var needed = s.SnowBoundsWorld();
+            if (needed.size == Vector3.zero) needed = neededWorld; else needed.Encapsulate(neededWorld);
+            float margin = config.regrowMarginVoxels * config.voxelSize;
+            needed.Expand(margin * 2f);
+
+            int maxSize = Mathf.Max(config.gridSize, config.maxGridSize / 16 * 16);
+            float largestAxis = Mathf.Max(needed.size.x, Mathf.Max(needed.size.y, needed.size.z));
+            int sizeVox = Mathf.CeilToInt(largestAxis / config.voxelSize / 16f) * 16;
+            sizeVox = Mathf.Clamp(sizeVox, s.Info.size, maxSize);
+
+            bool contained = s.WorldBounds.Contains(needed.min) && s.WorldBounds.Contains(needed.max);
+            if (contained) return s;
+            if (sizeVox == s.Info.size && s.Info.size >= maxSize && s.transform.rotation == Quaternion.identity)
+                return s; // at the cap: the wall is final
+
+            float extent = sizeVox * config.voxelSize;
+            Vector3 origin = new Vector3(
+                needed.center.x - extent * 0.5f,
+                Mathf.Min(needed.min.y, s.WorldBounds.min.y),
+                needed.center.z - extent * 0.5f);
+            var big = CreateEmpty(sizeVox, Vector3.zero, origin, Quaternion.identity);
+            big.Absorb(s);
+            foreach (var prop in s.Props.ToArray())
+            {
+                prop.transform.SetParent(big.transform, true);
+                prop.Reattach(big);
+            }
+            big.Remesh();
+            big.RebuildColliders();
+            Destroy(s.gameObject);
+            return big;
+        }
+
         /// <summary>A target that can take more snow: loose balls are promoted to a full grid first.</summary>
         public SnowSculpture EnsureRoom(SnowSculpture target)
         {
@@ -113,6 +153,9 @@ namespace Snowfield.Sculpture
         {
             if (target == null || source == null || target == source) return target;
             target = EnsureRoom(target);
+            var srcBounds = source.WorldBounds;
+            if (!(target.WorldBounds.Contains(srcBounds.min) && target.WorldBounds.Contains(srcBounds.max)))
+                target = Regrow(target, srcBounds);
             target.Absorb(source);
             foreach (var prop in source.Props.ToArray())
             {

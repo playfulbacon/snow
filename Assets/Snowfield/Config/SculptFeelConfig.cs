@@ -38,6 +38,10 @@ namespace Snowfield.Config
         public float snowballGrowthPerMetre = 0.04f;
         [Tooltip("Voxels per axis for a loose snowball's own grid (multiple of 16). Must hold the max diameter plus brush room.")]
         public int snowballGridSize = 48;
+        [Tooltip("Auto-regrow ceiling: a sculpture's grid grows on demand up to this many voxels per axis (multiple of 16).")]
+        public int maxGridSize = 192;
+        [Tooltip("Free voxels the brush wants between its edge and the grid wall before a regrow is triggered.")]
+        public int regrowMarginVoxels = 4;
 
         [Header("Terrain (heightmap field)")]
         [Tooltip("Field side length in metres.")]

@@ -41,7 +41,7 @@ namespace Snowfield.Player
         public bool IsSculpting { get; private set; }
 
         // ---- aim results (refreshed every frame) ----
-        public SnowSculpture Target { get; private set; }
+        public SnowSculpture Target { get; set; }
         public SnowTerrain TargetTerrain { get; private set; }
         public SculptureProp AimedProp { get; private set; }
         /// <summary>A loose, resting snowball under the reticle (it is also <see cref="Target"/>).</summary>
@@ -312,6 +312,15 @@ namespace Snowfield.Player
             if (pressing && target != null)
             {
                 if (!IsSculpting) { IsSculpting = true; _tickAccumulator = 1f / config.ticksPerSecond; } // first tick immediate
+                // Adding at the wall of a fixed sculpture: grow the grid first so the stroke continues seamlessly.
+                if (op == BrushOp.Add && Target != null && Target.GetComponent<Snowball>() == null
+                    && SculptureFactory.Instance != null
+                    && !Target.ContainsWorldSphere(BrushPoint, radius, config.regrowMarginVoxels))
+                {
+                    var grown = SculptureFactory.Instance.Regrow(Target,
+                        new Bounds(BrushPoint, Vector3.one * (radius * 2f + config.regrowMarginVoxels * config.voxelSize * 2f)));
+                    if (grown != Target) { Target = grown; target = grown; }
+                }
                 GatherStrokeTargets(target, allowTerrain, radius);
                 foreach (var t in _strokeTargets) _dirtyTargets.Add(t);
                 _tickAccumulator += Time.deltaTime;
