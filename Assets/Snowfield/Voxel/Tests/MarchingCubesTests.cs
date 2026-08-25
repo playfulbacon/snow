@@ -100,6 +100,19 @@ namespace Snowfield.Voxel.Tests
         }
 
         [Test]
+        public void GridSerializer_RoundTripsSphereExactly()
+        {
+            StampSphere(new float3(16, 16, 16), 9f);
+            var blob = GridSerializer.Encode(_grid.Density);
+            Assert.Less(blob.Length, _grid.Density.Length / 4, "RLE should compress a mostly-empty grid hard");
+            var restored = new NativeArray<byte>(_grid.Density.Length, Allocator.Temp);
+            GridSerializer.Decode(blob, restored);
+            for (int i = 0; i < restored.Length; i++)
+                if (restored[i] != _grid.Density[i]) Assert.Fail($"voxel {i} differs");
+            restored.Dispose();
+        }
+
+        [Test]
         public void AddBrush_RaisesDensity_AndMarksDirty()
         {
             float3 c = new float3(8, 8, 8);

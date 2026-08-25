@@ -104,8 +104,6 @@ namespace Snowfield.Field
         }
     }
 
-    /// <summary>Copy a sample-space AABB from Src to Dst (snapshot for the smooth job).</summary>
-    [BurstCompile]
     /// <summary>Snowfall: lift heights below the fresh surface (0) up by Amount, clamped to 0. Flags changed chunks.</summary>
     [BurstCompile]
     public struct HeightRecoverJob : IJobParallelFor
@@ -129,6 +127,7 @@ namespace Snowfield.Field
         }
     }
 
+    /// <summary>Copy a sample-space AABB from Src to Dst (snapshot for the smooth job).</summary>
     [BurstCompile]
     public struct HeightCopyJob : IJobParallelFor
     {

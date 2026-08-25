@@ -178,6 +178,12 @@ namespace Snowfield.Editor
             cycle.config = config;
             EditorUtility.SetDirty(cycle);
 
+            // --- save/load (own root object) ---
+            var saveGo = GameObject.Find("SaveLoad");
+            if (saveGo == null) saveGo = new GameObject("SaveLoad");
+            if (saveGo.GetComponent<Snowfield.Sculpture.SaveLoadManager>() == null)
+                saveGo.AddComponent<Snowfield.Sculpture.SaveLoadManager>();
+
             // --- HUD (own root object) ---
             var hudGo = GameObject.Find("HUD");
             if (hudGo == null) hudGo = new GameObject("HUD", typeof(RectTransform));

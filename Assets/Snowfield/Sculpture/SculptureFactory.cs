@@ -38,6 +38,21 @@ namespace Snowfield.Sculpture
             return s;
         }
 
+        /// <summary>Bare sculpture with an explicit grid shape and pose; density is the caller's job (loading).</summary>
+        public SnowSculpture CreateEmpty(int gridSize, Vector3 gridOffset, Vector3 position, Quaternion rotation)
+        {
+            var go = new GameObject("Sculpture");
+            go.SetActive(false);
+            go.transform.SetParent(container != null ? container : transform, false);
+            go.transform.SetPositionAndRotation(position, rotation);
+            var s = go.AddComponent<SnowSculpture>();
+            s.EditorAssign(config, snowMaterial);
+            s.gridSizeOverride = gridSize;
+            s.gridOffset = gridOffset;
+            go.SetActive(true);
+            return s;
+        }
+
         /// <summary>
         /// New loose snowball: a small sculpture whose grid is centred on <paramref name="centre"/>, pre-stamped with a sphere.
         /// The root transform is the ball centre (so rolling can rotate it).
