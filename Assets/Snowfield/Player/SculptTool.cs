@@ -160,7 +160,7 @@ namespace Snowfield.Player
                     break;
 
                 case ToolMode.EmptyHand:
-                    if (Roller.IsPushing) { p = CursorAction.PushSnowball; }
+                    if (Roller.IsPushing) { /* busy: no prompts while pushing */ }
                     else if (Roller.IsCarrying)
                     {
                         if (Roller.IsCarryingBall) s = CursorAction.Throw;

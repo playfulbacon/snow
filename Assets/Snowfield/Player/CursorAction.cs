@@ -27,7 +27,7 @@ namespace Snowfield.Player
             CursorAction.Carve => "Carve",
             CursorAction.Smooth => "Smooth",
             CursorAction.StartSnowball => "Start snowball",
-            CursorAction.PushSnowball => "Push",
+            CursorAction.PushSnowball => "Push (hold)",
             CursorAction.PickUpSnowball => "Pick up",
             CursorAction.SetDownSnowball => "Set down",
             CursorAction.AttachSnowball => "Attach",

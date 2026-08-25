@@ -671,6 +671,7 @@ namespace Snowfield.Player
                 if (a == CursorAction.None) continue;
                 var e = FindPrompt(a);
                 if (e == null) { e = new ActionPrompt { action = a }; cursor.prompts.Add(e); }
+                if (e.action == CursorAction.PushSnowball && e.label == "Push") e.label = null; // migrate old default
                 if (string.IsNullOrEmpty(e.label)) e.label = CursorActionInfo.DefaultLabel(a);
             }
         }
