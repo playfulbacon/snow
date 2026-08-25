@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Snowfield.Config;
 using Snowfield.Field;
 using Snowfield.Sculpture;
@@ -79,7 +80,9 @@ namespace Snowfield.Player
         bool _throwArmed;
         float _tickAccumulator;
         float _remeshAccumulator;
-        IBrushTarget _dirtyTarget;
+        readonly HashSet<IBrushTarget> _dirtyTargets = new HashSet<IBrushTarget>();
+        readonly List<IBrushTarget> _strokeTargets = new List<IBrushTarget>();
+        readonly Collider[] _overlapScratch = new Collider[32];
 
         void Awake()
         {
@@ -136,13 +139,14 @@ namespace Snowfield.Player
             ComputeActions();
 
             // timed remesh while a stroke is in progress
-            if (_dirtyTarget != null)
+            if (_dirtyTargets.Count > 0)
             {
                 _remeshAccumulator += Time.deltaTime;
                 if (_remeshAccumulator >= 1f / config.remeshHz)
                 {
                     _remeshAccumulator = 0f;
-                    _dirtyTarget.Remesh();
+                    foreach (var t in _dirtyTargets)
+                        if (!(t is Component c && c == null)) t.Remesh();
                 }
             }
         }
@@ -308,13 +312,15 @@ namespace Snowfield.Player
             if (pressing && target != null)
             {
                 if (!IsSculpting) { IsSculpting = true; _tickAccumulator = 1f / config.ticksPerSecond; } // first tick immediate
-                if (_dirtyTarget != null && _dirtyTarget != target) Flush();
-                _dirtyTarget = target;
+                GatherStrokeTargets(target, allowTerrain, radius);
+                foreach (var t in _strokeTargets) _dirtyTargets.Add(t);
                 _tickAccumulator += Time.deltaTime;
                 float tickDt = 1f / config.ticksPerSecond;
                 int ticks = 0;
                 while (_tickAccumulator >= tickDt && ticks < 8) { _tickAccumulator -= tickDt; ticks++; }
-                for (int i = 0; i < ticks; i++) ApplyTick(target, onTerrain, op, BrushPoint, radius);
+                for (int i = 0; i < ticks; i++)
+                    foreach (var t in _strokeTargets)
+                        ApplyTick(t, t is SnowTerrain, op, BrushPoint, radius);
             }
             else if (IsSculpting && !pressing)
             {
@@ -344,12 +350,40 @@ namespace Snowfield.Player
         }
 
         /// <summary>Finish a stroke: final remesh + collider cook.</summary>
+        /// <summary>Everything the brush sphere touches: the aimed target plus any other grids under the kernel.</summary>
+        void GatherStrokeTargets(IBrushTarget aimed, bool allowTerrain, float radius)
+        {
+            _strokeTargets.Clear();
+            _strokeTargets.Add(aimed);
+            int n = Physics.OverlapSphereNonAlloc(BrushPoint, radius, _overlapScratch, sculptMask, QueryTriggerInteraction.Ignore);
+            for (int i = 0; i < n; i++)
+            {
+                var s = _overlapScratch[i].GetComponentInParent<SnowSculpture>();
+                if (s != null)
+                {
+                    var ball = s.GetComponent<Snowball>();
+                    if (ball != null && ball.IsFlying) continue;
+                    if (Roller != null && s == Roller.Carried) continue;
+                    if (!_strokeTargets.Contains(s)) _strokeTargets.Add(s);
+                    continue;
+                }
+                if (allowTerrain)
+                {
+                    var terrain = _overlapScratch[i].GetComponentInParent<SnowTerrain>();
+                    if (terrain != null && !_strokeTargets.Contains(terrain)) _strokeTargets.Add(terrain);
+                }
+            }
+        }
+
         public void Flush()
         {
-            if (_dirtyTarget == null) return;
-            _dirtyTarget.Remesh();
-            _dirtyTarget.RebuildColliders();
-            _dirtyTarget = null;
+            foreach (var t in _dirtyTargets)
+            {
+                if (t is Component c && c == null) continue; // destroyed mid-stroke (regrow/fuse)
+                t.Remesh();
+                t.RebuildColliders();
+            }
+            _dirtyTargets.Clear();
             _remeshAccumulator = 0f;
         }
 
