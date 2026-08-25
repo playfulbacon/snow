@@ -22,26 +22,12 @@ namespace Snowfield.Player
         // ------------------------------------------------------------------ settings
 
         [Serializable]
-        public class ModeBarSettings
-        {
-            public float boxWidth = 170f;
-            public float boxHeight = 48f;
-            public float gap = 32f;
-            public float bottomMargin = 28f;
-            public int fontSize = 20;
-            [Header("Number badge")]
-            public float badgeSize = 22f;
-            public float badgeGap = 8f;
-            public int badgeFontSize = 14;
-        }
-
-        [Serializable]
         public class AccessoryBarSettings
         {
             public float boxSize = 96f;
             public float gap = 18f;
             [Tooltip("Space between the mode-bar badges and the bottom of the accessory boxes.")]
-            public float gapAboveModeBar = 22f;
+            public float bottomMargin = 40f;
             public float labelHeight = 20f;
             public int labelFontSize = 14;
             public float thumbnailPadding = 6f;
@@ -82,9 +68,12 @@ namespace Snowfield.Player
             public Sprite primaryInputIcon;
             [Tooltip("Sprite shown at the left of the secondary (RMB) prompt.")]
             public Sprite secondaryInputIcon;
+            [Tooltip("Sprite shown at the left of the tertiary (F key) prompt.")]
+            public Sprite tertiaryInputIcon;
             public float inputIconSize = 22f;
             public Vector2 primaryOffset = new Vector2(-110f, -48f);
             public Vector2 secondaryOffset = new Vector2(110f, -48f);
+            public Vector2 tertiaryOffset = new Vector2(0f, -92f);
             public float promptIconSize = 26f;
             public float promptHeight = 34f;
             public float promptPadding = 8f;
@@ -145,7 +134,6 @@ namespace Snowfield.Player
         [Header("Layout")]
         [Tooltip("Re-apply sizes/positions/colours from the settings below every frame. Turn off to hand-edit the generated objects.")]
         public bool applyLayoutFromSettings = true;
-        public ModeBarSettings modeBar = new ModeBarSettings();
         public AccessoryBarSettings accessoryBar = new AccessoryBarSettings();
         public ReticleSettings reticle = new ReticleSettings();
         public CursorSettings cursor = new CursorSettings();
@@ -153,30 +141,28 @@ namespace Snowfield.Player
         public Palette colors = new Palette();
 
         [Header("Edit-mode preview")]
-        public ToolMode previewMode = ToolMode.EmptyHand;
+        public ToolMode previewMode = ToolMode.Hand;
         public bool previewAccessoryBar = true;
         public int previewAccessoryIndex = 0;
         public bool previewChargeRing = false;
         public CursorAction previewPrimary = CursorAction.Smooth;
-        public CursorAction previewSecondary = CursorAction.PickUpSnowball;
+        public CursorAction previewSecondary = CursorAction.Carve;
+        public CursorAction previewTertiary = CursorAction.Grab;
 
         // ------------------------------------------------------------------ generated refs
 
         [Serializable]
-        class ModeItem { public RectTransform root; public Image box, boxOutline, badge, badgeOutline; public Text label, badgeLabel; }
-
         [Serializable]
         class AccessoryItem { public RectTransform root; public Image box, boxOutline, countBox, countOutline; public RawImage thumb; public Text label, count; }
 
-        [SerializeField, HideInInspector] RectTransform _modeBarRoot, _accessoryBarRoot, _reticleRoot, _statusRoot;
-        [SerializeField, HideInInspector] List<ModeItem> _modes = new List<ModeItem>();
+        [SerializeField, HideInInspector] RectTransform _accessoryBarRoot, _reticleRoot, _statusRoot;
         [SerializeField, HideInInspector] List<AccessoryItem> _accessories = new List<AccessoryItem>();
         [SerializeField, HideInInspector] Image[] _reticleBars = new Image[4];
         [SerializeField, HideInInspector] Image[] _reticleShadows = new Image[4];
         [SerializeField, HideInInspector] Image _reticleDot, _reticleDotShadow;
         [SerializeField, HideInInspector] Image _chargeBg, _chargeFill, _cursorIcon;
         [Serializable] class Prompt { public RectTransform root; public Image bg, outline, input, icon; public Text label; }
-        [SerializeField, HideInInspector] Prompt _primary, _secondary;
+        [SerializeField, HideInInspector] Prompt _primary, _secondary, _tertiary;
         static Sprite _ringSprite;
         [SerializeField, HideInInspector] Text _statusLine1, _statusLine2;
 
@@ -226,14 +212,15 @@ namespace Snowfield.Player
         [ContextMenu("Rebuild HUD")]
         public void RebuildNow()
         {
-            _modes.Clear(); _accessories.Clear();
+            _accessories.Clear();
             Build();
             ApplyAll();
         }
 
         bool IsBuilt() =>
-            canvas != null && _modeBarRoot != null && _accessoryBarRoot != null && _reticleRoot != null && _statusRoot != null
-            && _modes.Count == ToolModeInfo.All.Length && _accessories.Count == AccessoryCatalog.Entries.Count
+            canvas != null && _accessoryBarRoot != null && _reticleRoot != null && _statusRoot != null
+            && _accessories.Count == AccessoryCatalog.Entries.Count
+            && _tertiary != null && _tertiary.root != null
             && _statusLine1 != null && _reticleDot != null && _chargeFill != null
             && _cursorIcon != null && _primary != null && _primary.root != null && _primary.input != null && _secondary != null && _secondary.root != null
             && (_accessories.Count == 0 || _accessories[0].count != null);
@@ -256,7 +243,7 @@ namespace Snowfield.Player
 
             // Wipe previously generated children and rebuild deterministically.
             for (int i = canvas.transform.childCount - 1; i >= 0; i--) Kill(canvas.transform.GetChild(i).gameObject);
-            _modes.Clear(); _accessories.Clear();
+            _accessories.Clear();
 
             var root = canvas.transform;
 
@@ -265,25 +252,7 @@ namespace Snowfield.Player
             _statusLine1 = Txt("Line1", _statusRoot, TextAnchor.UpperLeft);
             _statusLine2 = Txt("Line2", _statusRoot, TextAnchor.UpperLeft);
 
-            // --- mode bar (bottom-centre) ---
-            _modeBarRoot = MakeRect("ModeBar", root, new Vector2(0.5f, 0), new Vector2(0.5f, 0), new Vector2(0.5f, 0));
-            foreach (var m in ToolModeInfo.All)
-            {
-                var item = new ModeItem();
-                item.root = MakeRect(ToolModeInfo.DisplayName(m).Replace(" ", ""), _modeBarRoot, new Vector2(0, 0), new Vector2(0, 0), new Vector2(0, 0));
-                item.boxOutline = Img("Outline", item.root);
-                item.box = Img("Box", item.root);
-                item.label = Txt("Label", item.root, TextAnchor.MiddleCenter);
-                item.label.fontStyle = FontStyle.Bold;
-                var badgeRoot = MakeRect("Badge", item.root, new Vector2(0.5f, 1), new Vector2(0.5f, 1), new Vector2(0.5f, 0));
-                item.badgeOutline = Img("Outline", badgeRoot);
-                item.badge = Img("Box", badgeRoot);
-                item.badgeLabel = Txt("Label", badgeRoot, TextAnchor.MiddleCenter);
-                item.badgeLabel.fontStyle = FontStyle.Bold;
-                _modes.Add(item);
-            }
-
-            // --- accessory bar (above mode bar) ---
+            // --- accessory bar (bottom-centre, shown while the Tab overlay is open) ---
             _accessoryBarRoot = MakeRect("AccessoryBar", root, new Vector2(0.5f, 0), new Vector2(0.5f, 0), new Vector2(0.5f, 0));
             foreach (var e in AccessoryCatalog.Entries)
             {
@@ -324,6 +293,7 @@ namespace Snowfield.Player
             _cursorIcon.preserveAspect = true;
             _primary = BuildPrompt("PromptPrimary", _reticleRoot);
             _secondary = BuildPrompt("PromptSecondary", _reticleRoot);
+            _tertiary = BuildPrompt("PromptTertiary", _reticleRoot);
             EnsurePromptList();
         }
 
@@ -350,36 +320,10 @@ namespace Snowfield.Player
             _statusLine1.fontSize = _statusLine2.fontSize = status.fontSize;
             _statusLine1.color = _statusLine2.color = c.statusText;
 
-            // mode bar
-            int n = _modes.Count;
-            float totalW = n * modeBar.boxWidth + (n - 1) * modeBar.gap;
-            _modeBarRoot.anchoredPosition = new Vector2(0, modeBar.bottomMargin);
-            _modeBarRoot.sizeDelta = new Vector2(totalW, modeBar.boxHeight);
-            for (int i = 0; i < n; i++)
-            {
-                var m = _modes[i];
-                m.root.anchoredPosition = new Vector2(i * (modeBar.boxWidth + modeBar.gap), 0);
-                m.root.sizeDelta = new Vector2(modeBar.boxWidth, modeBar.boxHeight);
-                Stretch(m.boxOutline.rectTransform, -ow);
-                Stretch(m.box.rectTransform, 0);
-                Stretch(m.label.rectTransform, 0);
-                m.label.fontSize = modeBar.fontSize;
-                var badgeRoot = (RectTransform)m.badge.transform.parent;
-                badgeRoot.anchoredPosition = new Vector2(0, modeBar.badgeGap);
-                badgeRoot.sizeDelta = Vector2.one * modeBar.badgeSize;
-                Stretch(m.badgeOutline.rectTransform, -ow);
-                Stretch(m.badge.rectTransform, 0);
-                Stretch(m.badgeLabel.rectTransform, 0);
-                m.badgeLabel.fontSize = modeBar.badgeFontSize;
-                m.badgeLabel.color = c.badgeText;
-                m.badgeLabel.text = (i + 1).ToString();
-                m.label.text = ToolModeInfo.DisplayName(ToolModeInfo.All[i]);
-            }
-
             // accessory bar
             int k = _accessories.Count;
             float accW = k * accessoryBar.boxSize + (k - 1) * accessoryBar.gap;
-            float accY = modeBar.bottomMargin + modeBar.boxHeight + modeBar.badgeGap + modeBar.badgeSize + accessoryBar.gapAboveModeBar;
+            float accY = accessoryBar.bottomMargin;
             _accessoryBarRoot.anchoredPosition = new Vector2(0, accY);
             _accessoryBarRoot.sizeDelta = new Vector2(accW, accessoryBar.boxSize);
             for (int i = 0; i < k; i++)
@@ -426,6 +370,7 @@ namespace Snowfield.Player
             Centre(_cursorIcon.rectTransform, Vector2.zero, Vector2.one * cursor.iconSize);
             LayoutPrompt(_primary, cursor.primaryOffset);
             LayoutPrompt(_secondary, cursor.secondaryOffset);
+            LayoutPrompt(_tertiary, cursor.tertiaryOffset);
             var ring = RingSprite();
             _chargeBg.sprite = ring; _chargeFill.sprite = ring;
             _chargeBg.color = c.chargeRingBg; _chargeFill.color = c.chargeRingFill;
@@ -441,17 +386,6 @@ namespace Snowfield.Player
             bool accVisible = playing ? mode == ToolMode.Accessory : previewAccessoryBar;
             int accIndex = playing && placer != null ? placer.SelectedIndex : previewAccessoryIndex;
             var c = colors;
-
-            for (int i = 0; i < _modes.Count; i++)
-            {
-                bool sel = ToolModeInfo.All[i] == mode;
-                var m = _modes[i];
-                m.box.color = sel ? c.selectedBg : c.boxBg;
-                m.label.color = sel ? c.selectedText : c.boxText;
-                m.badge.color = sel ? c.badgeBg : c.badgeBgIdle;
-                m.boxOutline.color = Frame(c.outline, m.box.color);
-                m.badgeOutline.color = Frame(c.outline, m.badge.color);
-            }
 
             _accessoryBarRoot.gameObject.SetActive(accVisible);
             if (accVisible)
@@ -495,6 +429,7 @@ namespace Snowfield.Player
             // action prompts
             ApplyPrompt(_primary, playing ? tool.PrimaryAction : previewPrimary);
             ApplyPrompt(_secondary, playing ? tool.SecondaryAction : previewSecondary);
+            ApplyPrompt(_tertiary, playing ? tool.TertiaryAction : previewTertiary);
 
             // throw charge ring
             float charge = playing ? tool.ThrowCharge : 0f;
@@ -508,15 +443,11 @@ namespace Snowfield.Player
             string line = "";
             if (playing && tool.config != null)
             {
-                line = mode switch
-                {
-                    ToolMode.Sculpt => $"radius {tool.CurrentRadius():0.00} m   rate {tool.config.addRatePerTick:0}/tick @ {tool.config.ticksPerSecond:0} Hz",
-                    ToolMode.EmptyHand => tool.Roller != null && tool.Roller.IsEngaged
+                line = mode == ToolMode.Accessory
+                    ? (placer != null ? placer.Selected.DisplayName : "")
+                    : tool.Roller != null && tool.Roller.IsEngaged
                         ? (tool.Roller.Ball != null ? $"snowball {tool.Roller.Radius * 2f:0.00} m" : "carrying sculpture")
-                        : $"radius {tool.CurrentRadius():0.00} m   strength {tool.config.smoothStrength:0.00}",
-                    ToolMode.Accessory => placer != null ? placer.Selected.DisplayName : "",
-                    _ => "",
-                };
+                        : $"radius {tool.CurrentRadius():0.00} m   rate {tool.config.addRatePerTick:0}/tick @ {tool.config.ticksPerSecond:0} Hz";
             }
             if (playing)
             {
@@ -526,7 +457,7 @@ namespace Snowfield.Player
                 line += $"   ·   aim: {aim}{(tool.AimedProp != null ? " (prop)" : "")} [{tool.AimedColliderPath}]";
             }
             _statusLine1.text = $"[{ToolModeInfo.DisplayName(mode)}]  {line}";
-            _statusLine2.text = $"{ToolModeInfo.Hint(mode)}   ·   Shift / 1-3 change mode · WASD move · Q crouch · E tiptoe · Tab cursor";
+            _statusLine2.text = $"{ToolModeInfo.Hint(mode)}   ·   WASD move · Space jump · Q crouch · E tiptoe · Esc cursor";
         }
 
         // ------------------------------------------------------------------ helpers
@@ -625,7 +556,7 @@ namespace Snowfield.Player
             var entry = FindPrompt(action);
             string label = entry != null && !string.IsNullOrEmpty(entry.label) ? entry.label : CursorActionInfo.DefaultLabel(action);
             var icon = entry != null ? entry.icon : null;
-            var input = p == _primary ? cursor.primaryInputIcon : cursor.secondaryInputIcon;
+            var input = p == _primary ? cursor.primaryInputIcon : p == _secondary ? cursor.secondaryInputIcon : cursor.tertiaryInputIcon;
             float pad = cursor.promptPadding;
 
             // Row: [input icon] [action icon] [label], each part skipped when absent.
@@ -666,7 +597,6 @@ namespace Snowfield.Player
                 if (a == CursorAction.None) continue;
                 var e = FindPrompt(a);
                 if (e == null) { e = new ActionPrompt { action = a }; cursor.prompts.Add(e); }
-                if (e.action == CursorAction.PushSnowball && e.label == "Push") e.label = null; // migrate old default
                 if (string.IsNullOrEmpty(e.label)) e.label = CursorActionInfo.DefaultLabel(a);
             }
         }

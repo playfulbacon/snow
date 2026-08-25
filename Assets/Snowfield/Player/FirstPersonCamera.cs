@@ -47,8 +47,8 @@ namespace Snowfield.Player
             var kb = Keyboard.current;
             var mouse = Mouse.current;
 
-            if (kb != null && kb.tabKey.wasPressedThisFrame) SetCursorLock(!CursorLocked);
             if (kb != null && kb.escapeKey.wasPressedThisFrame) SetCursorLock(false);
+            if (!CursorLocked && mouse != null && mouse.leftButton.wasPressedThisFrame) SetCursorLock(true);
 
             if (mouse != null && CursorLocked)
             {

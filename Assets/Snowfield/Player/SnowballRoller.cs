@@ -105,6 +105,54 @@ namespace Snowfield.Player
             ball.SetState(Snowball.State.Pushing);
         }
 
+        /// <summary>Scoop a handful of snow off the field straight into the hands; leaves a divot.</summary>
+        public void ScoopFrom(Vector3 groundPoint)
+        {
+            if (IsEngaged) return;
+            var factory = SculptureFactory.Instance;
+            if (factory == null) return;
+            float r = config != null ? config.scoopRadius : 0.12f;
+            var ball = factory.CreateSnowball(groundPoint + Vector3.up * r, r);
+            Engage(ball.Sculpture, ball.Centre);
+            ball.SetState(Snowball.State.Carrying);
+            var terrain = SnowTerrain.Instance;
+            if (terrain != null && config != null)
+                terrain.StampDepression(groundPoint, r * 1.6f, config.scoopDivotDepth, 0.6f);
+        }
+
+        /// <summary>Shift pressed while carrying a ball: put it on the ground ahead and roll it.</summary>
+        public void BeginRollFromCarry()
+        {
+            if (!IsCarryingBall || character == null) return;
+            var t = character.transform;
+            Vector3 ahead = t.position + t.forward * (CapsuleRadius + pushGap + Ball.radius);
+            ahead.y = GroundHeightAt(ahead) + Ball.radius;
+            Ball.transform.position = ahead;
+            _lastCharPos = t.position;
+            _lastTrenchPos = ahead;
+            _pushLocalOffset = t.InverseTransformPoint(ahead);
+            _pushLocalOffset.y = 0f;
+            Ball.SetState(Snowball.State.Pushing);
+        }
+
+        /// <summary>Shift released while rolling: lift the ball back into the hands.</summary>
+        public void ReturnToCarry()
+        {
+            if (!IsPushing) return;
+            Ball.Sculpture.Remesh();
+            Ball.SetState(Snowball.State.Carrying);
+        }
+
+        /// <summary>Set the carried object down on the ground directly beneath where it hangs.</summary>
+        public void DropHere()
+        {
+            if (!IsCarrying) return;
+            var t = Carried.transform;
+            Vector3 grabWorld = t.TransformPoint(_grabLocal);
+            Vector3 ground = new Vector3(grabWorld.x, GroundHeightAt(grabWorld), grabWorld.z);
+            PlaceOnGround(ground);
+        }
+
         public void StartPushing(Snowball ball)
         {
             if (IsEngaged || ball == null || !ball.IsLoose || ball.IsFlying) return;

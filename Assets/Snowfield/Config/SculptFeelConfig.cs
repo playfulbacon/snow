@@ -36,6 +36,10 @@ namespace Snowfield.Config
         public float snowballMaxRadius = 0.6f;
         [Tooltip("Radius gained per metre rolled over fresh snow.")]
         public float snowballGrowthPerMetre = 0.04f;
+        [Tooltip("Radius of a freshly scooped handful of snow (m).")]
+        public float scoopRadius = 0.12f;
+        [Tooltip("Depth of the divot a scoop leaves in the field (m).")]
+        public float scoopDivotDepth = 0.04f;
         [Tooltip("Voxels per axis for a loose snowball's own grid (multiple of 16). Must hold the max diameter plus brush room.")]
         public int snowballGridSize = 48;
         [Tooltip("Auto-regrow ceiling: a sculpture's grid grows on demand up to this many voxels per axis (multiple of 16).")]

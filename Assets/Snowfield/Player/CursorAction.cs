@@ -7,15 +7,14 @@ namespace Snowfield.Player
         AddSnow,
         Carve,
         Smooth,
-        StartSnowball,
-        PushSnowball,
-        PickUpSnowball,
         SetDownSnowball,
         AttachSnowball,
         Throw,
         RetrieveAccessory,
         PlaceAccessory,
-        PickUpSculpture,
+        ScoopSnow,
+        Grab,
+        Drop,
     }
 
     public static class CursorActionInfo
@@ -25,15 +24,14 @@ namespace Snowfield.Player
             CursorAction.AddSnow => "Add snow",
             CursorAction.Carve => "Carve",
             CursorAction.Smooth => "Smooth",
-            CursorAction.StartSnowball => "Start snowball",
-            CursorAction.PushSnowball => "Push (hold)",
-            CursorAction.PickUpSnowball => "Pick up",
             CursorAction.SetDownSnowball => "Set down",
             CursorAction.AttachSnowball => "Attach",
-            CursorAction.Throw => "Throw (hold)",
+            CursorAction.Throw => "Throw",
             CursorAction.RetrieveAccessory => "Take back",
             CursorAction.PlaceAccessory => "Place",
-            CursorAction.PickUpSculpture => "Pick up",
+            CursorAction.ScoopSnow => "Scoop",
+            CursorAction.Grab => "Pick up",
+            CursorAction.Drop => "Drop (hold: throw)",
             _ => "",
         };
     }
