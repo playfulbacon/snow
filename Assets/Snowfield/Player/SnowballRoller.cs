@@ -21,6 +21,8 @@ namespace Snowfield.Player
         public SnowCharacter character;
         [Tooltip("Max gap between the character's capsule and the ball surface to start pushing (m).")]
         public float pushReach = 1.2f;
+        [Tooltip("Gap between the character's capsule and the ball surface while rolling (m).")]
+        public float pushGap = 0.35f;
         [Tooltip("Max distance from the character to start a new ball on the ground (m). The ball spawns under the reticle.")]
         public float startReach = 3.5f;
         [Tooltip("Authored hold point: the carried object's grab point sits here. Make it a child of the Player so it turns with you.")]
