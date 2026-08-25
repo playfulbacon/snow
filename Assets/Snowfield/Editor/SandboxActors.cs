@@ -108,10 +108,14 @@ namespace Snowfield.Editor
             rig.character = character;
 
             // --- brush cursor ---
-            // GameObject.Find misses inactive objects (the cursor is saved disabled) — search roots instead.
+            // GameObject.Find misses inactive objects (the cursor is saved disabled) — search everything.
             GameObject cursorGo = null;
             foreach (var root in scene.GetRootGameObjects())
-                if (root.name == "BrushCursor") { cursorGo = root; break; }
+            {
+                foreach (var t in root.GetComponentsInChildren<Transform>(true))
+                    if (t.name == "BrushCursor") { cursorGo = t.gameObject; break; }
+                if (cursorGo != null) break;
+            }
             if (cursorGo == null)
             {
                 cursorGo = GameObject.CreatePrimitive(PrimitiveType.Sphere);
