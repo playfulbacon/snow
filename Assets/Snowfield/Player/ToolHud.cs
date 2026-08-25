@@ -152,7 +152,6 @@ namespace Snowfield.Player
         // ------------------------------------------------------------------ generated refs
 
         [Serializable]
-        [Serializable]
         class AccessoryItem { public RectTransform root; public Image box, boxOutline, countBox, countOutline; public RawImage thumb; public Text label, count; }
 
         [SerializeField, HideInInspector] RectTransform _accessoryBarRoot, _reticleRoot, _statusRoot;
