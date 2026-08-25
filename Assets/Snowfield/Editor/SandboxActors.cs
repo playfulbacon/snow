@@ -193,6 +193,10 @@ namespace Snowfield.Editor
             hud.placer = placer;
             hud.RebuildNow();
 
+            // deleted-component leftovers (e.g. AccessoryInventory) show as Missing Script — sweep them
+            foreach (var t in Object.FindObjectsByType<Transform>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+                GameObjectUtility.RemoveMonoBehavioursWithMissingScript(t.gameObject);
+
             foreach (var o in new Object[] { character, rig, tool, placer, hud }) EditorUtility.SetDirty(o);
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene);
