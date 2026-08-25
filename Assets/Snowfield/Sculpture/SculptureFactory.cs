@@ -104,20 +104,17 @@ namespace Snowfield.Sculpture
         /// </summary>
         public SnowSculpture Regrow(SnowSculpture s, Bounds neededWorld)
         {
+            int maxSize = Mathf.Max(config.gridSize, config.maxGridSize / 16 * 16);
+            if (s.Info.size >= maxSize) return s; // at the cap: the wall is final (cheap check before the density scan)
+
             var needed = s.SnowBoundsWorld();
             if (needed.size == Vector3.zero) needed = neededWorld; else needed.Encapsulate(neededWorld);
             float margin = config.regrowMarginVoxels * config.voxelSize;
             needed.Expand(margin * 2f);
 
-            int maxSize = Mathf.Max(config.gridSize, config.maxGridSize / 16 * 16);
             float largestAxis = Mathf.Max(needed.size.x, Mathf.Max(needed.size.y, needed.size.z));
             int sizeVox = Mathf.CeilToInt(largestAxis / config.voxelSize / 16f) * 16;
-            sizeVox = Mathf.Clamp(sizeVox, s.Info.size, maxSize);
-
-            bool contained = s.WorldBounds.Contains(needed.min) && s.WorldBounds.Contains(needed.max);
-            if (contained) return s;
-            if (sizeVox == s.Info.size && s.Info.size >= maxSize && s.transform.rotation == Quaternion.identity)
-                return s; // at the cap: the wall is final
+            sizeVox = Mathf.Clamp(sizeVox, s.Info.size + 16, maxSize); // always at least one chunk bigger
 
             float extent = sizeVox * config.voxelSize;
             Vector3 origin = new Vector3(
@@ -133,6 +130,7 @@ namespace Snowfield.Sculpture
             }
             big.Remesh();
             big.RebuildColliders();
+            Debug.Log($"[Snowfield] Regrew sculpture {s.Info.size}³ → {sizeVox}³");
             Destroy(s.gameObject);
             return big;
         }

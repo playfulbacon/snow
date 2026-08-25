@@ -31,8 +31,6 @@ namespace Snowfield.Player
         public Transform reachOrigin;
         [Tooltip("Visual brush cursor; scaled to brush diameter.")]
         public Transform cursor;
-        [Tooltip("Loose field items are small; aim at them with a sphere cast of this radius (m).")]
-        public float itemPickRadius = 0.12f;
         [Tooltip("Let Sculpt mode raise/carve the ground (draw in the snow).")]
         public bool allowGroundSculpting = false;
 
@@ -46,7 +44,6 @@ namespace Snowfield.Player
         public SculptureProp AimedProp { get; private set; }
         /// <summary>A loose, resting snowball under the reticle (it is also <see cref="Target"/>).</summary>
         public Snowball AimedSnowball { get; private set; }
-        public WorldItem AimedWorldItem { get; private set; }
         /// <summary>Hit point/normal of whatever the centre ray struck (sculpture, ball, ground...).</summary>
         public float3 BrushPoint { get; private set; }
         public float3 BrushNormal { get; private set; }
@@ -59,7 +56,6 @@ namespace Snowfield.Player
         public string AimedColliderPath { get; private set; } = "";
 
         public SnowballRoller Roller { get; private set; }
-        public AccessoryInventory Inventory => _placer != null ? _placer.Inventory : null;
         /// <summary>0..1 while charging a throw (RMB held with a carried ball); 0 otherwise. Drives the HUD ring.</summary>
         public float ThrowCharge { get; private set; }
         /// <summary>What LMB would do right now (HUD prompt). Recomputed every frame.</summary>
@@ -177,7 +173,6 @@ namespace Snowfield.Player
                     else
                     {
                         if (AimedSnowball != null) { if (Roller.CanPush(AimedSnowball)) p = CursorAction.PushSnowball; s = CursorAction.PickUpSnowball; }
-                        else if (AimedWorldItem != null) { s = CursorAction.PickUpItem; }
                         else if (AimedProp != null) { s = CursorAction.RetrieveAccessory; if (Target != null) p = CursorAction.Smooth; }
                         else if (onSnow) { p = CursorAction.Smooth; s = CursorAction.PickUpSculpture; }
                         else if (HasGroundHit && Roller.CanReachGround(GroundPoint)) p = CursorAction.StartSnowball;
@@ -185,9 +180,8 @@ namespace Snowfield.Player
                     break;
 
                 case ToolMode.Accessory:
-                    if (onSnow && _placer.CanPlaceSelected) p = CursorAction.PlaceAccessory;
+                    if (onSnow) p = CursorAction.PlaceAccessory;
                     if (AimedProp != null) s = CursorAction.RetrieveAccessory;
-                    else if (AimedWorldItem != null) s = CursorAction.PickUpItem;
                     break;
             }
             PrimaryAction = p;
@@ -229,18 +223,10 @@ namespace Snowfield.Player
             TargetTerrain = null;
             AimedProp = null;
             AimedSnowball = null;
-            AimedWorldItem = null;
             AimedColliderPath = "";
             var ray = viewCamera.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
             Vector3 origin = reachOrigin != null ? reachOrigin.position + Vector3.up : ray.origin;
             float rayLength = maxReach + Vector3.Distance(ray.origin, origin);
-
-            // Loose items are thin; a fat cast makes them forgiving to aim at.
-            if (Physics.SphereCast(ray, itemPickRadius, out var fat, rayLength, sculptMask, QueryTriggerInteraction.Collide))
-            {
-                var item = fat.collider.GetComponentInParent<WorldItem>();
-                if (item != null && Vector3.Distance(fat.point, origin) <= maxReach) AimedWorldItem = item;
-            }
 
             if (!Physics.Raycast(ray, out var hit, rayLength, sculptMask, QueryTriggerInteraction.Collide)) return;
             if (Vector3.Distance(hit.point, origin) > maxReach) return;
@@ -313,7 +299,8 @@ namespace Snowfield.Player
             {
                 if (!IsSculpting) { IsSculpting = true; _tickAccumulator = 1f / config.ticksPerSecond; } // first tick immediate
                 // Adding at the wall of a fixed sculpture: grow the grid first so the stroke continues seamlessly.
-                if (op == BrushOp.Add && Target != null && Target.GetComponent<Snowball>() == null
+                var targetBall = Target != null ? Target.GetComponent<Snowball>() : null;
+                if (op == BrushOp.Add && Target != null && (targetBall == null || !targetBall.IsLoose)
                     && SculptureFactory.Instance != null
                     && !Target.ContainsWorldSphere(BrushPoint, radius, config.regrowMarginVoxels))
                 {
@@ -452,7 +439,6 @@ namespace Snowfield.Player
             if (rmbDown)
             {
                 if (AimedSnowball != null) { Roller.PickUp(AimedSnowball.Sculpture, BrushPoint); _throwArmed = false; }
-                else if (AimedWorldItem != null) _placer.Collect(AimedWorldItem);
                 else if (AimedProp != null) _placer.Retrieve(AimedProp);
                 else if (HasHit && Target != null) { Roller.PickUp(Target, BrushPoint); _throwArmed = false; }
                 return;
@@ -464,7 +450,7 @@ namespace Snowfield.Player
                 if (Roller.CanPush(AimedSnowball)) { Roller.StartPushing(AimedSnowball); HideBrushCursor(); }
                 return;
             }
-            if (lmbDown && HasGroundHit && AimedWorldItem == null)
+            if (lmbDown && HasGroundHit)
             {
                 if (Roller.CanReachGround(GroundPoint)) { Roller.StartNew(GroundPoint); HideBrushCursor(); }
                 return;
@@ -486,16 +472,13 @@ namespace Snowfield.Player
             CurrentOp = BrushOp.None;
             if (cursor != null) cursor.gameObject.SetActive(false);
 
-            _placer.UpdatePreview(HasHit && _placer.CanPlaceSelected, BrushPoint, BrushNormal);
+            _placer.UpdatePreview(HasHit, BrushPoint, BrushNormal);
 
             if (mouse == null) return;
             if (mouse.leftButton.wasPressedThisFrame && HasHit && Target != null)
                 _placer.Place(Target, BrushPoint, BrushNormal);
-            if (mouse.rightButton.wasPressedThisFrame)
-            {
-                if (AimedProp != null) _placer.Retrieve(AimedProp);
-                else if (AimedWorldItem != null) _placer.Collect(AimedWorldItem);
-            }
+            if (mouse.rightButton.wasPressedThisFrame && AimedProp != null)
+                _placer.Retrieve(AimedProp);
         }
     }
 }

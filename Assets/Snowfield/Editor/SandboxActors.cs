@@ -11,7 +11,7 @@ namespace Snowfield.Editor
     ///
     ///   Player          SnowCharacter
     ///    ├ CameraRig    FirstPersonCamera (moves Main Camera)
-    ///    ├ SculptTool   SculptTool + AccessoryPlacer + SnowballRoller + AccessoryInventory
+    ///    ├ SculptTool   SculptTool + AccessoryPlacer + SnowballRoller
     ///    └ CarryAnchor  authored hold point for carried objects
     ///   Main Camera     Camera only
     ///   HUD             Canvas + CanvasScaler + ToolHud
@@ -145,8 +145,6 @@ namespace Snowfield.Editor
             tool.sculptMask = ~LayerMask.GetMask("Ignore Raycast");
             var placer = toolGo.GetComponent<AccessoryPlacer>();
             if (placer == null) placer = toolGo.AddComponent<AccessoryPlacer>();
-            var inventory = toolGo.GetComponent<AccessoryInventory>();
-            if (inventory == null) inventory = toolGo.AddComponent<AccessoryInventory>();
             var roller = toolGo.GetComponent<SnowballRoller>();
             if (roller == null) roller = toolGo.AddComponent<SnowballRoller>();
             roller.config = config;
@@ -164,13 +162,9 @@ namespace Snowfield.Editor
             roller.carryAnchor = anchorT;
             EditorUtility.SetDirty(roller);
 
-            // --- loose items scattered over the field ---
-            var scatterGo = GameObject.Find("FieldScatter");
-            if (scatterGo == null) scatterGo = new GameObject("FieldScatter");
-            var scatter = scatterGo.GetComponent<Snowfield.Field.FieldScatter>();
-            if (scatter == null) scatter = scatterGo.AddComponent<Snowfield.Field.FieldScatter>();
-            scatter.groundMask = ~LayerMask.GetMask("Ignore Raycast");
-            EditorUtility.SetDirty(scatter);
+            // scatter/inventory retired: unlimited accessories
+            var oldScatter = GameObject.Find("FieldScatter");
+            if (oldScatter != null) Object.DestroyImmediate(oldScatter);
 
             // --- snowfall cycle (own root object) ---
             var snowfallGo = GameObject.Find("Snowfall");
@@ -186,13 +180,9 @@ namespace Snowfield.Editor
             if (saveGo.GetComponent<Snowfield.Sculpture.SaveLoadManager>() == null)
                 saveGo.AddComponent<Snowfield.Sculpture.SaveLoadManager>();
 
-            // --- grid bounds indicator (own root object) ---
-            var boundsGo = GameObject.Find("GridBounds");
-            if (boundsGo == null) boundsGo = new GameObject("GridBounds");
-            var bounds = boundsGo.GetComponent<GridBoundsIndicator>();
-            if (bounds == null) bounds = boundsGo.AddComponent<GridBoundsIndicator>();
-            bounds.tool = tool;
-            EditorUtility.SetDirty(bounds);
+            // bounds indicator retired
+            var oldBounds = GameObject.Find("GridBounds");
+            if (oldBounds != null) Object.DestroyImmediate(oldBounds);
 
             // --- HUD (own root object) ---
             var hudGo = GameObject.Find("HUD");

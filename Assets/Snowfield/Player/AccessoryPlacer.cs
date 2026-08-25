@@ -12,8 +12,6 @@ namespace Snowfield.Player
     {
         public int SelectedIndex { get; private set; }
         public AccessoryCatalog.Entry Selected => AccessoryCatalog.Entries[SelectedIndex];
-        public AccessoryInventory Inventory { get; private set; }
-        public bool CanPlaceSelected => Inventory == null || Inventory.Has(Selected.Id);
 
         GameObject _preview;
         int _previewIndex = -1;
@@ -21,12 +19,6 @@ namespace Snowfield.Player
         /// <summary>Thumbnails rendered once at startup; index-aligned with the catalog.</summary>
         public IReadOnlyList<Texture2D> Thumbnails => _thumbs;
         readonly List<Texture2D> _thumbs = new List<Texture2D>();
-
-        void Awake()
-        {
-            Inventory = GetComponent<AccessoryInventory>();
-            if (Inventory == null) Inventory = gameObject.AddComponent<AccessoryInventory>();
-        }
 
         void Start() => RenderThumbnails();
 
@@ -70,10 +62,9 @@ namespace Snowfield.Player
             pos = point - normal * Selected.Sink;
         }
 
-        /// <summary>Place the selected accessory if the inventory has one. Returns null otherwise.</summary>
+        /// <summary>Place the selected accessory (unlimited supply).</summary>
         public SculptureProp Place(SnowSculpture sculpture, Vector3 point, Vector3 normal)
         {
-            if (Inventory != null && !Inventory.TryTake(Selected.Id)) return null;
             Pose(point, normal, out var pos, out var rot);
             var go = Selected.Build();
             AccessoryCatalog.SetColliders(go, true);
@@ -83,20 +74,11 @@ namespace Snowfield.Player
             return prop;
         }
 
-        /// <summary>Take a placed accessory off its sculpture and back into the inventory.</summary>
+        /// <summary>Take a placed accessory off its sculpture.</summary>
         public void Retrieve(SculptureProp prop)
         {
             if (prop == null) return;
-            Inventory?.Add(prop.prefabId);
             prop.Remove();
-        }
-
-        /// <summary>Pick a loose item up off the field.</summary>
-        public void Collect(WorldItem item)
-        {
-            if (item == null) return;
-            Inventory?.Add(item.prefabId);
-            Destroy(item.gameObject);
         }
 
         // ---------- thumbnails ----------

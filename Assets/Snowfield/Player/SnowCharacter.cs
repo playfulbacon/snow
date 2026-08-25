@@ -1,4 +1,5 @@
 using Snowfield.Field;
+using Snowfield.Sculpture;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -40,6 +41,7 @@ namespace Snowfield.Player
         CharacterController _cc;
         float _verticalVelocity;
         float _lastGroundedTime;
+        float _lastSnowTouchTime = -999f;
         float _walkedSinceStep;
         int _stepSide = 1;
 
@@ -71,10 +73,13 @@ namespace Snowfield.Player
                 if (kb.aKey.isPressed || kb.leftArrowKey.isPressed) input.x -= 1;
                 if (kb.qKey.isPressed) CurrentStance = Stance.Crouch;
                 else if (kb.eKey.isPressed) CurrentStance = Stance.Tiptoe;
-                if (kb.spaceKey.wasPressedThisFrame && Time.time - _lastGroundedTime <= coyoteTime)
+                bool canJump = Time.time - _lastGroundedTime <= coyoteTime
+                            || Time.time - _lastSnowTouchTime <= coyoteTime; // touching a sculpture counts: climb by hopping
+                if (kb.spaceKey.wasPressedThisFrame && canJump)
                 {
                     _verticalVelocity = Mathf.Sqrt(2f * -gravity * jumpHeight);
                     _lastGroundedTime = -999f; // consume
+                    _lastSnowTouchTime = -999f;
                 }
             }
             input = Vector2.ClampMagnitude(input, 1f);
@@ -129,6 +134,12 @@ namespace Snowfield.Player
             _stepSide = -_stepSide;
             Vector3 foot = transform.position + transform.right * (_stepSide * 0.12f);
             terrain.StampDepression(foot, cfg.footprintRadius, cfg.footprintDepth, 0.5f);
+        }
+
+        void OnControllerColliderHit(ControllerColliderHit hit)
+        {
+            if (hit.collider.GetComponentInParent<SnowSculpture>() != null)
+                _lastSnowTouchTime = Time.time;
         }
 
         void ApplyHeight()

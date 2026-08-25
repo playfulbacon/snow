@@ -158,7 +158,7 @@ namespace Snowfield.Player
         public int previewAccessoryIndex = 0;
         public bool previewChargeRing = false;
         public CursorAction previewPrimary = CursorAction.Smooth;
-        public CursorAction previewSecondary = CursorAction.PickUpItem;
+        public CursorAction previewSecondary = CursorAction.PickUpSnowball;
 
         // ------------------------------------------------------------------ generated refs
 
@@ -457,22 +457,18 @@ namespace Snowfield.Player
             if (accVisible)
             {
                 var thumbs = playing && placer != null ? placer.Thumbnails : null;
-                var inv = playing && placer != null ? placer.Inventory : null;
                 for (int i = 0; i < _accessories.Count; i++)
                 {
                     bool sel = i == accIndex;
                     var a = _accessories[i];
-                    int n = inv != null ? inv.Count(AccessoryCatalog.Entries[i].Id) : (playing ? 0 : 3);
-                    bool empty = n <= 0;
-                    Color tint = empty ? c.emptyTint : Color.white;
-                    a.box.color = (sel ? c.selectedBg : c.boxBg) * tint;
-                    a.label.color = (sel ? c.selectedText : c.boxText) * tint;
+                    a.box.color = sel ? c.selectedBg : c.boxBg;
+                    a.label.color = sel ? c.selectedText : c.boxText;
                     var tex = thumbs != null && i < thumbs.Count ? thumbs[i] : null;
                     a.thumb.texture = tex;
-                    a.thumb.color = (tex != null ? Color.white : c.thumbnailPlaceholder) * tint;
-                    a.count.text = n.ToString();
-                    a.countBox.color = c.countBg * tint;
-                    a.count.color = c.countText * tint;
+                    a.thumb.color = tex != null ? Color.white : c.thumbnailPlaceholder;
+                    a.countBox.color = c.countBg;
+                    a.count.color = c.countText;
+                    if (a.countBox != null) ((RectTransform)a.countBox.transform.parent).gameObject.SetActive(false); // unlimited supply
                     a.boxOutline.color = Frame(c.outline, a.box.color);
                     a.countOutline.color = Frame(c.outline, a.countBox.color);
                 }
@@ -526,7 +522,6 @@ namespace Snowfield.Player
             {
                 string aim = tool.AimedSnowball != null ? "loose snowball"
                            : tool.Target != null ? (tool.Target.GetComponent<Snowball>() != null ? "fixed snowball" : "sculpture")
-                           : tool.AimedWorldItem != null ? "item"
                            : tool.HasGroundHit ? "ground" : "nothing";
                 line += $"   ·   aim: {aim}{(tool.AimedProp != null ? " (prop)" : "")} [{tool.AimedColliderPath}]";
             }
