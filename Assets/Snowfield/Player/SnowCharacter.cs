@@ -16,6 +16,10 @@ namespace Snowfield.Player
         public float walkSpeed = 3.2f;
         public float turnSmoothing = 12f;
         public float gravity = -18f;
+        [Tooltip("Jump height in metres (Space).")]
+        public float jumpHeight = 0.9f;
+        [Tooltip("Grace period after leaving the ground where a jump still fires (s).")]
+        public float coyoteTime = 0.12f;
         [Tooltip("Rotate to face the movement direction (third person). Off for first person, where the camera rig sets yaw.")]
         public bool faceMovementDirection = true;
 
@@ -35,6 +39,7 @@ namespace Snowfield.Player
 
         CharacterController _cc;
         float _verticalVelocity;
+        float _lastGroundedTime;
         float _walkedSinceStep;
         int _stepSide = 1;
 
@@ -66,6 +71,11 @@ namespace Snowfield.Player
                 if (kb.aKey.isPressed || kb.leftArrowKey.isPressed) input.x -= 1;
                 if (kb.qKey.isPressed) CurrentStance = Stance.Crouch;
                 else if (kb.eKey.isPressed) CurrentStance = Stance.Tiptoe;
+                if (kb.spaceKey.wasPressedThisFrame && Time.time - _lastGroundedTime <= coyoteTime)
+                {
+                    _verticalVelocity = Mathf.Sqrt(2f * -gravity * jumpHeight);
+                    _lastGroundedTime = -999f; // consume
+                }
             }
             input = Vector2.ClampMagnitude(input, 1f);
 
@@ -92,7 +102,11 @@ namespace Snowfield.Player
                 transform.rotation = Quaternion.Slerp(transform.rotation, target, 1f - Mathf.Exp(-turnSmoothing * Time.deltaTime));
             }
 
-            if (_cc.isGrounded && _verticalVelocity < 0f) _verticalVelocity = -2f;
+            if (_cc.isGrounded)
+            {
+                _lastGroundedTime = Time.time;
+                if (_verticalVelocity < 0f) _verticalVelocity = -2f;
+            }
             _verticalVelocity += gravity * Time.deltaTime;
 
             Vector3 before = transform.position;
