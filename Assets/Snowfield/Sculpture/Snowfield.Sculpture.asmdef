@@ -1,7 +1,14 @@
 {
   "name": "Snowfield.Sculpture",
   "rootNamespace": "Snowfield.Sculpture",
-  "references": ["Snowfield.Voxel","Snowfield.Config","Unity.Burst","Unity.Collections","Unity.Mathematics"],
+  "references": [
+    "Snowfield.Voxel",
+    "Snowfield.Config",
+    "Unity.Burst",
+    "Unity.Collections",
+    "Unity.Mathematics",
+    "Unity.InputSystem"
+  ],
   "includePlatforms": [],
   "excludePlatforms": [],
   "allowUnsafeCode": true,

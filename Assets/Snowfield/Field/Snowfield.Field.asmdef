@@ -7,7 +7,8 @@
     "Snowfield.Sculpture",
     "Snowfield.Voxel",
     "Unity.Burst",
-    "Unity.Collections"
+    "Unity.Collections",
+    "Unity.InputSystem"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],

@@ -4,6 +4,7 @@ using System.IO;
 using Snowfield.Voxel;
 using Unity.Collections;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 namespace Snowfield.Sculpture
 {
@@ -33,8 +34,10 @@ namespace Snowfield.Sculpture
 
         void Update()
         {
-            if (Input.GetKeyDown(KeyCode.F5)) SaveAll();
-            if (Input.GetKeyDown(KeyCode.F9)) LoadAll();
+            var kb = Keyboard.current;
+            if (kb == null) return;
+            if (kb.f5Key.wasPressedThisFrame) SaveAll();
+            if (kb.f9Key.wasPressedThisFrame) LoadAll();
         }
 
         // ------------------------------------------------------------------ save

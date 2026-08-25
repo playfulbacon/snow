@@ -1,5 +1,6 @@
 using Snowfield.Config;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 namespace Snowfield.Field
 {
@@ -23,8 +24,10 @@ namespace Snowfield.Field
             if (config == null) return;
 
             // Debug dump: hold N for a visible blizzard.
-            if (Input.GetKey(KeyCode.N))
+            var kb = Keyboard.current;
+            if (kb != null && kb.nKey.isPressed)
             {
+                if (kb.nKey.wasPressedThisFrame) Debug.Log("[Snowfield] Let it snow (hold N)");
                 terrain.RecoverTowardFresh(config.letItSnowPerSecond * Time.deltaTime);
                 _accumulator = 0f;
                 return;
