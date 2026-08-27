@@ -73,6 +73,11 @@ namespace Snowfield.Sculpture
             foreach (var s in FindObjectsByType<SnowSculpture>(FindObjectsSortMode.None))
             {
                 if (s.Grid == null || !s.Grid.IsCreated) continue;
+                // A ball someone (local or remote) is holding or has in the air would reload hovering at the
+                // hand pose with no physics to bring it down. A handful of snow is not worth persisting.
+                var ball = s.GetComponent<Snowball>();
+                if (ball != null && ball.IsLoose &&
+                    (ball.Current == Snowball.State.Carrying || ball.Current == Snowball.State.Flying)) continue;
                 var record = ToRecord(s);
                 File.WriteAllText(Path.Combine(Dir, $"s{i}.json"), JsonUtility.ToJson(new SculptureFile { sculpture = record }));
                 i++;

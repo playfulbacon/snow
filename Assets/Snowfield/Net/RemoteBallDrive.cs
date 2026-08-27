@@ -27,6 +27,28 @@ namespace Snowfield.Net
             if (drive != null) Destroy(drive);
         }
 
+        /// <summary>
+        /// Session teardown: no Rest/Fuse event is ever coming for this ball, so it would stay a non-interactable
+        /// ghost — and a survivor who re-hosts would share that bricked state. Ground it and make it real again.
+        /// </summary>
+        public void SettleInPlace()
+        {
+            if (_sculpture == null) { Destroy(this); return; }
+            var ground = SnowGround.Instance;
+            if (_ball != null && ground != null && ground.IsCreated)
+            {
+                Vector3 p = transform.position;
+                p.y = ground.SampleHeight(p) + _ball.radius;
+                transform.position = p;
+            }
+            SnowWorldSync.SetInteractableDeep(_sculpture, true);
+            if (_ball != null) _ball.SetState(Snowball.State.Resting);
+            _sculpture.Remesh();
+            _sculpture.ForceRebuildAllColliders();
+            Physics.SyncTransforms();
+            Destroy(this);
+        }
+
         public bool IsCarriedMode => !_flying;
 
         /// <summary>True once a carried-pose update has actually arrived (a fresh drive has seen none).</summary>

@@ -19,9 +19,17 @@ namespace Snowfield.Net
         static string _channel;
         static bool _initialized;
         static VoiceTicker _ticker;
+        static Task _leaveTask;
 
         public static async Task JoinAsync(string sessionId)
         {
+            // A rejoin races the previous session's teardown: joining while LeaveAsync is suspended between
+            // channel-leave and logout would get its fresh channel torn down under it. Wait the leave out.
+            if (_leaveTask != null)
+            {
+                try { await _leaveTask; } catch { /* logged inside */ }
+                _leaveTask = null;
+            }
             if (VivoxService.Instance == null)
             {
                 Debug.LogWarning("[SnowNet] Vivox service not present (not enabled in the Unity Cloud dashboard?) — no voice.");
@@ -51,14 +59,22 @@ namespace Snowfield.Net
             }
         }
 
-        public static async Task LeaveAsync()
+        public static Task LeaveAsync() => _leaveTask = LeaveInternalAsync();
+
+        static async Task LeaveInternalAsync()
         {
             if (!Joined || VivoxService.Instance == null) return;
             Joined = false;
             try
             {
-                await VivoxService.Instance.LeaveAllChannelsAsync();
+                // The channel leave routinely throws after a network drop; logout must still run.
+                try { await VivoxService.Instance.LeaveAllChannelsAsync(); }
+                catch (System.Exception e) { Debug.LogWarning($"[SnowNet] Voice channel leave failed: {e.Message}"); }
                 await VivoxService.Instance.LogoutAsync();
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogWarning($"[SnowNet] Voice logout failed: {e.Message}");
             }
             finally
             {

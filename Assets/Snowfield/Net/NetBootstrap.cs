@@ -215,13 +215,26 @@ namespace Snowfield.Net
 
         async void OnDestroy()
         {
+            // Start the session leave BEFORE any await: on application quit the sync context never pumps
+            // again, so anything after the first await is dead code — and a lobby nobody left keeps matching
+            // new players into a dead session for ~30 s until the service reaps it. The synchronous prefix of
+            // Leave/Delete puts the HTTP call on the wire even mid-quit. Hosts delete outright so the lobby
+            // dies with them instead of migrating to a client holding dead relay metadata.
+            var session = _session;
+            _session = null;
+            Task leave = null;
+            try
+            {
+                if (session != null)
+                    leave = session.IsHost ? session.AsHost().DeleteAsync() : session.LeaveAsync();
+            }
+            catch { /* quitting */ }
             try
             {
                 await VoiceChat.LeaveAsync();
-                if (_session != null) await _session.LeaveAsync();
+                if (leave != null) await leave;
             }
             catch { /* quitting */ }
-            _session = null;
         }
     }
 }

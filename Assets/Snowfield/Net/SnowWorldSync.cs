@@ -20,7 +20,7 @@ namespace Snowfield.Net
     /// </summary>
     public sealed class SnowWorldSync
     {
-        public const byte Version = 1;
+        public const byte Version = 2;
 
         enum Kind : byte
         {
@@ -150,6 +150,12 @@ namespace Snowfield.Net
             w.Write(info.resultRadius);
             w.Write(chunkId);
             WriteIds(w, info.targets);
+            // The chunk's actual density rides along (a 48³ handful RLE-compresses to ~1-2 KB): ExtractFrom on a
+            // remote reads whatever is under the kernel THERE, so a scoop racing a concurrent stroke would fork
+            // the chunk per peer. The blob makes every peer's chunk byte-identical regardless of arrival order.
+            byte[] blob = GridSerializer.Encode(info.chunk.Sculpture.Grid.Density);
+            w.Write(blob.Length);
+            w.Write(blob);
             Dispatch(w, ms);
         }
 
@@ -171,6 +177,7 @@ namespace Snowfield.Net
             w.Write(sourceId);
             WriteV3(w, source.transform.position);
             WriteQ(w, source.transform.rotation);
+            w.Write(source.GetComponent<Snowball>() is { } ball ? ball.radius : 0f);
             Dispatch(w, ms);
         }
 
@@ -192,17 +199,26 @@ namespace Snowfield.Net
             WriteV3(w, ball.transform.position);
             WriteV3(w, velocity);
             WriteV3(w, spin);
+            w.Write(ball.radius); // rolling growth only streams unreliably; the throw pins the final size
             Dispatch(w, ms);
         }
 
         void OnRested(SnowSculpture s, Vector3 pos, Quaternion rot)
         {
             if (Send == null || !Registry.TryGetId(s, out ulong id)) return;
+            Send(EncodeRest(id, pos, rot, s.GetComponent<Snowball>() is { } ball ? ball.radius : 0f));
+        }
+
+        /// <summary>Also used by the host to settle a ball whose carrier disconnected mid-carry.</summary>
+        public byte[] EncodeRest(ulong id, Vector3 pos, Quaternion rot, float radius)
+        {
             var w = NewEvent(Kind.Rest, out var ms);
             w.Write(id);
             WriteV3(w, pos);
             WriteQ(w, rot);
-            Dispatch(w, ms);
+            w.Write(radius);
+            w.Flush();
+            return ms.ToArray();
         }
 
         void OnGrabbed(SnowSculpture s)
@@ -322,13 +338,17 @@ namespace Snowfield.Net
             float resultRadius = r.ReadSingle();
             ulong chunkId = r.ReadUInt64();
             ReadTargets(r, _targetScratch);
+            int blobLen = r.ReadInt32();
+            if (blobLen <= 0 || blobLen > 4 * 1024 * 1024)
+            { Debug.LogWarning($"[SnowNet] Scoop dropped: bad blob length {blobLen}"); return; }
+            byte[] blob = r.ReadBytes(blobLen);
 
             Registry.PendingId = chunkId;
             var chunk = factory.CreateEmptySnowball(point, radius);
             Registry.PendingId = null;
-            foreach (var s in _targetScratch)
-                if (s != chunk.Sculpture)
-                    chunk.Sculpture.ExtractFrom(s, point, radius, cfg.addShoulder);
+            // The chunk contents come off the wire (byte-identical on every peer); only the carve is replayed.
+            GridSerializer.Decode(blob, chunk.Sculpture.Grid.Density);
+            chunk.Sculpture.Grid.MarkAllDirty();
             foreach (var s in _targetScratch)
             {
                 if (s == chunk.Sculpture) continue;
@@ -370,6 +390,7 @@ namespace Snowfield.Net
             ulong sourceId = r.ReadUInt64();
             Vector3 pos = ReadV3(r);
             Quaternion rot = ReadQ(r);
+            float radius = r.ReadSingle();
             if (!Registry.TryGet(targetId, out var target) || !Registry.TryGet(sourceId, out var source))
             {
                 Debug.LogWarning($"[SnowNet] Fuse dropped: unknown id {targetId:x}/{sourceId:x}");
@@ -377,8 +398,23 @@ namespace Snowfield.Net
             }
             RemoteBallDrive.Clear(source);
             source.transform.SetPositionAndRotation(pos, rot);
+            ReconcileRadius(source, radius);
             SetInteractableDeep(source, true);
             factory.Fuse(target, source);
+        }
+
+        /// <summary>
+        /// Snap a ball's radius to the reliable-event value: rolling growth only reaches peers through the lossy
+        /// 10 Hz pose stream, and Promote/Fuse geometry derives from the radius, so it must be exact at the
+        /// moment anything structural consumes the ball.
+        /// </summary>
+        static void ReconcileRadius(SnowSculpture s, float radius)
+        {
+            if (radius <= 0f || radius > 2f) return;
+            var ball = s.GetComponent<Snowball>();
+            if (ball == null || Mathf.Abs(ball.radius - radius) < 1e-4f) return;
+            if (radius > ball.radius) { ball.Grow(radius); s.Remesh(); }
+            else ball.radius = radius; // never came up: the density is already there, only the number was high
         }
 
         void ApplyRegrow(BinaryReader r)
@@ -389,6 +425,12 @@ namespace Snowfield.Net
             int sizeVox = r.ReadInt32();
             Vector3 origin = ReadV3(r);
             if (!Registry.TryGet(id, out var s)) { Debug.LogWarning($"[SnowNet] Regrow dropped: unknown id {id:x}"); return; }
+            // Wire values bypass Regrow's clamp; a hostile/corrupt size would allocate gigabytes (or overflow
+            // VoxelCount into an out-of-bounds native write in release builds). Mirror the design cap.
+            var cfg = Config;
+            int maxSize = cfg != null ? Mathf.Max(cfg.gridSize, cfg.maxGridSize / 16 * 16) : 512;
+            if (sizeVox <= 0 || sizeVox % 16 != 0 || sizeVox > maxSize)
+            { Debug.LogWarning($"[SnowNet] Regrow dropped: bad grid size {sizeVox}"); return; }
             factory.RegrowExact(s, sizeVox, origin);
         }
 
@@ -398,10 +440,12 @@ namespace Snowfield.Net
             Vector3 pos = ReadV3(r);
             Vector3 vel = ReadV3(r);
             Vector3 spin = ReadV3(r);
+            float radius = r.ReadSingle();
             if (!Registry.TryGet(id, out var s)) return;
             var ball = s.GetComponent<Snowball>();
             if (ball == null) return;
             s.transform.position = pos;
+            ReconcileRadius(s, radius);
             ball.SetState(Snowball.State.Flying);
             RemoteBallDrive.Ensure(s).BeginFlight(vel, spin);
         }
@@ -411,9 +455,11 @@ namespace Snowfield.Net
             ulong id = r.ReadUInt64();
             Vector3 pos = ReadV3(r);
             Quaternion rot = ReadQ(r);
+            float radius = r.ReadSingle();
             if (!Registry.TryGet(id, out var s)) return;
             RemoteBallDrive.Clear(s);
             s.transform.SetPositionAndRotation(pos, rot);
+            ReconcileRadius(s, radius);
             SetInteractableDeep(s, true);
             var ball = s.GetComponent<Snowball>();
             if (ball != null) ball.SetState(Snowball.State.Resting);
@@ -471,7 +517,7 @@ namespace Snowfield.Net
         }
 
         /// <summary>Mirror of SnowballRoller.SetInteractable for replay (that one is private).</summary>
-        static void SetInteractableDeep(SnowSculpture s, bool on)
+        internal static void SetInteractableDeep(SnowSculpture s, bool on)
         {
             int layer = on ? 0 : LayerMask.NameToLayer("Ignore Raycast");
             foreach (var t in s.GetComponentsInChildren<Transform>(true)) t.gameObject.layer = layer;

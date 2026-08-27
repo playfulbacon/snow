@@ -45,11 +45,23 @@ gameplay code ──raises──▶ SculptureNet (static seam, Snowfield.Sculptu
 - **Ground deformation**: scoop divots replay inside the scoop event; footprints come free — remote avatars
   get `SnowFootprints` at spawn (`SnowNetGlue`) and stamp locally from their animated bones.
 - **Late join**: the host's world is THE world. A joining client wipes its local field and receives every
-  sculpture as one binary record (pose + grid shape + RLE density blob + props — the save format, id-tagged),
-  paced 3/frame over reliable-fragmented RPCs. ~1 MB for a 58-sculpture field.
+  sculpture as one binary record (pose + grid shape + RLE density blob + props — the save format, id-tagged).
+  The host encodes synchronously inside the connect callback and streams records in 32 KB parts (NGO caps a
+  single RPC's params at 64 KB; a grown 192³ record is bigger); the client holds all world events until the
+  promised snapshot count lands, then drains them in order — so "snapshot + later events" is exactly the
+  world, with no join-window races. ~1 MB for a 58-sculpture field.
+- **Scoops carry the chunk's density blob** in the event (a 48³ handful is ~1–2 KB RLE), so every peer's
+  hand-chunk is byte-identical even when a scoop races a concurrent stroke on the same snow.
+- **Disconnects**: the host tracks which ball each client's pose stream drives; if a carrier drops mid-carry,
+  the host settles the orphan onto the snow with a broadcast Rest event. On session teardown every peer
+  sweeps remaining remote-driven balls back to interactable (`RemoteBallDrive.SettleInPlace`), so a survivor
+  who re-hosts never shares a bricked world. Ball radius rides every Rest/Throw/Fuse event and is reconciled
+  before anything structural consumes it (the 10 Hz stream alone is lossy).
 - **Saves**: hosts keep playing on field 0 (their field is the shared one). Clients switch to field slot 1
-  for the session so quit-autosave never overwrites their own solo field with the host's world. F9 (manual
-  load) is blocked while in a session.
+  for the session — and deliberately stay there for the rest of the process (NGO despawns the channel during
+  app quit and on host loss, while the world in memory is still the shared one; resetting the slot would let
+  quit-autosave overwrite the solo field). Balls being carried or in flight are skipped by SaveAll (they
+  would reload hovering). F9 (manual load) is blocked while in a session.
 - **Avatars**: the scene Player is never a NetworkObject. `NetAvatar.prefab` (PlayerPrefab) mirrors the local
   player's root pose (owner-authoritative NetworkTransform) + four animator floats; the owner hides its own
   avatar. No PlayerController, no colliders on avatars — so SnowDeform's window keeps following the real
@@ -92,13 +104,16 @@ into the URI — every peer must use identical `Channel3DProperties` (32 m audib
 
 ## Known gaps / next
 
-- No drift repair yet: same-platform peers stay in lockstep (byte-quantized ops, explicit tick counts), but
-  the planned chunk-checksum → RLE-blob resync (CLAUDE.md) has a ready-made slot: `EncodeSnapshot` is the
-  repair payload, keyed by registry id.
+- No drift repair yet: same-platform peers stay in lockstep (byte-quantized ops, explicit tick counts, exact
+  regrow geometry, scoop blobs), but the planned chunk-checksum → RLE-blob resync (CLAUDE.md) has a
+  ready-made slot: `EncodeSnapshot` is the repair payload, keyed by registry id, and `ApplySnapshot` already
+  replaces-by-id. ~20 lines in SnowNetChannel when drift is ever observed.
+- Concurrent Smooth strokes on the same voxels apply in different orders origin-vs-others (local-first vs
+  host-order) — the one remaining non-commuting case; bounded, cosmetic, and covered by future drift repair.
 - Remote flights don't collide with sculptures (pure ballistic + ground-slide until the splat event lands).
 - Jump animation isn't replicated (remotes play the fall blend); grounded flag is.
 - Prop remove matches by (prefabId, nearest localPos) — two identical props at the same spot could pick the
   wrong twin. Harmless for now.
-- Concurrent edits of the SAME sculpture apply in different orders origin-vs-others (local-first vs
-  host-order). Density is forgiving; drift repair is the eventual answer.
-- If the session drops mid-carry, remote-side carried state is cleaned up by the next session's snapshot.
+- After a session ends, the (ex-)client keeps playing the shared world and keeps saving it to slot 1; their
+  own field 0 returns on next launch. An explicit "return to my field" (SetField(0)+LoadAll) is a UX decision
+  for later.
