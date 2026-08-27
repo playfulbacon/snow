@@ -75,6 +75,24 @@ namespace Snowfield.Config
         [Tooltip("Footprints and trenches cannot pack the snow deeper than this (m). Carving can.")]
         public float terrainPathDepthCap = 0.12f;
 
+        [Header("Hands")]
+        [Tooltip("Snow at least this big (radius, m) takes both hands; anything smaller sits in one palm.")]
+        public float handTwoHandedRadius = 0.22f;
+        [Tooltip("How many times its natural length an arm may stretch to reach the snow. 1 disables stretching.")]
+        [Range(1f, 6f)] public float handMaxStretch = 3.5f;
+        [Tooltip("Spring stiffness pulling a hand onto its target. Higher snaps to it, lower lets the arm trail.")]
+        public float handSpringStiffness = 260f;
+        [Tooltip("Spring damping. Below 2*sqrt(stiffness) (~32) the hand overshoots and wobbles on arrival.")]
+        public float handSpringDamping = 22f;
+        [Tooltip("How far a free hand drifts toward snow it could scoop, as a ready pose. 0 disables it.")]
+        [Range(0f, 1f)] public float handHoverWeight = 0.3f;
+        [Tooltip("Seconds a hand stays on snow it just let go of (fuse, drop, throw, accessory).")]
+        public float handFollowThrough = 0.18f;
+        [Tooltip("How far a patting hand bobs off the surface (m).")]
+        public float handPatAmplitude = 0.05f;
+        [Tooltip("Pats per second while smoothing.")]
+        public float handPatRate = 5f;
+
         [Header("Snowfall")]
         [Tooltip("Hours of snowfall to refill a full-depth path. 0 disables recovery.")]
         public float snowfallRecoverHours = 2f;

@@ -9,5 +9,6 @@
   <Project Path="Snowfield.Editor.csproj" />
   <Project Path="Snowfield.Voxel.Tests.csproj" />
   <Project Path="Snowfield.Player.Tests.csproj" />
+  <Project Path="Snowfield.Player.EditTests.csproj" />
   <Project Path="Snowfield.Config.csproj" />
 </Solution>

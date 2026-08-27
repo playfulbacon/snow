@@ -21,8 +21,10 @@ namespace Snowfield.Player
         public float pushGap = 0.35f;
         [Tooltip("Max distance from the character to scoop or make a mound on the ground (m).")]
         public float startReach = 3.5f;
-        [Tooltip("Authored hold point for carried sculptures (and a charging ball). Child of the Player so it turns with you.")]
+        [Tooltip("Authored hold point for snow that needs both hands (and for carried sculptures). Overhead. Child of the Player so it turns with you.")]
         public Transform carryAnchor;
+        [Tooltip("Hold point for snow small enough for one hand — down at your side rather than hoisted overhead. Falls back to carryAnchor.")]
+        public Transform palmAnchor;
         [Tooltip("Fallback if no anchor is set: forward of the character, and above the eye line (m).")]
         public Vector2 carryOffset = new Vector2(0.55f, 0.35f);
         [Tooltip("A thrown ball starts this far in front of the camera (plus its radius) so it flies along the reticle.")]
@@ -47,6 +49,17 @@ namespace Snowfield.Player
         public bool IsCarryingBall => Carried != null && Ball != null;
         public bool IsCarryingSculpture => Carried != null && Ball == null;
         public float Radius => Ball != null ? Ball.radius : 0f;
+        /// <summary>
+        /// Whether what is carried takes both hands — the one place that question is answered. Drives both the
+        /// hands (<see cref="SculptTool"/>) and where the snow is held: only something you need both arms for
+        /// gets hoisted overhead. A whole sculpture always does.
+        /// </summary>
+        public bool TwoHandedCarry => Ball == null || config == null || Ball.radius >= config.handTwoHandedRadius;
+        /// <summary>What the hands are holding onto: a ball's centre, a sculpture's grab point.</summary>
+        public Vector3 HoldCentre => Carried == null ? Vector3.zero
+            : Ball != null ? Ball.Centre : Carried.transform.TransformPoint(_grabLocal);
+        /// <summary>How wide the hands have to spread around <see cref="HoldCentre"/> (m).</summary>
+        public float HoldRadius => Ball != null ? Ball.radius : 0.2f;
 
         Vector3 _lastTrenchPos;
         Vector3 _grabLocal;         // grab point in the carried object's frame
@@ -347,6 +360,7 @@ namespace Snowfield.Player
         /// <summary>Where a carried sculpture's bottom (or a charging ball) rests while held.</summary>
         public Vector3 CarryPosition()
         {
+            if (!TwoHandedCarry && palmAnchor != null) return palmAnchor.position;
             if (carryAnchor != null) return carryAnchor.position;
             var t = character != null ? character : transform;
             var cc = Capsule;

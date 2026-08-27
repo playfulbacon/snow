@@ -12,7 +12,7 @@ namespace SnowDays.EditorTools
     /// nothing else about the scene. Idempotent; run from the menu or headless:
     /// `Unity -batchmode -nographics -quit -executeMethod SnowDays.EditorTools.MainSceneSetup.Run`
     /// Layout follows the sandbox convention — one responsibility per GameObject:
-    ///   Player (SnowDays.PlayerController) › SculptTool (+AccessoryPlacer +SnowballRoller) · CarryAnchor
+    ///   Player (SnowDays.PlayerController +HandRig) › SculptTool (+AccessoryPlacer +SnowballRoller) · CarryAnchor · PalmAnchor
     ///   root: Sculptures (SculptureFactory) · SaveLoad (SaveLoadManager) · BrushCursor (inactive) · HUD (ToolHud)
     /// SnowDeformSystem / SnowfallSystem / SnowDeformGroundAdapter need no scene objects (runtime bootstraps).
     /// All references are assigned directly (SerializedProperty drops custom ScriptableObject refs in batchmode).
@@ -85,15 +85,12 @@ namespace SnowDays.EditorTools
             cursorMr.receiveShadows = false;
             cursorGo.SetActive(false);
 
-            // --- Carry anchor: yaw-only child of the player root (the pivot pitches, so not under it) ---
-            var anchor = player.transform.Find("CarryAnchor");
-            if (anchor == null)
-            {
-                anchor = new GameObject("CarryAnchor").transform;
-                anchor.SetParent(player.transform, false);
-                anchor.localPosition = new Vector3(0f, 1.9f, 1f);
-            }
-            anchor.gameObject.layer = ignoreRaycast; // created after the subtree layer pass
+            // --- Carry anchors: yaw-only children of the player root (the pivot pitches, so not under it).
+            //     Overhead for snow that needs both arms; down at the right hand for a one-handed handful. ---
+            Transform anchor = EnsureAnchor(player.transform, "CarryAnchor", new Vector3(0f, 1.9f, 1f), ignoreRaycast);
+            // Palm height is measured off the rig, not the capsule: this character's shoulders sit at ~0.98 m and
+            // its eye line at 1.08, so a hold much above this reads as holding the snowball over your own head.
+            Transform palm = EnsureAnchor(player.transform, "PalmAnchor", new Vector3(0.35f, 0.78f, 0.5f), ignoreRaycast);
 
             // --- Sculpt tool ---
             var toolTr = player.transform.Find("SculptTool");
@@ -114,11 +111,18 @@ namespace SnowDays.EditorTools
             roller.config = config;
             roller.character = player.transform;
             roller.carryAnchor = anchor;
+            roller.palmAnchor = palm;
             roller.groundMask = sculptMask;
             // Feel values tuned in the sandbox scene (they lived only in that scene file, now deleted).
             roller.carryOffset = new Vector2(0.75f, 1.05f);
             roller.throwSpeedMin = 7f;
             roller.throwSpeedMax = 30f;
+
+            // --- Hands: stretchy arm IK on the humanoid rig, driven by the tool ---
+            var rig = player.GetComponent<HandRig>() ?? player.gameObject.AddComponent<HandRig>();
+            rig.config = config;
+            rig.animator = player.GetComponentInChildren<Animator>(true);
+            tool.hands = rig;
 
             // --- HUD ---
             var hudGo = GameObject.Find("HUD") ?? new GameObject("HUD", typeof(RectTransform));
@@ -181,6 +185,20 @@ namespace SnowDays.EditorTools
 
             EditorUtility.SetDirty(mat);
             AssetDatabase.SaveAssets();
+        }
+
+        /// <summary>Create the anchor at its authored default if missing; never move one that already exists.</summary>
+        static Transform EnsureAnchor(Transform parent, string name, Vector3 localPosition, int layer)
+        {
+            Transform anchor = parent.Find(name);
+            if (anchor == null)
+            {
+                anchor = new GameObject(name).transform;
+                anchor.SetParent(parent, false);
+                anchor.localPosition = localPosition;
+            }
+            anchor.gameObject.layer = layer; // created after the subtree layer pass
+            return anchor;
         }
 
         static GameObject FindInactiveRoot(UnityEngine.SceneManagement.Scene scene, string name)

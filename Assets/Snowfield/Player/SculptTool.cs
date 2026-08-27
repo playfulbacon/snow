@@ -31,6 +31,8 @@ namespace Snowfield.Player
         public Transform reachOrigin;
         [Tooltip("Visual brush cursor; scaled to brush diameter.")]
         public Transform cursor;
+        [Tooltip("Stretchy arm IK. The hands follow whatever snow is in play; null just means no arms.")]
+        public HandRig hands;
         [Tooltip("Holding LMB longer than this starts a throw charge; a shorter tap places/drops the carried object.")]
         public float throwTapThreshold = 0.2f;
         [Tooltip("A carried ball rolls on the ground only while the cursor points within this distance of you; otherwise it is held overhead.")]
@@ -94,6 +96,10 @@ namespace Snowfield.Player
             Roller = GetComponent<SnowballRoller>();
             if (Roller == null) Roller = gameObject.AddComponent<SnowballRoller>();
             if (Roller.config == null) Roller.config = config;
+            // Same self-healing as the placer/roller above: a scene that predates the arms still gets them.
+            if (hands == null) hands = GetComponentInParent<HandRig>();
+            if (hands == null && reachOrigin != null) hands = reachOrigin.gameObject.AddComponent<HandRig>();
+            if (hands != null && hands.config == null) hands.config = config;
         }
 
         void Update()
@@ -133,6 +139,7 @@ namespace Snowfield.Player
             else UpdateHand(mouse, kb);
 
             ComputeActions(kb);
+            DriveHands();
 
             // timed remesh while a stroke is in progress
             if (_dirtyTargets.Count > 0)
@@ -178,6 +185,117 @@ namespace Snowfield.Player
             PrimaryAction = p;
             SecondaryAction = s;
             TertiaryAction = CursorAction.None;
+        }
+
+        // ---------- hands ----------
+
+        /// <summary>Reach and hold poses are measured from here (the player root).</summary>
+        Transform Body => reachOrigin != null ? reachOrigin : transform;
+
+        /// <summary>
+        /// Aim the arms at whatever snow is in play. The rule is just "the hands are where the snow is": a carried
+        /// ball is already positioned by the roller (anchor, feet, attach preview), so the hands go to it rather
+        /// than the other way round — which makes a scoop read for free, since the chunk is born under the cursor
+        /// and flies back to the carry anchor with the hand chasing it. Arms stretch to cover the difference.
+        /// </summary>
+        void DriveHands()
+        {
+            if (hands == null || !hands.IsReady) return;
+            // One hand stays free while the other holds; with empty hands the right one does everything.
+            HandRig.Side free = Roller.IsCarrying ? HandRig.Side.Left : HandRig.Side.Right;
+
+            Vector3 goal = default, aim = default;
+            float weight = 0f;
+            if (CurrentOp == BrushOp.Smooth && Target != null)
+            {
+                // Patting: palm on the surface, bobbing off it, fingers lying along it rather than driven into it.
+                Vector3 n = (Vector3)BrushNormal;
+                goal = (Vector3)BrushPoint + n * (Mathf.Abs(Mathf.Sin(Time.time * Mathf.PI * config.handPatRate))
+                                                  * config.handPatAmplitude);
+                aim = Vector3.ProjectOnPlane(goal - Body.position, n);
+                weight = 1f;
+            }
+            else if (Mode == ToolMode.Accessory && AimedProp != null)
+            {
+                goal = AimedProp.transform.position;      // about to pull this one back off
+                aim = goal - Body.position;
+                weight = 1f;
+            }
+            else if (Mode == ToolMode.Accessory && HasHit)
+            {
+                goal = (Vector3)BrushPoint;
+                aim = -(Vector3)BrushNormal;              // about to press one in
+                weight = 1f;
+            }
+            else if (Mode == ToolMode.Hand && !Roller.IsCarrying && HasHit && Target != null)
+            {
+                // Ready pose: the red cursor is the bite LMB would take, so the hand drifts over it. Ground
+                // scooping gets none — you look at the snow by your feet constantly and the arm would never settle.
+                goal = (Vector3)BrushPoint;
+                aim = goal - Body.position;
+                weight = config.handHoverWeight;
+            }
+
+            if (Roller.IsCarrying)
+            {
+                Vector3 centre = Roller.HoldCentre;
+                float radius = Roller.HoldRadius;
+                // The second hand joins only once the ball is worth it — and not if it is busy, or cocked back.
+                bool bothHands = Roller.TwoHandedCarry && weight <= 0f && ThrowCharge <= 0f;
+                Vector3 right = HoldPoint(centre, radius, HandRig.Side.Right, bothHands);
+                hands.Reach(HandRig.Side.Right, right, 1f, centre - right);
+                if (bothHands)
+                {
+                    Vector3 left = HoldPoint(centre, radius, HandRig.Side.Left, bothHands);
+                    hands.Reach(HandRig.Side.Left, left, 1f, centre - left);
+                }
+            }
+
+            if (weight > 0f) hands.Reach(free, goal, weight, aim);
+        }
+
+        /// <summary>
+        /// Where a hand grips held snow, sunk a little into the surface. A two-handed ball is gripped from the
+        /// sides; a handful sits in the one palm — under it, or on top of one down at your feet. Either way the
+        /// hand goes over a ball the shoulder looks down on and under one held above.
+        /// </summary>
+        Vector3 HoldPoint(Vector3 centre, float radius, HandRig.Side side, bool bothHands)
+        {
+            Vector3 shoulder = hands.ShoulderPosition(side);
+            Vector3 toShoulder = shoulder - centre;
+            Vector3 lateral = Body.right * (side == HandRig.Side.Left ? -1f : 1f);
+            Vector3 toBody = Vector3.ProjectOnPlane(toShoulder, Vector3.up).normalized;
+            // Over the top only for snow properly down at your feet — merely below the shoulder line is still
+            // something you cup from underneath, and on this rig the shoulders are most of the way up the body.
+            bool overTheTop = toShoulder.y > (shoulder.y - Body.position.y) * 0.35f;
+            Vector3 vertical = (overTheTop ? Vector3.up : Vector3.down)
+                             * (bothHands ? (overTheTop ? 0.45f : 0.15f) : 0.9f);
+            Vector3 dir = lateral * (bothHands ? 0.85f : 0.2f) + toBody * (bothHands ? 0.3f : 0.25f) + vertical;
+            return centre + dir.normalized * (radius * 0.95f);
+        }
+
+        /// <summary>Leave both hands on the snow they just let go of, so a fuse or a drop still reads as a press.</summary>
+        void HoldPulse()
+        {
+            if (hands == null || !hands.IsReady || !Roller.IsCarrying) return;
+            Vector3 centre = Roller.HoldCentre;
+            float radius = Roller.HoldRadius;
+            bool bothHands = Roller.TwoHandedCarry;
+            for (int i = 0; i < 2; i++)
+            {
+                var side = (HandRig.Side)i;
+                if (side == HandRig.Side.Left && !bothHands) continue; // it was never on the ball
+                Vector3 p = HoldPoint(centre, radius, side, bothHands);
+                hands.Pulse(side, p, config.handFollowThrough, centre - p);
+            }
+        }
+
+        /// <summary>Leave the working hand on a spot it just touched for a beat.</summary>
+        void PulseFree(Vector3 point, Vector3 aim)
+        {
+            if (hands == null || !hands.IsReady) return;
+            hands.Pulse(Roller.IsCarrying ? HandRig.Side.Left : HandRig.Side.Right,
+                point, config.handFollowThrough, aim);
         }
 
         // ---------- input ----------
@@ -279,10 +397,17 @@ namespace Snowfield.Player
                     _lmbDownTime = -1f;
                     ThrowCharge = 0f;
                     if (Roller.IsCarryingBall && held > throwTapThreshold)
-                        Roller.Throw(viewCamera.transform.position, viewCamera.transform.forward,
+                    {
+                        var cam = viewCamera.transform;
+                        Roller.Throw(cam.position, cam.forward,
                             Mathf.Min(1f, (held - throwTapThreshold) / Mathf.Max(0.05f, Roller.chargeTime)));
-                    else if (onSnow) Roller.PlaceWhereItIs(Target);   // exactly where it sits
-                    else Roller.DropFalling();                        // let go; gravity takes it
+                        // The ball is gone next frame; the arm follows through past where it let go.
+                        if (hands != null)
+                            hands.Pulse(HandRig.Side.Right, cam.position + cam.forward * 1.1f,
+                                config.handFollowThrough, cam.forward);
+                    }
+                    else if (onSnow) { HoldPulse(); Roller.PlaceWhereItIs(Target); } // exactly where it sits
+                    else { HoldPulse(); Roller.DropFalling(); }                      // let go; gravity takes it
                     return;
                 }
 
@@ -326,7 +451,12 @@ namespace Snowfield.Player
                     chunk.Sculpture.ExtractFrom(s, BrushPoint, radius, config.addShoulder);
 
             float volume = chunk.Sculpture.DensityVolume();
-            if (volume <= 1e-5f) { Destroy(chunk.gameObject); return; } // nothing but air under the cursor
+            if (volume <= 1e-5f)
+            {
+                Destroy(chunk.gameObject);           // nothing but air under the cursor...
+                PulseFree(BrushPoint, (Vector3)BrushPoint - Body.position); // ...but the grab still happened
+                return;
+            }
 
             foreach (var t in _strokeTargets)
             {
@@ -469,8 +599,17 @@ namespace Snowfield.Player
             _placer.UpdatePreview(HasHit && AimedProp == null, BrushPoint, BrushNormal);
 
             if (mouse == null || !mouse.leftButton.wasPressedThisFrame) return;
-            if (AimedProp != null) _placer.Retrieve(AimedProp);
-            else if (HasHit && Target != null) _placer.Place(Target, BrushPoint, BrushNormal);
+            if (AimedProp != null)
+            {
+                Vector3 at = AimedProp.transform.position; // read before it is unparented and destroyed
+                _placer.Retrieve(AimedProp);
+                PulseFree(at, at - Body.position);
+            }
+            else if (HasHit && Target != null)
+            {
+                _placer.Place(Target, BrushPoint, BrushNormal);
+                PulseFree(BrushPoint, -(Vector3)BrushNormal);
+            }
         }
     }
 }

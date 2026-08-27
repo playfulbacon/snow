@@ -1,0 +1,14 @@
+{
+  "name": "Snowfield.Player.EditTests",
+  "rootNamespace": "Snowfield.Player.Tests",
+  "references": ["Snowfield.Player","Snowfield.Config","UnityEngine.TestRunner","UnityEditor.TestRunner"],
+  "includePlatforms": ["Editor"],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": true,
+  "precompiledReferences": ["nunit.framework.dll"],
+  "autoReferenced": false,
+  "defineConstraints": ["UNITY_INCLUDE_TESTS"],
+  "versionDefines": [],
+  "noEngineReferences": false
+}
