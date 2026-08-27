@@ -32,3 +32,6 @@ Thumbs.db
 
 # IDE (merge additions)
 .vscode/
+
+# multiplayer live-editor ops runner (requests/results, transient)
+/NetOps/

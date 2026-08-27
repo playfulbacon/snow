@@ -1,12 +1,15 @@
 ﻿<Solution>
-  <Project Path="ithappy.Creative_Characters_FREE.csproj" />
+  <Project Path="ithappy.Creative_Characters_FREE.Editor.csproj" />
   <Project Path="Assembly-CSharp.csproj" />
+  <Project Path="ithappy.Creative_Characters_FREE.csproj" />
   <Project Path="Snowfield.Voxel.csproj" />
   <Project Path="Snowfield.Sculpture.csproj" />
   <Project Path="Snowfield.Player.csproj" />
+  <Project Path="Snowfield.Net.csproj" />
   <Project Path="Assembly-CSharp-Editor.csproj" />
   <Project Path="Snowfield.Sculpture.Tests.csproj" />
   <Project Path="Snowfield.Editor.csproj" />
+  <Project Path="Snowfield.Net.Tests.csproj" />
   <Project Path="Snowfield.Voxel.Tests.csproj" />
   <Project Path="Snowfield.Player.Tests.csproj" />
   <Project Path="Snowfield.Player.EditTests.csproj" />
