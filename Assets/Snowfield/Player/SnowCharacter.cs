@@ -67,10 +67,11 @@ namespace Snowfield.Player
             CurrentStance = Stance.Stand;
             if (kb != null)
             {
-                if (kb.wKey.isPressed || kb.upArrowKey.isPressed) input.y += 1;
-                if (kb.sKey.isPressed || kb.downArrowKey.isPressed) input.y -= 1;
-                if (kb.dKey.isPressed || kb.rightArrowKey.isPressed) input.x += 1;
-                if (kb.aKey.isPressed || kb.leftArrowKey.isPressed) input.x -= 1;
+                // Arrows are reserved for switching fields.
+                if (kb.wKey.isPressed) input.y += 1;
+                if (kb.sKey.isPressed) input.y -= 1;
+                if (kb.dKey.isPressed) input.x += 1;
+                if (kb.aKey.isPressed) input.x -= 1;
                 if (kb.qKey.isPressed) CurrentStance = Stance.Crouch;
                 else if (kb.eKey.isPressed) CurrentStance = Stance.Tiptoe;
                 bool canJump = Time.time - _lastGroundedTime <= coyoteTime

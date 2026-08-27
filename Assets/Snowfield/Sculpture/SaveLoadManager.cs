@@ -15,12 +15,22 @@ namespace Snowfield.Sculpture
     /// </summary>
     public class SaveLoadManager : MonoBehaviour
     {
-        [Tooltip("Folder under persistentDataPath.")]
+        public static SaveLoadManager Instance { get; private set; }
+
+        [Tooltip("Folder under persistentDataPath. Each field gets a numbered subfolder.")]
         public string folder = "sculptures";
+        [Tooltip("Which field is loaded; FieldSwitcher drives this with the arrow keys.")]
+        public int field = 0;
         public bool loadOnStart = true;
         public bool saveOnQuit = true;
 
-        string Dir => Path.Combine(Application.persistentDataPath, folder);
+        string Dir => Path.Combine(Application.persistentDataPath, folder, "field" + field);
+
+        void Awake() => Instance = this;
+        void OnDestroy() { if (Instance == this) Instance = null; }
+
+        /// <summary>Point at another field's folder. Save the old one and load the new one around this call.</summary>
+        public void SetField(int index) => field = Mathf.Max(0, index);
 
         void Start()
         {

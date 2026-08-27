@@ -191,6 +191,11 @@ namespace Snowfield.Editor
             var oldBounds = GameObject.Find("GridBounds");
             if (oldBounds != null) Object.DestroyImmediate(oldBounds);
 
+            // --- fields (own root object) ---
+            var fieldsGo = GameObject.Find("Fields");
+            if (fieldsGo == null) fieldsGo = new GameObject("Fields");
+            if (fieldsGo.GetComponent<FieldSwitcher>() == null) fieldsGo.AddComponent<FieldSwitcher>();
+
             // --- HUD (own root object) ---
             var hudGo = GameObject.Find("HUD");
             if (hudGo == null) hudGo = new GameObject("HUD", typeof(RectTransform));

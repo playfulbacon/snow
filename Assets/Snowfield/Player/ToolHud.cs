@@ -90,6 +90,8 @@ namespace Snowfield.Player
             public int fontSize = 16;
             public float lineSpacing = 4f;
             public float width = 1100f;
+            [Tooltip("Size of the 'Field N' line under the status text.")]
+            public int fieldFontSize = 20;
         }
 
         [Serializable]
@@ -163,7 +165,7 @@ namespace Snowfield.Player
         [Serializable] class Prompt { public RectTransform root; public Image bg, outline, input, icon; public Text label; }
         [SerializeField, HideInInspector] Prompt _primary, _secondary, _tertiary;
         static Sprite _ringSprite;
-        [SerializeField, HideInInspector] Text _statusLine1, _statusLine2;
+        [SerializeField, HideInInspector] Text _statusLine1, _statusLine2, _fieldLine;
 
         Font _font;
         bool _pendingBuild;
@@ -221,7 +223,8 @@ namespace Snowfield.Player
             && _accessories.Count == AccessoryCatalog.Entries.Count
             && _tertiary != null && _tertiary.root != null
             && _statusLine1 != null && _reticleDot != null && _chargeFill != null
-            && _cursorIcon != null && _primary != null && _primary.root != null && _primary.input != null && _secondary != null && _secondary.root != null
+            && _cursorIcon != null && _fieldLine != null
+            && _primary != null && _primary.root != null && _primary.input != null && _secondary != null && _secondary.root != null
             && (_accessories.Count == 0 || _accessories[0].count != null);
 
         // ------------------------------------------------------------------ build
@@ -250,6 +253,8 @@ namespace Snowfield.Player
             _statusRoot = MakeRect("Status", root, new Vector2(0, 1), new Vector2(0, 1), new Vector2(0, 1));
             _statusLine1 = Txt("Line1", _statusRoot, TextAnchor.UpperLeft);
             _statusLine2 = Txt("Line2", _statusRoot, TextAnchor.UpperLeft);
+            _fieldLine = Txt("Field", _statusRoot, TextAnchor.UpperLeft);
+            _fieldLine.fontStyle = FontStyle.Bold;
 
             // --- accessory bar (bottom-centre, shown while the Tab overlay is open) ---
             _accessoryBarRoot = MakeRect("AccessoryBar", root, new Vector2(0.5f, 0), new Vector2(0.5f, 0), new Vector2(0.5f, 0));
@@ -318,6 +323,10 @@ namespace Snowfield.Player
             Place(_statusLine2.rectTransform, new Vector2(0, 1), new Vector2(0, -(lineH + status.lineSpacing)), new Vector2(status.width, lineH));
             _statusLine1.fontSize = _statusLine2.fontSize = status.fontSize;
             _statusLine1.color = _statusLine2.color = c.statusText;
+            float fieldH = status.fieldFontSize + 6f;
+            Place(_fieldLine.rectTransform, new Vector2(0, 1), new Vector2(0, -(lineH * 2 + status.lineSpacing * 2 + 2f)), new Vector2(status.width, fieldH));
+            _fieldLine.fontSize = status.fieldFontSize;
+            _fieldLine.color = c.statusText;
 
             // accessory bar
             int k = _accessories.Count;
@@ -456,6 +465,9 @@ namespace Snowfield.Player
                 line += $"   ·   aim: {aim}{(tool.AimedProp != null ? " (prop)" : "")} [{tool.AimedColliderPath}]";
             }
             _statusLine1.text = $"[{ToolModeInfo.DisplayName(mode)}]  {line}";
+            int fieldIndex = FieldSwitcher.Instance != null ? FieldSwitcher.Instance.CurrentField : 0;
+            int fieldCount = FieldSwitcher.Instance != null ? FieldSwitcher.Instance.fieldCount : 1;
+            _fieldLine.text = $"Field {fieldIndex + 1} / {fieldCount}   (\u2190 \u2192 to change)";
             _statusLine2.text = $"{ToolModeInfo.Hint(mode)}   ·   WASD move · Space jump · Q crouch · E tiptoe · Esc cursor";
         }
 

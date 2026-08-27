@@ -207,6 +207,16 @@ namespace Snowfield.Field
             MarkDirty(min, max);
         }
 
+        /// <summary>Wipe the field back to untouched snow (arriving at a different field).</summary>
+        public void ResetHeights()
+        {
+            if (!IsCreated) return;
+            for (int i = 0; i < _height.Length; i++) _height[i] = 0f;
+            for (int i = 0; i < _dirty.Length; i++) { _dirty[i] = true; _colliderDirty.Add(i); }
+            Remesh();
+            RebuildColliders();
+        }
+
         /// <summary>Snowfall: raise every below-fresh sample by <paramref name="metres"/> toward the untouched surface.</summary>
         public void RecoverTowardFresh(float metres)
         {
