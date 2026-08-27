@@ -24,7 +24,10 @@ namespace Snowfield.Sculpture
         public bool loadOnStart = true;
         public bool saveOnQuit = true;
 
-        string Dir => Path.Combine(Application.persistentDataPath, folder, "field" + field);
+        string Dir => FieldDir(field);
+
+        /// <summary>Folder holding one field's sculptures (and its terrain blob).</summary>
+        public string FieldDir(int index) => Path.Combine(Application.persistentDataPath, folder, "field" + index);
 
         void Awake() => Instance = this;
         void OnDestroy() { if (Instance == this) Instance = null; }
@@ -97,12 +100,14 @@ namespace Snowfield.Sculpture
         public void LoadAll()
         {
             var factory = SculptureFactory.Instance;
-            if (factory == null || !Directory.Exists(Dir)) return;
+            if (factory == null) return;
 
-            // wipe current runtime sculptures (props are children, they go with them).
-            // Immediate: a deferred Destroy would let a save in the same frame see both old and new copies.
+            // Wipe current runtime sculptures first, even if this field has no folder yet — otherwise the previous
+            // field's snow would follow you here. (Immediate: a deferred Destroy would let a save in the same frame
+            // see both old and new copies.)
             foreach (var s in FindObjectsByType<SnowSculpture>(FindObjectsSortMode.None))
                 DestroyImmediate(s.gameObject);
+            if (!Directory.Exists(Dir)) { Debug.Log($"[Snowfield] Field {field} is fresh snow"); return; }
 
             int n = 0;
             foreach (var file in Directory.GetFiles(Dir, "*.json"))

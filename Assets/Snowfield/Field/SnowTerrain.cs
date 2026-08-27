@@ -207,6 +207,57 @@ namespace Snowfield.Field
             MarkDirty(min, max);
         }
 
+        /// <summary>
+        /// Height data as a compact blob: [version][samples][runs of (millimetres:int16, count:uint16)].
+        /// Untouched snow is a single run, so a lightly used field costs almost nothing.
+        /// </summary>
+        public byte[] SaveHeights()
+        {
+            if (!IsCreated) return null;
+            using var ms = new System.IO.MemoryStream();
+            using var w = new System.IO.BinaryWriter(ms);
+            w.Write((byte)1);
+            w.Write(_samples);
+            int i = 0, n = _height.Length;
+            while (i < n)
+            {
+                short v = (short)Mathf.Clamp(Mathf.RoundToInt(_height[i] * 1000f), short.MinValue, short.MaxValue);
+                int run = 1;
+                while (i + run < n && run < ushort.MaxValue
+                       && (short)Mathf.Clamp(Mathf.RoundToInt(_height[i + run] * 1000f), short.MinValue, short.MaxValue) == v)
+                    run++;
+                w.Write(v);
+                w.Write((ushort)run);
+                i += run;
+            }
+            w.Flush();
+            return ms.ToArray();
+        }
+
+        /// <summary>Restore a blob from <see cref="SaveHeights"/>. False if it does not match this field's resolution.</summary>
+        public bool LoadHeights(byte[] data)
+        {
+            if (!IsCreated || data == null || data.Length < 5) return false;
+            using var ms = new System.IO.MemoryStream(data);
+            using var r = new System.IO.BinaryReader(ms);
+            if (r.ReadByte() != 1) return false;
+            if (r.ReadInt32() != _samples) return false;
+
+            int write = 0, n = _height.Length;
+            while (ms.Position < ms.Length && write < n)
+            {
+                float v = r.ReadInt16() / 1000f;
+                int run = r.ReadUInt16();
+                for (int k = 0; k < run && write < n; k++) _height[write++] = v;
+            }
+            if (write != n) return false;
+
+            for (int i = 0; i < _dirty.Length; i++) { _dirty[i] = true; _colliderDirty.Add(i); }
+            Remesh();
+            RebuildColliders();
+            return true;
+        }
+
         /// <summary>Wipe the field back to untouched snow (arriving at a different field).</summary>
         public void ResetHeights()
         {

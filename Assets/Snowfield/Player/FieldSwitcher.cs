@@ -1,3 +1,4 @@
+using System.IO;
 using Snowfield.Field;
 using Snowfield.Sculpture;
 using UnityEngine;
@@ -16,13 +17,16 @@ namespace Snowfield.Player
 
         [Tooltip("How many fields the arrows cycle through.")]
         public int fieldCount = 8;
-        [Tooltip("Wipe the trampled snow (footprints, trenches, scoops) when arriving at a field.")]
-        public bool freshSnowOnArrival = true;
+        [Tooltip("File name for a field's terrain heights, stored beside its sculptures.")]
+        public string terrainFile = "terrain.bin";
 
         public int CurrentField { get; private set; }
 
         void Awake() => Instance = this;
         void OnDestroy() { if (Instance == this) Instance = null; }
+
+        void Start() => LoadTerrain();
+        void OnApplicationQuit() => SaveTerrain();
 
         void Update()
         {
@@ -42,15 +46,40 @@ namespace Snowfield.Player
             if (tool != null && tool.Roller != null && tool.Roller.IsEngaged) tool.Roller.Release();
 
             save.SaveAll();
+            SaveTerrain();
+
             CurrentField = ((CurrentField + delta) % fieldCount + fieldCount) % fieldCount;
             save.SetField(CurrentField);
             save.LoadAll();
+            LoadTerrain();
+        }
 
-            if (freshSnowOnArrival)
-            {
-                var terrain = SnowTerrain.Instance;
-                if (terrain != null) terrain.ResetHeights();
-            }
+        // ---------- terrain travels with the field ----------
+
+        string TerrainPath(int index)
+        {
+            var save = SaveLoadManager.Instance;
+            return save == null ? null : Path.Combine(save.FieldDir(index), terrainFile);
+        }
+
+        void SaveTerrain()
+        {
+            var terrain = SnowTerrain.Instance;
+            string path = TerrainPath(CurrentField);
+            if (terrain == null || !terrain.IsCreated || path == null) return;
+            var blob = terrain.SaveHeights();
+            if (blob == null) return;
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            File.WriteAllBytes(path, blob);
+        }
+
+        void LoadTerrain()
+        {
+            var terrain = SnowTerrain.Instance;
+            if (terrain == null || !terrain.IsCreated) return;
+            string path = TerrainPath(CurrentField);
+            if (path != null && File.Exists(path) && terrain.LoadHeights(File.ReadAllBytes(path))) return;
+            terrain.ResetHeights(); // never visited (or the field resolution changed): untouched snow
         }
     }
 }
