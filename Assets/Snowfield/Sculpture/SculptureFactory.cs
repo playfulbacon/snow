@@ -35,6 +35,7 @@ namespace Snowfield.Sculpture
             s.EditorAssign(config, snowMaterial);
             s.gridSizeOverride = config.gridSize;
             go.SetActive(true);
+            SculptureNet.RaiseCreated(s);
             return s;
         }
 
@@ -50,6 +51,7 @@ namespace Snowfield.Sculpture
             s.gridSizeOverride = gridSize;
             s.gridOffset = gridOffset;
             go.SetActive(true);
+            SculptureNet.RaiseCreated(s);
             return s;
         }
 
@@ -92,6 +94,7 @@ namespace Snowfield.Sculpture
             var ball = go.AddComponent<Snowball>();
             ball.radius = nominalRadius;
             go.SetActive(true);
+            SculptureNet.RaiseCreated(s);
             return ball;
         }
 
@@ -101,17 +104,23 @@ namespace Snowfield.Sculpture
         /// </summary>
         public SnowSculpture Promote(Snowball ball)
         {
-            var big = CreateAt(ball.GroundPoint);
-            big.Absorb(ball.Sculpture);
-            foreach (var prop in ball.Sculpture.Props.ToArray())
+            SculptureNet.PushStructural();
+            try
             {
-                prop.transform.SetParent(big.transform, true);
-                prop.Reattach(big);
+                var big = CreateAt(ball.GroundPoint);
+                big.Absorb(ball.Sculpture);
+                foreach (var prop in ball.Sculpture.Props.ToArray())
+                {
+                    prop.transform.SetParent(big.transform, true);
+                    prop.Reattach(big);
+                }
+                big.Remesh();
+                big.RebuildColliders();
+                SculptureNet.RaiseReplaced(ball.Sculpture, big);
+                Destroy(ball.gameObject);
+                return big;
             }
-            big.Remesh();
-            big.RebuildColliders();
-            Destroy(ball.gameObject);
-            return big;
+            finally { SculptureNet.PopStructural(); }
         }
 
         /// <summary>
@@ -138,17 +147,34 @@ namespace Snowfield.Sculpture
                 needed.center.x - extent * 0.5f,
                 Mathf.Min(needed.min.y, s.WorldBounds.min.y),
                 needed.center.z - extent * 0.5f);
-            var big = CreateEmpty(sizeVox, Vector3.zero, origin, Quaternion.identity);
-            big.Absorb(s);
-            foreach (var prop in s.Props.ToArray())
+            return RegrowExact(s, sizeVox, origin);
+        }
+
+        /// <summary>
+        /// The rebuild half of <see cref="Regrow"/> with the target geometry fully specified — the shape the
+        /// network layer replays so every peer regrows into byte-identical grids.
+        /// </summary>
+        public SnowSculpture RegrowExact(SnowSculpture s, int sizeVox, Vector3 origin)
+        {
+            SnowSculpture big;
+            SculptureNet.PushStructural();
+            try
             {
-                prop.transform.SetParent(big.transform, true);
-                prop.Reattach(big);
+                big = CreateEmpty(sizeVox, Vector3.zero, origin, Quaternion.identity);
+                big.Absorb(s);
+                foreach (var prop in s.Props.ToArray())
+                {
+                    prop.transform.SetParent(big.transform, true);
+                    prop.Reattach(big);
+                }
+                big.Remesh();
+                big.RebuildColliders();
+                Debug.Log($"[Snowfield] Regrew sculpture {s.Info.size}³ → {sizeVox}³");
+                SculptureNet.RaiseReplaced(s, big);
+                Destroy(s.gameObject);
             }
-            big.Remesh();
-            big.RebuildColliders();
-            Debug.Log($"[Snowfield] Regrew sculpture {s.Info.size}³ → {sizeVox}³");
-            Destroy(s.gameObject);
+            finally { SculptureNet.PopStructural(); }
+            SculptureNet.RaiseRegrowCommitted(big, sizeVox, origin);
             return big;
         }
 
@@ -167,22 +193,29 @@ namespace Snowfield.Sculpture
         public SnowSculpture Fuse(SnowSculpture target, SnowSculpture source)
         {
             if (target == null || source == null || target == source) return target;
-            target = EnsureRoom(target);
-            var srcBounds = source.WorldBounds;
-            if (!(target.WorldBounds.Contains(srcBounds.min) && target.WorldBounds.Contains(srcBounds.max)))
-                target = Regrow(target, srcBounds);
-            target.Absorb(source);
-            foreach (var prop in source.Props.ToArray())
+            SculptureNet.RaiseFuseCommitted(target, source); // before EnsureRoom: ids + source pose still readable
+            SculptureNet.PushStructural();
+            try
             {
-                prop.transform.SetParent(target.transform, true);
-                prop.Reattach(target);
+                target = EnsureRoom(target);
+                var srcBounds = source.WorldBounds;
+                if (!(target.WorldBounds.Contains(srcBounds.min) && target.WorldBounds.Contains(srcBounds.max)))
+                    target = Regrow(target, srcBounds);
+                target.Absorb(source);
+                foreach (var prop in source.Props.ToArray())
+                {
+                    prop.transform.SetParent(target.transform, true);
+                    prop.Reattach(target);
+                }
+                target.Remesh();
+                target.RebuildColliders();
+                var targetBall = target.GetComponent<Snowball>();
+                if (targetBall != null) targetBall.Fix();
+                SculptureNet.RaiseRemoved(source);
+                Destroy(source.gameObject);
+                return target;
             }
-            target.Remesh();
-            target.RebuildColliders();
-            var targetBall = target.GetComponent<Snowball>();
-            if (targetBall != null) targetBall.Fix();
-            Destroy(source.gameObject);
-            return target;
+            finally { SculptureNet.PopStructural(); }
         }
     }
 }

@@ -231,6 +231,11 @@ namespace Snowfield.Sculpture
             Sculpture.ForceRebuildAllColliders();
             Physics.SyncTransforms();
             Current = State.Resting;
+            // Flights only run on the client that launched the ball; peers get the outcome, at the settled height.
+            Vector3 restPos = _settleFor >= 0f
+                ? new Vector3(transform.position.x, _settleTargetY, transform.position.z)
+                : transform.position;
+            SculptureNet.RaiseRested(Sculpture, restPos, transform.rotation);
         }
 
         void Update()

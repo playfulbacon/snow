@@ -57,19 +57,27 @@ namespace Snowfield.Player
         public void HidePreview() => UpdatePreview(false, default, default);
 
         void Pose(Vector3 point, Vector3 normal, out Vector3 pos, out Quaternion rot)
+            => PoseFor(Selected, point, normal, out pos, out rot);
+
+        static void PoseFor(AccessoryCatalog.Entry entry, Vector3 point, Vector3 normal, out Vector3 pos, out Quaternion rot)
         {
             rot = Quaternion.FromToRotation(Vector3.up, normal);
-            pos = point - normal * Selected.Sink;
+            pos = point - normal * entry.Sink;
         }
 
         /// <summary>Place the selected accessory (unlimited supply).</summary>
         public SculptureProp Place(SnowSculpture sculpture, Vector3 point, Vector3 normal)
+            => PlaceEntry(sculpture, Selected, point, normal);
+
+        /// <summary>The fully parameterized twin of <see cref="Place"/> — also what a remote place replays.</summary>
+        public static SculptureProp PlaceEntry(SnowSculpture sculpture, AccessoryCatalog.Entry entry, Vector3 point, Vector3 normal)
         {
-            Pose(point, normal, out var pos, out var rot);
-            var go = Selected.Build();
+            PoseFor(entry, point, normal, out var pos, out var rot);
+            var go = entry.Build();
             AccessoryCatalog.MakePickable(go);
             var prop = go.AddComponent<SculptureProp>();
-            prop.Attach(sculpture, Selected.Id, pos, rot);
+            prop.Attach(sculpture, entry.Id, pos, rot);
+            SculptureNet.RaisePropPlaced(sculpture, entry.Id, point, normal);
             return prop;
         }
 
@@ -77,6 +85,8 @@ namespace Snowfield.Player
         public void Retrieve(SculptureProp prop)
         {
             if (prop == null) return;
+            if (prop.Sculpture != null)
+                SculptureNet.RaisePropRemoved(prop.Sculpture, prop.prefabId, prop.LocalPos);
             prop.Remove();
         }
 

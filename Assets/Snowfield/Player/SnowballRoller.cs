@@ -131,6 +131,7 @@ namespace Snowfield.Player
             var ground = SnowGround.Instance;
             if (ground != null && config != null)
                 ground.StampDepression(groundPoint, r * 1.6f, config.scoopDivotDepth, 0.6f);
+            SculptureNet.RaiseGroundScooped(groundPoint, ball);
         }
 
         /// <summary>
@@ -182,6 +183,7 @@ namespace Snowfield.Player
             var ball = Ball;
             Carried = null; Ball = null;
             ball.Launch(Vector3.zero, Vector3.zero, ThrowerColliders()); // gravity does the rest; Land() restores its colliders
+            SculptureNet.RaiseThrown(ball, Vector3.zero, Vector3.zero);
         }
 
         /// <summary>Pick up a loose ball (by its centre) or a fixed sculpture (by the aimed point).</summary>
@@ -196,6 +198,7 @@ namespace Snowfield.Player
             }
             Engage(sculpture, grabPoint);
             if (ball != null) ball.SetState(Snowball.State.Carrying);
+            SculptureNet.RaiseGrabbed(sculpture);
         }
 
         void Engage(SnowSculpture sculpture, Vector3 grabPoint)
@@ -279,6 +282,7 @@ namespace Snowfield.Player
             carried.ForceRebuildAllColliders();      // it moved/grew while its colliders were off
             Physics.SyncTransforms();
             if (ball != null) ball.SetState(Snowball.State.Resting);
+            SculptureNet.RaiseRested(carried, carried.transform.position, carried.transform.rotation);
         }
 
         static void SetInteractable(SnowSculpture s, bool on)
@@ -409,7 +413,9 @@ namespace Snowfield.Player
                 ? spinAxis.normalized * (throwSpin * 2f * Mathf.PI * Mathf.Lerp(0.35f, 1f, power))
                 : Vector3.zero;
 
-            ball.Launch(launchDir * speed + carry * throwInheritVelocity, spin, ThrowerColliders());
+            Vector3 velocity = launchDir * speed + carry * throwInheritVelocity;
+            ball.Launch(velocity, spin, ThrowerColliders());
+            SculptureNet.RaiseThrown(ball, velocity, spin);
         }
 
         /// <summary>

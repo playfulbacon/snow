@@ -17,6 +17,12 @@ namespace Snowfield.Sculpture
     {
         public static SaveLoadManager Instance { get; private set; }
 
+        /// <summary>
+        /// Set by the network layer while a shared session is live: F9 would replace the shared world with a
+        /// local save on this client only, desyncing it from everyone. Saving (F5/quit) stays allowed.
+        /// </summary>
+        public static bool BlockManualLoad;
+
         [Tooltip("Folder under persistentDataPath. Each field gets a numbered subfolder.")]
         public string folder = "sculptures";
         [Tooltip("Which field is loaded; FieldSwitcher drives this with the arrow keys.")]
@@ -50,7 +56,7 @@ namespace Snowfield.Sculpture
             var kb = Keyboard.current;
             if (kb == null) return;
             if (kb.f5Key.wasPressedThisFrame) SaveAll();
-            if (kb.f9Key.wasPressedThisFrame) LoadAll();
+            if (kb.f9Key.wasPressedThisFrame && !BlockManualLoad) LoadAll();
         }
 
         // ------------------------------------------------------------------ save

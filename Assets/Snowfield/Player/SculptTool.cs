@@ -466,6 +466,20 @@ namespace Snowfield.Player
                 t.RebuildColliders();
             }
             Roller.TakeChunk(chunk, volume);
+            CollectNetTargets(chunk.Sculpture);
+            SculptureNet.RaiseScooped(new SculptureNet.ScoopInfo
+            { point = BrushPoint, radius = radius, targets = _netTargets, chunk = chunk, resultRadius = chunk.radius });
+        }
+
+        readonly List<SnowSculpture> _netTargets = new List<SnowSculpture>();
+
+        /// <summary>The stroke targets as sculptures, for the network seam. <paramref name="exclude"/> may be null.</summary>
+        void CollectNetTargets(SnowSculpture exclude)
+        {
+            _netTargets.Clear();
+            foreach (var t in _strokeTargets)
+                if (t is SnowSculpture s && s != null && s != exclude)
+                    _netTargets.Add(s);
         }
 
         /// <summary>The stroke loop: Shift+LMB smooths. (Adding is disabled; LMB scoops instead.) Multi-target.</summary>
@@ -515,6 +529,15 @@ namespace Snowfield.Player
                 for (int i = 0; i < ticks; i++)
                     foreach (var t in _strokeTargets)
                         ApplyTick(t, op, BrushPoint, radius);
+                if (ticks > 0)
+                {
+                    // Tick counts ride the event: the ≤8/frame clamp makes them a local-framerate artifact
+                    // that peers must never re-derive from their own dt.
+                    CollectNetTargets(null);
+                    if (_netTargets.Count > 0)
+                        SculptureNet.RaiseStroke(new SculptureNet.StrokeInfo
+                        { op = (int)op, point = BrushPoint, radius = radius, ticks = ticks, targets = _netTargets });
+                }
             }
             else if (IsSculpting && !pressing)
             {
