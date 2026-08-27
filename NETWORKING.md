@@ -66,6 +66,15 @@ gameplay code ──raises──▶ SculptureNet (static seam, Snowfield.Sculptu
   player's root pose (owner-authoritative NetworkTransform) + four animator floats; the owner hides its own
   avatar. No PlayerController, no colliders on avatars — so SnowDeform's window keeps following the real
   local player and brush raycasts can't hit bodies.
+- **Arms**: the stretchy IK is synced as *intent*, not bones. `HandRig.CurrentGoal` exposes the per-frame goal
+  the rig was solved against with any `Pulse` already resolved into it, so a pulse (fuse, throw, place) needs
+  no message of its own — it is just the same goal reported for as long as it holds. The avatar prefab carries
+  its own `HandRig` and replays those goals through `Reach`, letting the rig's spring and weight blending do
+  the easing (including easing a hand home when the owner stops asking). Goals travel in **body space**: the
+  owner samples goal and body pose in one frame while a remote's body is interpolated, so a world-space goal
+  would leave the hand right and the arm mis-stretched against a body that hasn't caught up. One unreliable
+  owner-permission RPC at 15 Hz, sent only while a hand is active (plus two release packets, and a 0.5 s
+  staleness backstop). NGO proxies a client's `SendTo.NotMe` through the host itself — no manual relay.
 - **Host leaves** → session dies (NGO has no host migration); clients keep their last world state, then
   re-quick-join after a few seconds and reconvene under a new host (whose local state seeds the new field).
 
@@ -95,6 +104,10 @@ gameplay code ──raises──▶ SculptureNet (static seam, Snowfield.Sculptu
 - **Two instances on one machine**: run the editor (or one build) plus `Builds/SnowDev.app` with a different
   auth profile, e.g. `SNOW_PROFILE=p2 ./Builds/SnowDev.app/Contents/MacOS/<binary>` (also `--snow-profile p2`).
   Player log: `~/Library/Logs/DefaultCompany/SnowDays/Player.log`.
+  **Multiplayer Play Mode virtual players share one anonymous UGS account** — they have no `SNOW_PROFILE` and
+  MPPM 2.x ships no runtime API to tell them apart, so if two virtual players fight over one identity, give
+  each its own profile (or test with a standalone build alongside the editor, which is what the sync above
+  was verified with).
 
 ## Knobs
 
