@@ -20,19 +20,15 @@ namespace Snowfield.Sculpture
             public Quaternion GroundRest;
             /// <summary>Height above ground for the origin when resting, so it does not clip.</summary>
             public float GroundLift;
-            /// <summary>Radius of the chunky trigger sphere used for aiming/picking (m), centred on the item's middle.</summary>
-            public float PickRadius;
-            /// <summary>Local centre of the pick sphere (authored +Y = out of snow).</summary>
-            public Vector3 PickCentre;
             public System.Func<GameObject> Build;
         }
 
         public static readonly IReadOnlyList<Entry> Entries = new List<Entry>
         {
-            new Entry { Id = "twig",   DisplayName = "Twig",   Sink = 0.06f,  GroundRest = Quaternion.Euler(90f, 0f, 0f), GroundLift = 0.012f, PickRadius = 0.16f, PickCentre = new Vector3(0f, 0.22f, 0f), Build = BuildTwig },
-            new Entry { Id = "carrot", DisplayName = "Carrot", Sink = 0.12f,  GroundRest = Quaternion.Euler(90f, 0f, 0f), GroundLift = 0.06f,  PickRadius = 0.2f,  PickCentre = new Vector3(0f, 0.25f, 0f), Build = BuildCarrot },
-            new Entry { Id = "button", DisplayName = "Button", Sink = 0.015f, GroundRest = Quaternion.identity,          GroundLift = 0f,     PickRadius = 0.14f, PickCentre = new Vector3(0f, 0.02f, 0f), Build = BuildButton },
-            new Entry { Id = "pebble", DisplayName = "Pebble", Sink = 0.015f, GroundRest = Quaternion.identity,          GroundLift = 0f,     PickRadius = 0.12f, PickCentre = new Vector3(0f, 0.015f, 0f), Build = BuildPebble },
+            new Entry { Id = "twig",   DisplayName = "Twig",   Sink = 0.06f,  GroundRest = Quaternion.Euler(90f, 0f, 0f), GroundLift = 0.012f, Build = BuildTwig },
+            new Entry { Id = "carrot", DisplayName = "Carrot", Sink = 0.12f,  GroundRest = Quaternion.Euler(90f, 0f, 0f), GroundLift = 0.06f,  Build = BuildCarrot },
+            new Entry { Id = "button", DisplayName = "Button", Sink = 0.015f, GroundRest = Quaternion.identity,          GroundLift = 0f,     Build = BuildButton },
+            new Entry { Id = "pebble", DisplayName = "Pebble", Sink = 0.015f, GroundRest = Quaternion.identity,          GroundLift = 0f,     Build = BuildPebble },
         };
 
         public static Entry Find(string id)
@@ -133,14 +129,19 @@ namespace Snowfield.Sculpture
             return root;
         }
 
-        /// <summary>Add the chunky trigger sphere used to aim at / pick up a placed prop or loose item.</summary>
-        public static SphereCollider AddPickCollider(GameObject go, Entry e)
+        /// <summary>
+        /// Ready a placed accessory for the cursor: its own part colliders, live but as triggers. The camera ray
+        /// (QueryTriggerInteraction.Collide) still hits them precisely, while nothing physical shoves the player.
+        /// </summary>
+        public static void MakePickable(GameObject go)
         {
-            var sc = go.AddComponent<SphereCollider>();
-            sc.isTrigger = true;
-            sc.center = e.PickCentre;
-            sc.radius = e.PickRadius;
-            return sc;
+            foreach (var c in go.GetComponentsInChildren<Collider>(true))
+            {
+                var mesh = c as MeshCollider;
+                if (mesh != null) mesh.convex = true; // a trigger mesh collider has to be convex
+                c.isTrigger = true;
+                c.enabled = true;
+            }
         }
 
         /// <summary>Strip colliders (previews) or keep them (placed props) after building.</summary>

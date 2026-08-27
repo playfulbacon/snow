@@ -144,8 +144,7 @@ namespace Snowfield.Sculpture
                 var entry = AccessoryCatalog.Find(pr.prefabId);
                 if (entry == null) continue;
                 var go = entry.Build();
-                AccessoryCatalog.SetColliders(go, true);
-                AccessoryCatalog.AddPickCollider(go, entry);
+                AccessoryCatalog.MakePickable(go);
                 var prop = go.AddComponent<SculptureProp>();
                 prop.Attach(s, pr.prefabId,
                     s.transform.TransformPoint(pr.localPos),

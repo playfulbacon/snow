@@ -67,8 +67,7 @@ namespace Snowfield.Player
         {
             Pose(point, normal, out var pos, out var rot);
             var go = Selected.Build();
-            AccessoryCatalog.SetColliders(go, true);
-            AccessoryCatalog.AddPickCollider(go, Selected);
+            AccessoryCatalog.MakePickable(go);
             var prop = go.AddComponent<SculptureProp>();
             prop.Attach(sculpture, Selected.Id, pos, rot);
             return prop;
