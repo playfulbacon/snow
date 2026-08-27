@@ -17,6 +17,7 @@ namespace SnowDays.EditorTools
         private static readonly string[] ShaderPaths =
         {
             "Assets/SnowDeform/Resources/SnowSurface.shader",
+            "Assets/SnowDeform/Resources/SnowSculpt.shader",
             "Assets/SnowDeform/Resources/SnowStamp.shader",
             "Assets/SnowDeform/Resources/SnowMaintenance.shader",
         };

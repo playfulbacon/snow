@@ -35,6 +35,12 @@ A small, seasonal multiplayer game about sculpting snow in a shared field. Live 
 - Footprints come from `SnowDays.SnowFootprints` (animation-driven, auto-attached to the player by SnowDeformSystem). Scoop divots and snowball trenches go through `SnowGround.StampDepression`. Deformation is windowed and decays — it does not persist per-field (FieldSwitcher was removed with the heightmap).
 - Snowfall visuals: `SnowDays.SnowfallSystem` (retro flake box, self-bootstraps). Sculpture dusting remains a future shader-level idea (never modify voxel data).
 
+### Snow look = one shader family (`Assets/SnowDeform/Resources`)
+- `SnowLook.hlsl` owns what snow *looks like*: the terrain's snow diffuse tiled in world space, a cold-tinted ambient, and the sun quantized into bands. Both snow shaders include it, so the field and the things built on it are one material. Put look changes there, not in a single shader.
+- `SnowSurface.shader` = the ground shell (flat XZ projection — the reference mapping). `SnowSculpt.shader` = sculpture chunks; marching-cubes meshes have position + gradient normal and **no UVs**, so it projects the same texture triplanar and its Y plane matches the ground exactly.
+- The sculpture material is `Assets/Settings/Snow.mat`. It carries `_SnowBaseMap`/`_SnowTexTiling` as material values (a material can't read the runtime binding, and sculptures render in edit mode); `MainSceneSetup.SyncSnowMaterial` copies them off the scene's terrain snow layer using the same rule `SnowDeformSystem` uses at runtime. Re-run the setup command after changing terrain layers.
+- `SnowDeformVerify` compiles every pass of every shader in that folder — add new ones to its list.
+
 ### Brushes
 - **Add**: spherical falloff kernel raising density, rate-capped per tick so snow *accumulates* under a held press (this cap is the "packing" feel — make it tunable).
 - **Smooth/pat**: blur kernel over the brush region. Cheap, high payoff.

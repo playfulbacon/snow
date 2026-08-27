@@ -22,6 +22,7 @@ namespace SnowDays.EditorTools
         const string ScenePath = "Assets/Scenes/Main.unity";
         const string ConfigPath = "Assets/Settings/SculptFeelConfig.asset";
         const string SnowMatPath = "Assets/Settings/Snow.mat";
+        const string SculptShaderPath = "Assets/SnowDeform/Resources/SnowSculpt.shader";
         const string CursorMatPath = "Assets/Settings/BrushCursor.mat";
         const string ReticlePath = "Assets/reticle-2.png";
         const string LeftClickPath = "Assets/left-click.png";
@@ -49,6 +50,8 @@ namespace SnowDays.EditorTools
                 return;
             }
             var viewCamera = player.GetComponentInChildren<Camera>(true);
+
+            SyncSnowMaterial(snowMat);
 
             // The brush ray starts behind the player; keep the whole player out of every sculpt raycast.
             int ignoreRaycast = 2; // built-in layer
@@ -132,6 +135,52 @@ namespace SnowDays.EditorTools
             EditorSceneManager.SaveScene(scene);
             Debug.Log("[MainSceneSetup] Sculpting kit ensured in Main scene.");
             if (Application.isBatchMode) EditorApplication.Exit(0);
+        }
+
+        /// <summary>
+        /// Keeps sculpted snow wearing the same diffuse as the ground shell.
+        /// SnowDeformSystem resolves that texture from the terrain when it
+        /// bootstraps; a material cannot read a runtime binding, so the same
+        /// rule runs here and bakes the result into Snow.mat.
+        /// </summary>
+        static void SyncSnowMaterial(Material mat)
+        {
+            var shader = AssetDatabase.LoadAssetAtPath<Shader>(SculptShaderPath);
+            if (shader == null)
+                Debug.LogWarning($"[MainSceneSetup] {SculptShaderPath} missing; leaving {mat.shader.name} on the snow material.");
+            else if (mat.shader != shader)
+                mat.shader = shader;
+
+            // Same pick as SnowDeformSystem.ApplySnowTexture: a snow-named
+            // layer if there is one, else the first layer with a diffuse.
+            TerrainLayer best = null;
+            foreach (var terrain in Object.FindObjectsByType<Terrain>(FindObjectsSortMode.None))
+            {
+                TerrainLayer[] layers = terrain.terrainData != null ? terrain.terrainData.terrainLayers : null;
+                if (layers == null) continue;
+                foreach (var layer in layers)
+                {
+                    if (layer == null || layer.diffuseTexture == null) continue;
+                    if (best == null) best = layer;
+                    if (layer.name.ToLowerInvariant().Contains("snow")) { best = layer; break; }
+                }
+                if (best != null && best.name.ToLowerInvariant().Contains("snow")) break;
+            }
+
+            if (best == null)
+            {
+                Debug.LogWarning("[MainSceneSetup] No terrain layer with a diffuse; snow material keeps its current texture.");
+            }
+            else
+            {
+                mat.SetTexture("_SnowBaseMap", best.diffuseTexture);
+                mat.SetFloat("_SnowTexTiling", Mathf.Max(best.tileSize.x, 0.01f));
+                Debug.Log($"[MainSceneSetup] snow material texture from terrain layer '{best.name}': " +
+                    $"{best.diffuseTexture.name} (tile {best.tileSize.x}m)");
+            }
+
+            EditorUtility.SetDirty(mat);
+            AssetDatabase.SaveAssets();
         }
 
         static GameObject FindInactiveRoot(UnityEngine.SceneManagement.Scene scene, string name)

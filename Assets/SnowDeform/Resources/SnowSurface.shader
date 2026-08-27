@@ -46,12 +46,6 @@ Shader "SnowDays/SnowSurface"
         // z = skirt depth (m), w = unused
         float4 _SnowTexels;
 
-        // Same diffuse the terrain's snow layer tiles, mapped in world space
-        // so the shell reads like the terrain around it (alignment with the
-        // terrain's per-tile UV origin is not attempted).
-        TEXTURE2D(_SnowBaseMap);
-        SAMPLER(sampler_SnowBaseMap);
-
         CBUFFER_START(UnityPerMaterial)
         half4 _SnowAlbedo;
         half4 _SnowTrenchAlbedo;
@@ -159,7 +153,9 @@ Shader "SnowDays/SnowSurface"
             #pragma multi_compile _ _CLUSTER_LIGHT_LOOP
             #pragma multi_compile_fog
 
-            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
+            // Snow albedo + banded lighting shared with SnowSculpt, so the ground
+            // and the sculptures standing on it are the same material.
+            #include "SnowLook.hlsl"
 
             struct Attributes
             {
@@ -182,18 +178,6 @@ Shader "SnowDays/SnowSurface"
                 output.positionCS = TransformWorldToHClip(positionWS);
                 output.vertexData = float3(trample, fade, ComputeFogFactor(output.positionCS.z));
                 return output;
-            }
-
-            // Diffuse term quantized into hard bands, edges antialiased by a
-            // caller-supplied width so they don't crawl at 480p. Thresholds
-            // sit at band midpoints; d=0 -> 0 and d=1 -> 1 always. The width
-            // must be computed OUTSIDE any varying-iteration light loop -
-            // derivatives are undefined there on Metal.
-            half SnowBand(half d, half w)
-            {
-                half bands = max(_SnowLightBands, 2.0);
-                half x = saturate(d) * (bands - 1.0);
-                return (floor(x) + smoothstep(0.5 - w, 0.5 + w, frac(x))) / (bands - 1.0);
             }
 
             half4 SnowFragment(Varyings input) : SV_Target
@@ -220,37 +204,14 @@ Shader "SnowDays/SnowSurface"
                 inputData.normalizedScreenSpaceUV = GetNormalizedScreenSpaceUV(input.positionCS);
                 inputData.shadowMask = half4(1, 1, 1, 1);
 
-                // Compressed snow in prints reads darker and bluer.
-                half3 texCol = SAMPLE_TEXTURE2D(_SnowBaseMap, sampler_SnowBaseMap,
-                    positionWS.xz / max(_SnowTexTiling, 0.01)).rgb;
+                // Flat projection here: the ground is the reference mapping
+                // that sculptures triplanar-match. Compressed snow in prints
+                // reads darker and bluer.
+                half3 texCol = SnowTexPlanar(positionWS.xz, _SnowTexTiling);
                 half3 albedo = texCol * lerp(_SnowAlbedo.rgb, _SnowTrenchAlbedo.rgb, trample);
                 half occlusion = 1.0 - trample * _SnowTrenchAO;
 
-                Light mainLight = GetMainLight(shadowCoord, positionWS, inputData.shadowMask);
-
-                // Ambient: scene probe, pushed cold so shadowed snow reads
-                // blue at any time of day without fixing absolute colors.
-                half3 ambient = SampleSH(normalWS) * _SnowShadowTint.rgb;
-                #if defined(_SCREEN_SPACE_OCCLUSION)
-                ambient *= SampleAmbientOcclusion(inputData.normalizedScreenSpaceUV);
-                #endif
-
-                // Banded sun: band level multiplies the LIVE light color, so
-                // noon is white, sunset amber, night dark - only the stepping
-                // is stylized.
-                half dMain = saturate(dot(normalWS, mainLight.direction)) * mainLight.shadowAttenuation;
-                half bandAA = clamp(
-                    fwidth(dMain * (max(_SnowLightBands, 2.0) - 1.0)) * 0.75, 0.001, 0.45);
-                half3 color = albedo * occlusion * (ambient + mainLight.color * SnowBand(dMain, bandAA));
-
-                #if defined(_ADDITIONAL_LIGHTS)
-                uint pixelLightCount = GetAdditionalLightsCount();
-                LIGHT_LOOP_BEGIN(pixelLightCount)
-                    Light light = GetAdditionalLight(lightIndex, positionWS, half4(1, 1, 1, 1));
-                    half d = saturate(dot(normalWS, light.direction)) * light.shadowAttenuation;
-                    color += albedo * occlusion * light.color * light.distanceAttenuation * SnowBand(d, bandAA);
-                LIGHT_LOOP_END
-                #endif
+                half3 color = SnowShade(inputData, albedo, occlusion, _SnowShadowTint.rgb, _SnowLightBands);
 
                 color = MixFog(color, input.vertexData.z);
                 return half4(color, 1);
