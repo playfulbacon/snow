@@ -297,10 +297,24 @@ namespace Snowfield.Player
             UpdateBrush(mouse, shift);
         }
 
-        /// <summary>One discrete bite: remove a sphere of snow from every grid under it and hand the player that chunk.</summary>
+        /// <summary>
+        /// One discrete bite. The chunk is built from the snow the brush sphere actually overlaps - so a bite at the
+        /// edge of a sculpture hands you a half-sphere - and the same kernel is then removed from every grid under it.
+        /// </summary>
         void ScoopChunk(float radius)
         {
+            var factory = SculptureFactory.Instance;
+            if (factory == null) return;
             GatherStrokeTargets(Target, false, radius);
+
+            var chunk = factory.CreateEmptySnowball(BrushPoint, radius);
+            foreach (var t in _strokeTargets)
+                if (t is SnowSculpture s && s != null && s != chunk.Sculpture)
+                    chunk.Sculpture.ExtractFrom(s, BrushPoint, radius, config.addShoulder);
+
+            float volume = chunk.Sculpture.DensityVolume();
+            if (volume <= 1e-5f) { Destroy(chunk.gameObject); return; } // nothing but air under the cursor
+
             foreach (var t in _strokeTargets)
             {
                 if (t is Component c && c == null) continue;
@@ -308,7 +322,7 @@ namespace Snowfield.Player
                 t.Remesh();
                 t.RebuildColliders();
             }
-            Roller.GainChunk(BrushPoint, radius);
+            Roller.TakeChunk(chunk, volume);
         }
 
         /// <summary>The stroke loop: Shift+LMB smooths. (Adding is disabled; LMB scoops instead.) Multi-target.</summary>

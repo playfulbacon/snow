@@ -124,6 +124,46 @@ namespace Snowfield.Sculpture
             }
         }
 
+        /// <summary>This grid's voxel space -> world.</summary>
+        public float4x4 VoxelToWorldMatrix => math.mul((float4x4)transform.localToWorldMatrix,
+            math.mul(float4x4.Translate(gridOffset), float4x4.Scale(Info.voxelSize)));
+
+        /// <summary>World -> this grid's voxel space.</summary>
+        public float4x4 WorldToVoxelMatrix => math.mul(float4x4.Scale(1f / Info.voxelSize),
+            math.mul(float4x4.Translate(-(float3)gridOffset), (float4x4)transform.worldToLocalMatrix));
+
+        /// <summary>
+        /// Take the snow that a brush sphere overlaps out of <paramref name="source"/> and into this grid, shape and all.
+        /// The caller removes the same kernel from the source, so nothing is created or lost.
+        /// </summary>
+        public void ExtractFrom(SnowSculpture source, float3 worldCentre, float radiusMetres, float shoulder)
+        {
+            if (source == null || source == this || source.Grid == null) return;
+            float3 c = WorldToVoxel(worldCentre);
+            float r = MetresToVoxels(radiusMetres);
+            if (!Grid.SphereAabb(c, r, out var min, out var max)) return;
+            int3 ext = max - min;
+            new ExtractChunkJob
+            {
+                Density = Grid.Density, Info = Info, Source = source.Grid.Density, SourceInfo = source.Info,
+                AabbMin = min, AabbExtent = ext,
+                ToSourceVoxel = math.mul(source.WorldToVoxelMatrix, VoxelToWorldMatrix),
+                CenterVoxel = c, RadiusVoxels = r, Shoulder = shoulder,
+            }.Schedule(ext.x * ext.y * ext.z, 128).Complete();
+            Grid.MarkDirty(min, max);
+        }
+
+        /// <summary>Volume of snow in this grid, in cubic metres (density-weighted).</summary>
+        public float DensityVolume()
+        {
+            var result = new NativeArray<float>(1, Allocator.TempJob);
+            new DensitySumJob { Density = Grid.Density, Result = result }.Schedule().Complete();
+            float voxels = result[0];
+            result.Dispose();
+            float vs = Info.voxelSize;
+            return voxels * vs * vs * vs;
+        }
+
         /// <summary>Max-merge another sculpture's density into this grid, in world space (handles offset/rotation).</summary>
         public void Absorb(SnowSculpture other)
         {
@@ -141,16 +181,11 @@ namespace Snowfield.Sculpture
             int3 max = math.clamp((int3)math.ceil(hi) + 1, 0, Info.size);
             if (!math.all(max > min)) return;
 
-            // this voxel -> this local -> world -> other local -> other voxel, as one matrix
-            float4x4 thisVoxelToWorld = math.mul((float4x4)transform.localToWorldMatrix,
-                math.mul(float4x4.Translate(gridOffset), float4x4.Scale(Info.voxelSize)));
-            float4x4 worldToOtherVoxel = math.mul(float4x4.Scale(1f / other.Info.voxelSize),
-                math.mul(float4x4.Translate(-(float3)other.gridOffset), (float4x4)other.transform.worldToLocalMatrix));
             int3 ext = max - min;
             new AbsorbJob
             {
                 Density = Grid.Density, Info = Info, Source = other.Grid.Density, SourceInfo = other.Info,
-                AabbMin = min, AabbExtent = ext, ToSourceVoxel = math.mul(worldToOtherVoxel, thisVoxelToWorld),
+                AabbMin = min, AabbExtent = ext, ToSourceVoxel = math.mul(other.WorldToVoxelMatrix, VoxelToWorldMatrix),
             }.Schedule(ext.x * ext.y * ext.z, 256).Complete();
             Grid.MarkDirty(min, max);
         }

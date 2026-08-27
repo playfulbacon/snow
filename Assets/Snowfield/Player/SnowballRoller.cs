@@ -95,25 +95,29 @@ namespace Snowfield.Player
         }
 
         /// <summary>
-        /// Mass continuity: a chunk cut out of a sculpture lands in the hands. Starts a ball of that size at
-        /// <paramref name="point"/>, or merges the volume into the ball already held.
+        /// Mass continuity: take a freshly cut chunk (already filled with the snow that left the sculpture) into the
+        /// hands. With hands free the chunk itself is carried, shape and all; with a ball already held the chunk's
+        /// volume is packed into it and the chunk is discarded.
         /// </summary>
-        public void GainChunk(Vector3 point, float radius)
+        public void TakeChunk(Snowball chunk, float volume)
         {
-            if (IsCarryingSculpture || radius <= 0f) return;
+            if (chunk == null) return;
             float maxR = config != null ? config.snowballMaxRadius : 0.6f;
-            if (Ball == null)
+            if (IsCarryingSculpture || volume <= 0f) { Destroy(chunk.gameObject); return; }
+
+            if (Ball != null)
             {
-                var factory = SculptureFactory.Instance;
-                if (factory == null) return;
-                var ball = factory.CreateSnowball(point, Mathf.Min(radius, maxR));
-                Engage(ball.Sculpture, ball.Centre);
-                ball.SetState(Snowball.State.Carrying);
+                Ball.Grow(Mathf.Min(maxR, RadiusForVolume(VolumeOf(Ball.radius) + volume)));
+                Ball.Sculpture.Remesh();
+                Destroy(chunk.gameObject);
                 return;
             }
-            float merged = RadiusForVolume(VolumeOf(Ball.radius) + VolumeOf(radius));
-            Ball.Grow(Mathf.Min(maxR, merged));
-            Ball.Sculpture.Remesh();
+
+            chunk.radius = Mathf.Clamp(RadiusForVolume(volume), 0.05f, maxR); // nominal size for carrying/rolling/throwing
+            chunk.Sculpture.Remesh();
+            chunk.Sculpture.RebuildColliders();
+            Engage(chunk.Sculpture, chunk.Centre);
+            chunk.SetState(Snowball.State.Carrying);
         }
 
         static float VolumeOf(float r) => 4f / 3f * Mathf.PI * r * r * r;

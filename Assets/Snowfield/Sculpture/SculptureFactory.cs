@@ -69,6 +69,16 @@ namespace Snowfield.Sculpture
         /// </summary>
         public Snowball CreateSnowball(Vector3 centre, float radius)
         {
+            var ball = CreateEmptySnowball(centre, radius);
+            ball.Sculpture.StampSphere(centre, radius, ball.stampShoulder);
+            ball.Sculpture.Remesh();
+            ball.Sculpture.RebuildColliders();
+            return ball;
+        }
+
+        /// <summary>An empty snowball shell (grid centred on <paramref name="centre"/>); the caller fills the density.</summary>
+        public Snowball CreateEmptySnowball(Vector3 centre, float nominalRadius)
+        {
             int size = Mathf.Max(16, config.snowballGridSize / 16 * 16);
             float extent = size * config.voxelSize;
             var go = new GameObject("Snowball");
@@ -80,11 +90,8 @@ namespace Snowfield.Sculpture
             s.gridSizeOverride = size;
             s.gridOffset = new Vector3(-extent * 0.5f, -extent * 0.5f, -extent * 0.5f);
             var ball = go.AddComponent<Snowball>();
-            ball.radius = radius;
+            ball.radius = nominalRadius;
             go.SetActive(true);
-            s.StampSphere(centre, radius, ball.stampShoulder);
-            s.Remesh();
-            s.RebuildColliders();
             return ball;
         }
 
