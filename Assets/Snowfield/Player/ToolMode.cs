@@ -15,7 +15,7 @@ namespace Snowfield.Player
 
         public static string Hint(ToolMode m) => m switch
         {
-            ToolMode.Hand => "LMB smooth · Shift+LMB scoop a chunk into your hands · RMB pick up & let go (ground: scoop; hold: throw) · a carried ball rolls while your cursor is near the ground · Tab accessories",
+            ToolMode.Hand => "LMB scoop snow into your hands (sculpture: a chunk · ground: a handful) · carrying: LMB lets go, hold to throw · Shift+LMB smooth · a carried ball rolls while your cursor is near the ground · Tab accessories",
             ToolMode.Accessory => "scroll pick · LMB place · RMB remove · Tab close",
             _ => "",
         };

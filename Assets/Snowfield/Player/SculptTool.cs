@@ -11,10 +11,10 @@ namespace Snowfield.Player
 {
     /// <summary>
     /// The player's hands. One persistent state (Hand) plus a Tab accessory overlay:
-    ///   LMB — smooth/pat snow (brush)
-    ///   Shift+LMB — scoop: bite a chunk out of the sculpture; that chunk is now in your hands (mass continuity)
-    ///   RMB — pick up the aimed ball, sculpture or accessory; on bare ground: scoop a handful; while carrying,
-    ///         a tap lets go where the snow already is (fusing into snow, falling otherwise) and a hold charges a throw
+    ///   LMB — scoop: on a sculpture, bite out a chunk; on bare ground, a handful. Either way that snow is now in
+    ///         your hands (mass continuity). While carrying: a tap lets go where the snow already is (fusing into
+    ///         snow, falling otherwise), a hold charges a throw.
+    ///   Shift+LMB — smooth/pat snow (works with a ball in hand too)
     ///   A carried ball rides the ground in front of you and rolls (grows) while the cursor points near you.
     ///   Scroll — brush radius (accessory selection while the overlay is open) · Tab — accessory overlay
     /// Remesh on a timer while stroking; colliders rebuild on release. The HUD is a separate object reading this.
@@ -34,14 +34,14 @@ namespace Snowfield.Player
         public Transform cursor;
         [Tooltip("Let the brush raise/carve the ground (draw in the snow).")]
         public bool allowGroundSculpting = false;
-        [Tooltip("Holding RMB longer than this starts a throw charge; a shorter tap places/drops the carried object.")]
+        [Tooltip("Holding LMB longer than this starts a throw charge; a shorter tap places/drops the carried object.")]
         public float throwTapThreshold = 0.2f;
         [Tooltip("A carried ball rolls on the ground only while the cursor points within this distance of you; otherwise it is held overhead.")]
         public float rollEngageDistance = 2.2f;
         [Header("Brush cursor colours")]
-        [Tooltip("Smoothing/idle cursor.")]
+        [Tooltip("Cursor while smoothing (Shift held).")]
         public Color cursorAddColor = new Color(0.4f, 0.7f, 1f, 0.25f);
-        [Tooltip("Cursor while Shift is held: this sphere is the chunk that will be scooped out.")]
+        [Tooltip("Default cursor: this sphere is the chunk LMB will scoop out.")]
         public Color cursorCarveColor = new Color(1f, 0.35f, 0.3f, 0.3f);
 
         public ToolMode Mode { get; private set; } = ToolMode.Hand;
@@ -66,7 +66,7 @@ namespace Snowfield.Player
         public string AimedColliderPath { get; private set; } = "";
 
         public SnowballRoller Roller { get; private set; }
-        /// <summary>0..1 while charging a throw (RMB held with a carried ball); 0 otherwise. Drives the HUD ring.</summary>
+        /// <summary>0..1 while charging a throw (LMB held with a carried ball); 0 otherwise. Drives the HUD ring.</summary>
         public float ThrowCharge { get; private set; }
         /// <summary>What LMB would do right now (HUD prompt). Recomputed every frame.</summary>
         public CursorAction PrimaryAction { get; private set; }
@@ -79,7 +79,7 @@ namespace Snowfield.Player
         public float radiusScale = 1f;
 
         AccessoryPlacer _placer;
-        float _rmbDownTime = -1f;
+        float _lmbDownTime = -1f;
         float _tickAccumulator;
         float _remeshAccumulator;
         readonly HashSet<IBrushTarget> _dirtyTargets = new HashSet<IBrushTarget>();
@@ -150,27 +150,18 @@ namespace Snowfield.Player
             }
             else if (Roller.IsCarrying)
             {
-                s = ThrowCharge > 0f ? CursorAction.Throw
-                  : (onSnow && Target != Roller.Carried) ? CursorAction.AttachSnowball
-                  : CursorAction.Drop;
-                if (onSnow && Target != Roller.Carried && Roller.IsCarryingBall)
-                    p = shift ? CursorAction.ScoopSnow : CursorAction.Smooth;
+                if (shift && onSnow && Roller.IsCarryingBall) p = CursorAction.Smooth;
+                else p = ThrowCharge > 0f ? CursorAction.Throw
+                       : (onSnow && Target != Roller.Carried) ? CursorAction.AttachSnowball
+                       : CursorAction.Drop;
             }
-            else
+            else if (onSnow)
             {
-                if (onSnow)
-                {
-                    p = shift ? CursorAction.ScoopSnow : CursorAction.Smooth;
-                    s = CursorAction.Grab;
-                }
-                else if (AimedProp != null)
-                {
-                    s = CursorAction.Grab;
-                }
-                else if (HasGroundHit && Roller.CanReachGround(GroundPoint))
-                {
-                    s = CursorAction.ScoopSnow;
-                }
+                p = shift ? CursorAction.Smooth : CursorAction.ScoopSnow;
+            }
+            else if (HasGroundHit && Roller.CanReachGround(GroundPoint) && !shift)
+            {
+                p = CursorAction.ScoopSnow;
             }
             PrimaryAction = p;
             SecondaryAction = s;
@@ -241,23 +232,23 @@ namespace Snowfield.Player
         {
             bool lmb = mouse != null && mouse.leftButton.isPressed;
             bool lmbDown = mouse != null && mouse.leftButton.wasPressedThisFrame;
-            bool rmbDown = mouse != null && mouse.rightButton.wasPressedThisFrame;
-            bool rmbHeld = mouse != null && mouse.rightButton.isPressed;
-            bool rmbUp = mouse != null && mouse.rightButton.wasReleasedThisFrame;
+            bool lmbUp = mouse != null && mouse.leftButton.wasReleasedThisFrame;
             bool shift = kb != null && kb.leftShiftKey.isPressed;
             _placer.HidePreview();
 
-            // --- carrying: RMB tap lets go where the snow is, hold charges a throw; ball rolls only when the cursor is near ---
+            // --- carrying: LMB tap lets go where the snow is, hold charges a throw; Shift+LMB still smooths ---
             if (Roller.IsCarrying)
             {
-                if (rmbDown) _rmbDownTime = Time.time;
-                bool charging = rmbHeld && _rmbDownTime >= 0f && Roller.IsCarryingBall && Time.time - _rmbDownTime > throwTapThreshold;
+                bool letGo = !shift; // Shift keeps the brush live instead of releasing the snow
+                if (letGo && lmbDown) _lmbDownTime = Time.time;
+                bool charging = letGo && lmb && _lmbDownTime >= 0f && Roller.IsCarryingBall
+                                && Time.time - _lmbDownTime > throwTapThreshold;
                 ThrowCharge = charging
-                    ? Mathf.Min(1f, (Time.time - _rmbDownTime - throwTapThreshold) / Mathf.Max(0.05f, Roller.chargeTime))
+                    ? Mathf.Min(1f, (Time.time - _lmbDownTime - throwTapThreshold) / Mathf.Max(0.05f, Roller.chargeTime))
                     : 0f;
 
                 bool onSnow = HasHit && Target != null && Target != Roller.Carried;
-                bool sculpting = lmb; // brushing keeps the snow in hand instead of previewing an attach
+                bool sculpting = shift && lmb && Roller.IsCarryingBall; // brushing keeps the snow in hand
                 bool cursorNear = false;
                 if (HasGroundHit && reachOrigin != null)
                 {
@@ -269,10 +260,10 @@ namespace Snowfield.Player
                 Roller.UpdateCarrying(preview, liftToHand: charging || sculpting,
                                       rollOnGround: cursorNear && !charging && !sculpting && !onSnow);
 
-                if (rmbUp && _rmbDownTime >= 0f)
+                if (letGo && lmbUp && _lmbDownTime >= 0f)
                 {
-                    float held = Time.time - _rmbDownTime;
-                    _rmbDownTime = -1f;
+                    float held = Time.time - _lmbDownTime;
+                    _lmbDownTime = -1f;
                     ThrowCharge = 0f;
                     if (Roller.IsCarryingBall && held > throwTapThreshold)
                         Roller.Throw(viewCamera.transform.position, viewCamera.transform.forward,
@@ -282,34 +273,25 @@ namespace Snowfield.Player
                     return;
                 }
 
-                // Both hands on a sculpture: no brushing. A ball still leaves you free to sculpt.
-                if (Roller.IsCarryingSculpture || charging) { HideBrushCursor(); return; }
-            }
-            else
-            {
-                ThrowCharge = 0f;
-                _rmbDownTime = -1f;
-
-                // --- free hands: RMB picks up (on the ground: scoops) ---
-                if (rmbDown)
-                {
-                    if (AimedSnowball != null) { Roller.PickUp(AimedSnowball.Sculpture, BrushPoint); return; }
-                    if (AimedProp != null) { _placer.Retrieve(AimedProp); return; }
-                    if (HasHit && Target != null) { Roller.PickUp(Target, BrushPoint); return; }
-                    if (HasGroundHit && Roller.CanReachGround(GroundPoint))
-                    {
-                        Roller.ScoopFrom(GroundPoint);
-                        HideBrushCursor();
-                        return;
-                    }
-                }
-            }
-
-            // --- Shift+LMB: bite one chunk out of the sculpture, straight into your hands ---
-            if (lmbDown && shift && HasHit && Target != null)
-            {
-                ScoopChunk(CurrentRadius());
+                // A ball in hand still leaves you free to smooth; a whole sculpture fills both hands.
+                if (sculpting) { UpdateBrush(mouse, true); return; }
+                HideBrushCursor();
                 return;
+            }
+
+            ThrowCharge = 0f;
+            _lmbDownTime = -1f;
+
+            // --- free hands, LMB: scoop a chunk out of the aimed sculpture, or a handful off the ground ---
+            if (lmbDown && !shift)
+            {
+                if (HasHit && Target != null) { ScoopChunk(CurrentRadius()); return; }
+                if (HasGroundHit && Roller.CanReachGround(GroundPoint))
+                {
+                    Roller.ScoopFrom(GroundPoint);
+                    HideBrushCursor();
+                    return;
+                }
             }
 
             UpdateBrush(mouse, shift);
@@ -329,12 +311,12 @@ namespace Snowfield.Player
             Roller.GainChunk(BrushPoint, radius);
         }
 
-        /// <summary>The stroke loop: LMB smooths. (Adding is disabled; Shift+LMB scoops instead.) Multi-target.</summary>
+        /// <summary>The stroke loop: Shift+LMB smooths. (Adding is disabled; LMB scoops instead.) Multi-target.</summary>
         void UpdateBrush(Mouse mouse, bool shift)
         {
             bool lmb = mouse != null && mouse.leftButton.isPressed;
 
-            BrushOp op = lmb && !shift ? BrushOp.Smooth : BrushOp.None;
+            BrushOp op = lmb && shift ? BrushOp.Smooth : BrushOp.None;
             CurrentOp = op;
 
             IBrushTarget target = Target;
@@ -350,7 +332,7 @@ namespace Snowfield.Player
                 {
                     cursor.position = BrushPoint;
                     cursor.localScale = Vector3.one * radius * 2f;
-                    SetCursorColor(shift ? cursorCarveColor : cursorAddColor);
+                    SetCursorColor(shift ? cursorAddColor : cursorCarveColor);
                 }
             }
 
