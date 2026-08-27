@@ -1,0 +1,27 @@
+{
+    "name": "Snowfield.Net",
+    "rootNamespace": "Snowfield.Net",
+    "references": [
+        "Snowfield.Config",
+        "Snowfield.Voxel",
+        "Snowfield.Sculpture",
+        "Snowfield.Player",
+        "Unity.Netcode.Runtime",
+        "Unity.Services.Multiplayer",
+        "Unity.Services.Core",
+        "Unity.Services.Authentication",
+        "Unity.Services.Vivox",
+        "Unity.InputSystem",
+        "Unity.Mathematics",
+        "Unity.Collections"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": true,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

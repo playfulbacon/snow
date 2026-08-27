@@ -1,0 +1,30 @@
+{
+    "name": "Snowfield.Net.Tests",
+    "rootNamespace": "Snowfield.Net.Tests",
+    "references": [
+        "Snowfield.Net",
+        "Snowfield.Player",
+        "Snowfield.Sculpture",
+        "Snowfield.Voxel",
+        "Snowfield.Config",
+        "Unity.Netcode.Runtime",
+        "Unity.Netcode.Runtime.Tests",
+        "UnityEngine.TestRunner",
+        "UnityEditor.TestRunner",
+        "Unity.Collections",
+        "Unity.Mathematics"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
