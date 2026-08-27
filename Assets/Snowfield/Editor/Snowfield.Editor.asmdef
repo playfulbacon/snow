@@ -5,7 +5,6 @@
     "Snowfield.Voxel",
     "Snowfield.Sculpture",
     "Snowfield.Player",
-    "Snowfield.Field",
     "Snowfield.Config",
     "Unity.RenderPipelines.Universal.Runtime",
     "Unity.RenderPipelines.Core.Runtime",

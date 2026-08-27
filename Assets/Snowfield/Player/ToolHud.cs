@@ -465,10 +465,8 @@ namespace Snowfield.Player
                 line += $"   ·   aim: {aim}{(tool.AimedProp != null ? " (prop)" : "")} [{tool.AimedColliderPath}]";
             }
             _statusLine1.text = $"[{ToolModeInfo.DisplayName(mode)}]  {line}";
-            int fieldIndex = FieldSwitcher.Instance != null ? FieldSwitcher.Instance.CurrentField : 0;
-            int fieldCount = FieldSwitcher.Instance != null ? FieldSwitcher.Instance.fieldCount : 1;
-            _fieldLine.text = $"Field {fieldIndex + 1} / {fieldCount}   (\u2190 \u2192 to change)";
-            _statusLine2.text = $"{ToolModeInfo.Hint(mode)}   ·   WASD move · Space jump · Q crouch · E tiptoe · Esc cursor";
+            _fieldLine.text = "";
+            _statusLine2.text = $"{ToolModeInfo.Hint(mode)}   ·   WASD move · Shift run · Space jump · Q crouch · E tiptoe · Esc cursor";
         }
 
         // ------------------------------------------------------------------ helpers

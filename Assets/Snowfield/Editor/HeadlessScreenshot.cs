@@ -7,52 +7,58 @@ using UnityEngine;
 namespace Snowfield.Editor
 {
     /// <summary>
-    /// Renders the Sandbox scene's sculpture to a PNG without entering play mode, so the look can be checked
+    /// Renders the Main scene to a PNG without entering play mode, so the look can be checked
     /// from a batchmode run (needs graphics: omit -nographics).
     /// `Unity -batchmode -executeMethod Snowfield.Editor.HeadlessScreenshot.Run -screenshotOut path.png`
+    /// The scene's player camera is used as-is; pass -screenshotDemo to also stamp a demo mound at the
+    /// player's feet so sculpture rendering shows up in the shot.
     /// </summary>
     public static class HeadlessScreenshot
     {
+        const string ScenePath = "Assets/Scenes/Main.unity";
+
         [MenuItem("Snowfield/Headless Screenshot")]
         public static void Run()
         {
-            string outPath = "Screenshots/sandbox.png";
+            string outPath = "Screenshots/main.png";
+            bool demo = false;
             var args = System.Environment.GetCommandLineArgs();
-            for (int i = 0; i < args.Length - 1; i++) if (args[i] == "-screenshotOut") outPath = args[i + 1];
+            for (int i = 0; i < args.Length; i++)
+            {
+                if (args[i] == "-screenshotOut" && i + 1 < args.Length) outPath = args[i + 1];
+                if (args[i] == "-screenshotDemo") demo = true;
+            }
             Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outPath)));
 
-            EditorSceneManager.OpenScene("Assets/Scenes/Sandbox.unity", OpenSceneMode.Single);
+            EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
 
-            // Start() does not run in edit mode, so drive things by hand: the terrain builds itself (ExecuteAlways);
-            // any leftover sculptures get initialised; and a temporary mound is stamped so the shot has a subject.
+            // Start() does not run in edit mode, so initialise any scene sculptures by hand.
             foreach (var s in Object.FindObjectsByType<SnowSculpture>(FindObjectsSortMode.None))
             {
                 s.Initialise(s.Config.gridSize, s.Config.voxelSize);
                 var spawner = s.GetComponent<SculptureSpawner>();
                 if (spawner != null) spawner.SpawnNow();
             }
-            var factory = Object.FindAnyObjectByType<SculptureFactory>();
-            if (factory != null)
+            if (demo)
             {
-                var demo = factory.CreateAt(Vector3.zero);
-                if (demo.Grid == null) demo.Initialise(factory.config.gridSize, factory.config.voxelSize); // no Awake in edit mode
-                demo.StampSphere(new Vector3(0f, -0.2f, 0f), 0.8f, 0.7f, clipBelowWorldY: 0f);
-                demo.Remesh();
-            }
-            var terrain = Object.FindAnyObjectByType<Snowfield.Field.SnowTerrain>();
-            if (terrain != null && terrain.IsCreated)
-            {
-                // a carved mark so terrain shading is visible in the shot
-                for (int i = 0; i < 40; i++) terrain.ApplyAdd(new Vector3(1.5f + i * 0.05f, 0f, 1f), 0.2f, -0.01f, 0.6f);
-                terrain.Remesh();
+                var factory = Object.FindAnyObjectByType<SculptureFactory>();
+                if (factory != null)
+                {
+                    // Place the mound a couple of metres in front of the camera so it is in the shot.
+                    var cam0 = Object.FindAnyObjectByType<Camera>();
+                    Vector3 at = cam0 != null
+                        ? cam0.transform.position + Vector3.ProjectOnPlane(cam0.transform.forward, Vector3.up).normalized * 2.5f
+                            + Vector3.down * 1.5f
+                        : Vector3.zero;
+                    var mound = factory.CreateAt(at);
+                    if (mound.Grid == null) mound.Initialise(factory.config.gridSize, factory.config.voxelSize);
+                    mound.StampSphere(at + Vector3.down * 0.2f, 0.8f, 0.7f, clipBelowWorldY: at.y);
+                    mound.Remesh();
+                }
             }
 
             var cam = Camera.main;
-            // LateUpdate does not run in edit mode, so place the camera by hand.
-            var orbit = Object.FindAnyObjectByType<Snowfield.Player.OrbitCamera>();
-            if (orbit != null) orbit.Snap();
-            var fp = Object.FindAnyObjectByType<Snowfield.Player.FirstPersonCamera>();
-            if (fp != null) fp.Snap();
+            if (cam == null) cam = Object.FindAnyObjectByType<Camera>(); // the player camera is untagged
             var rt = new RenderTexture(1280, 720, 24, RenderTextureFormat.ARGB32);
             cam.targetTexture = rt;
             cam.Render();
@@ -68,7 +74,7 @@ namespace Snowfield.Editor
             Debug.Log($"[Snowfield] Screenshot written to {Path.GetFullPath(outPath)}");
 
             // Leave the scene untouched on disk.
-            EditorSceneManager.OpenScene("Assets/Scenes/Sandbox.unity", OpenSceneMode.Single);
+            EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
             if (Application.isBatchMode) EditorApplication.Exit(0);
         }
     }

@@ -1,0 +1,17 @@
+fileFormatVersion: 2
+guid: ab0962b8e2dfbf243b8ad271928a87ca
+ScriptedImporter:
+  internalIDToNameTable: []
+  externalObjects: {}
+  serializedVersion: 2
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+  script: {fileID: 11500000, guid: 60072b568d64c40a485e0fc55012dc9f, type: 3}
+AssetOrigin:
+  serializedVersion: 1
+  productId: 304150
+  packageName: Americana Island HDRP
+  packageVersion: 1.5
+  assetPath: Assets/Americana_Island/Shaders/SG_ColorAdjustment.shadersubgraph
+  uploadId: 962928

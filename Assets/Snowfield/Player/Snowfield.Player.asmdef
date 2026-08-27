@@ -4,7 +4,6 @@
   "references": [
     "Snowfield.Voxel",
     "Snowfield.Sculpture",
-    "Snowfield.Field",
     "Snowfield.Config",
     "Unity.Mathematics",
     "Unity.InputSystem",

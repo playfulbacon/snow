@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 0fdf5990e74b25042bc8f2a886a0e6ca
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 8574412962073106934
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 304150
+  packageName: Americana Island HDRP
+  packageVersion: 1.5
+  assetPath: Assets/Americana_Island/Terrain/Layers/Layer_Asphalt.terrainlayer
+  uploadId: 962928

@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: d8d896697488e754fa1c7bf5e7a6f168
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 8574412962073106934
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 304150
+  packageName: Americana Island HDRP
+  packageVersion: 1.5
+  assetPath: Assets/Americana_Island/Terrain/Layers/Layer_Cliff.terrainlayer
+  uploadId: 962928

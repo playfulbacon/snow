@@ -29,3 +29,6 @@ Thumbs.db
 .testresults.xml
 .playtests.xml
 *.xml.bak
+
+# IDE (merge additions)
+.vscode/

@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 71d38ca3b85096b42a8ba96f485de7ca
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 11400000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 304150
+  packageName: Americana Island HDRP
+  packageVersion: 1.5
+  assetPath: Assets/Americana_Island/Terrain/TerrainPreset_Americana.asset
+  uploadId: 962928

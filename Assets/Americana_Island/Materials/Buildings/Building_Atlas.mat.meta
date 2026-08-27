@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: ac2ce7be2a3ad4845ad3afdb0b6ffd00
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 304150
+  packageName: Americana Island HDRP
+  packageVersion: 1.5
+  assetPath: Assets/Americana_Island/Materials/Buildings/Building_Atlas.mat
+  uploadId: 962928

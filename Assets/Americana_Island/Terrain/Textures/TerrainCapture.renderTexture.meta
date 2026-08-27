@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 6b46dbf42b3d11347b6911cf7ae2ad6e
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 8400000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 304150
+  packageName: Americana Island HDRP
+  packageVersion: 1.5
+  assetPath: Assets/Americana_Island/Terrain/Textures/TerrainCapture.renderTexture
+  uploadId: 962928

@@ -1,7 +1,49 @@
-* text=auto eol=lf
-*.png binary
-*.jpg binary
-*.asset text
-*.unity text
-*.mat text
-*.meta text
+# Git LFS — added before the first push of the SnowDays merge (~6.4 GB of binary art).
+# Unity text assets (.unity/.prefab/.mat/.anim/.asset YAML, .cs, .shader) stay in plain git;
+# binary TerrainData/LightingData .asset files are routed to LFS by path below.
+
+# Textures
+*.png filter=lfs diff=lfs merge=lfs -text
+*.PNG filter=lfs diff=lfs merge=lfs -text
+*.png_ filter=lfs diff=lfs merge=lfs -text
+*.jpg filter=lfs diff=lfs merge=lfs -text
+*.JPG filter=lfs diff=lfs merge=lfs -text
+*.jpeg filter=lfs diff=lfs merge=lfs -text
+*.tga filter=lfs diff=lfs merge=lfs -text
+*.TGA filter=lfs diff=lfs merge=lfs -text
+*.psd filter=lfs diff=lfs merge=lfs -text
+*.tif filter=lfs diff=lfs merge=lfs -text
+*.tiff filter=lfs diff=lfs merge=lfs -text
+*.exr filter=lfs diff=lfs merge=lfs -text
+*.EXR filter=lfs diff=lfs merge=lfs -text
+*.hdr filter=lfs diff=lfs merge=lfs -text
+*.HDR filter=lfs diff=lfs merge=lfs -text
+
+# Models
+*.fbx filter=lfs diff=lfs merge=lfs -text
+*.FBX filter=lfs diff=lfs merge=lfs -text
+*.obj filter=lfs diff=lfs merge=lfs -text
+*.blend filter=lfs diff=lfs merge=lfs -text
+
+# Audio / video (none yet; future-proofing)
+*.wav filter=lfs diff=lfs merge=lfs -text
+*.WAV filter=lfs diff=lfs merge=lfs -text
+*.mp3 filter=lfs diff=lfs merge=lfs -text
+*.ogg filter=lfs diff=lfs merge=lfs -text
+*.aif filter=lfs diff=lfs merge=lfs -text
+*.aiff filter=lfs diff=lfs merge=lfs -text
+*.mp4 filter=lfs diff=lfs merge=lfs -text
+*.mov filter=lfs diff=lfs merge=lfs -text
+
+# Archives / docs
+*.unitypackage filter=lfs diff=lfs merge=lfs -text
+*.zip filter=lfs diff=lfs merge=lfs -text
+*.pdf filter=lfs diff=lfs merge=lfs -text
+
+# Unity BINARY .asset files (TerrainData, baked lighting) — matched by path so the
+# hundreds of small YAML .asset files stay diffable in plain git.
+Assets/Americana_Island/Terrain/Terrain_*.asset filter=lfs diff=lfs merge=lfs -text
+Assets/SoStylized/Demo/TerrainData/*.asset filter=lfs diff=lfs merge=lfs -text
+Assets/TerrainData_*.asset filter=lfs diff=lfs merge=lfs -text
+Assets/New[[:space:]]Terrain*.asset filter=lfs diff=lfs merge=lfs -text
+LightingData.asset filter=lfs diff=lfs merge=lfs -text

@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: ea144bf62f5c7864292a752d2fc0df38
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 304150
+  packageName: Americana Island HDRP
+  packageVersion: 1.5
+  assetPath: Assets/Americana_Island/Models/Materials/MI_StreetProps.mat
+  uploadId: 962928

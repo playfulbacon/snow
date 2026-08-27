@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 8687145d981e32f40adee7d668695d28
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 304150
+  packageName: Americana Island HDRP
+  packageVersion: 1.5
+  assetPath: Assets/Americana_Island/Materials/Standard/M_Glass_Pickup.mat
+  uploadId: 962928

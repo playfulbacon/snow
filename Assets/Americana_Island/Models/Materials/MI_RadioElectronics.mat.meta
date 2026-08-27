@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 96bf62def5645de4b9bd433bc90ef61b
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 304150
+  packageName: Americana Island HDRP
+  packageVersion: 1.5
+  assetPath: Assets/Americana_Island/Models/Materials/MI_RadioElectronics.mat
+  uploadId: 962928

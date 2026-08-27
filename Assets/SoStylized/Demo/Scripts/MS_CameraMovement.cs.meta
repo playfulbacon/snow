@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: 5aa24191fcfa9554298f63bfcdf4b7d4
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 326646
+  packageName: Stylized Nature & Environment MEGA PACK
+  packageVersion: 1.0
+  assetPath: Assets/SoStylized/Demo/Scripts/MS_CameraMovement.cs
+  uploadId: 815288

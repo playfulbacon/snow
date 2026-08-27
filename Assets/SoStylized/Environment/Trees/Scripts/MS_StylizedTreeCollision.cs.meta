@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: f018dd554ae2ca44b8dbe657f21f5964
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 326646
+  packageName: Stylized Nature & Environment MEGA PACK
+  packageVersion: 1.0
+  assetPath: Assets/SoStylized/Environment/Trees/Scripts/MS_StylizedTreeCollision.cs
+  uploadId: 815288

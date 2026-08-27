@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: f841cc475bc6f0348b7092c5106b1a39
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 112000000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 304150
+  packageName: Americana Island HDRP
+  packageVersion: 1.5
+  assetPath: Assets/Americana_Island/Scenes/Island_V2_cleaned/LightingData.asset
+  uploadId: 962928

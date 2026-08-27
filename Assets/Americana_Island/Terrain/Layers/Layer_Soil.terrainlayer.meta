@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 648f7fac4f7376d43a73148ff9b7367f
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 8574412962073106934
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 304150
+  packageName: Americana Island HDRP
+  packageVersion: 1.5
+  assetPath: Assets/Americana_Island/Terrain/Layers/Layer_Soil.terrainlayer
+  uploadId: 962928

@@ -1,5 +1,4 @@
 using Snowfield.Config;
-using Snowfield.Field;
 using Snowfield.Sculpture;
 using UnityEngine;
 
@@ -16,8 +15,8 @@ namespace Snowfield.Player
     public class SnowballRoller : MonoBehaviour
     {
         public SculptFeelConfig config;
-        [Tooltip("Character the ball rolls in front of. Defaults to the SnowCharacter in parents.")]
-        public SnowCharacter character;
+        [Tooltip("Root of the character the ball rolls in front of. Defaults to this tool's hierarchy root.")]
+        public Transform character;
         [Tooltip("Gap between the character's capsule and the ball surface while rolling (m).")]
         public float pushGap = 0.35f;
         [Tooltip("Max distance from the character to scoop or make a mound on the ground (m).")]
@@ -56,16 +55,35 @@ namespace Snowfield.Player
 
         void Awake()
         {
-            if (character == null) character = GetComponentInParent<SnowCharacter>();
-            if (character == null) character = FindAnyObjectByType<SnowCharacter>();
+            if (character == null) character = transform.root != transform ? transform.root : transform;
             Snowball.TrenchStamper = StampTrenchAt;
+            Snowball.RestHeightAdjuster = RestingCentreY;
         }
+
+        void OnDestroy()
+        {
+            if (Snowball.TrenchStamper != null && ReferenceEquals(Snowball.TrenchStamper.Target, this))
+                Snowball.TrenchStamper = null;
+            if (Snowball.RestHeightAdjuster != null && ReferenceEquals(Snowball.RestHeightAdjuster.Target, this))
+                Snowball.RestHeightAdjuster = null;
+        }
+
+        /// <summary>Where a landed ball's centre should rest: on the visible snow surface, sunk by its trench.</summary>
+        float RestingCentreY(Vector3 centre, float radius)
+        {
+            var ground = SnowGround.Instance;
+            if (ground == null || !ground.IsCreated) return float.NaN;
+            float sink = config != null ? radius * config.rollTrenchDepthFraction * 0.5f : 0f;
+            return ground.SampleHeight(centre) + radius - sink;
+        }
+
+        CharacterController Capsule => character != null ? character.GetComponent<CharacterController>() : null;
 
         float CapsuleRadius
         {
             get
             {
-                var cc = character != null ? character.GetComponent<CharacterController>() : null;
+                var cc = Capsule;
                 return cc != null ? cc.radius : 0.35f;
             }
         }
@@ -73,7 +91,7 @@ namespace Snowfield.Player
         public bool CanReachGround(Vector3 groundPoint)
         {
             if (character == null) return false;
-            Vector3 d = groundPoint - character.transform.position; d.y = 0f;
+            Vector3 d = groundPoint - character.position; d.y = 0f;
             return d.magnitude - CapsuleRadius <= startReach;
         }
 
@@ -89,9 +107,9 @@ namespace Snowfield.Player
             var ball = factory.CreateSnowball(groundPoint + Vector3.up * r, r);
             Engage(ball.Sculpture, ball.Centre);
             ball.SetState(Snowball.State.Carrying);
-            var terrain = SnowTerrain.Instance;
-            if (terrain != null && config != null)
-                terrain.StampDepression(groundPoint, r * 1.6f, config.scoopDivotDepth, 0.6f);
+            var ground = SnowGround.Instance;
+            if (ground != null && config != null)
+                ground.StampDepression(groundPoint, r * 1.6f, config.scoopDivotDepth, 0.6f);
         }
 
         /// <summary>
@@ -279,9 +297,9 @@ namespace Snowfield.Player
         void RollAtFeet()
         {
             if (character == null) return;
-            var ch = character.transform;
+            var ch = character;
             var t = Ball.transform;
-            var terrain = SnowTerrain.Instance;
+            var terrain = SnowGround.Instance;
 
             Vector3 goal = ch.position + ch.forward * (CapsuleRadius + pushGap + Ball.radius);
             Vector3 prev = t.position;
@@ -310,15 +328,15 @@ namespace Snowfield.Player
             Ball.Sculpture.Remesh(); // every frame: the ball's grid is small and stepped growth reads as snapping
         }
 
-        static void StampTrenchAt(Vector3 ballCentre, float radius)
+        void StampTrenchAt(Vector3 ballCentre, float radius)
         {
-            var terrain = SnowTerrain.Instance;
-            if (terrain == null || terrain.Config == null) return;
-            terrain.StampDepression(ballCentre, radius * 0.9f, radius * terrain.Config.rollTrenchDepthFraction, 0.6f);
+            var ground = SnowGround.Instance;
+            if (ground == null || config == null) return;
+            ground.StampDepression(ballCentre, radius * 0.9f, radius * config.rollTrenchDepthFraction, 0.6f);
         }
 
         /// <summary>Press a trench under a rolling ball every half-radius of travel.</summary>
-        public static void StampTrench(Vector3 ballCentre, float radius, ref Vector3 lastStamp)
+        void StampTrench(Vector3 ballCentre, float radius, ref Vector3 lastStamp)
         {
             Vector3 d = ballCentre - lastStamp; d.y = 0f;
             if (d.magnitude < radius * 0.5f) return;
@@ -330,8 +348,9 @@ namespace Snowfield.Player
         public Vector3 CarryPosition()
         {
             if (carryAnchor != null) return carryAnchor.position;
-            var t = character != null ? character.transform : transform;
-            float eye = character != null ? character.EyeHeight : 1.6f;
+            var t = character != null ? character : transform;
+            var cc = Capsule;
+            float eye = cc != null ? cc.height - 0.15f : 1.6f; // just below the capsule top
             return t.position + t.forward * carryOffset.x + Vector3.up * (eye + carryOffset.y);
         }
 
@@ -354,12 +373,12 @@ namespace Snowfield.Player
 
         float GroundHeightAt(Vector3 p)
         {
-            // Terrain data first: a raycast can land on another sculpture's snow and inflate the "ground" height.
-            var terrain = SnowTerrain.Instance;
-            if (terrain != null && terrain.IsCreated) return terrain.SampleHeight(p);
+            // Ground snow data first: a raycast can land on another sculpture's snow and inflate the "ground" height.
+            var ground = SnowGround.Instance;
+            if (ground != null && ground.IsCreated) return ground.SampleHeight(p);
             if (Physics.Raycast(p + Vector3.up * 3f, Vector3.down, out var hit, 8f, groundMask, QueryTriggerInteraction.Ignore))
                 return hit.point.y;
-            return character != null ? character.transform.position.y : 0f;
+            return character != null ? character.position.y : 0f;
         }
     }
 }

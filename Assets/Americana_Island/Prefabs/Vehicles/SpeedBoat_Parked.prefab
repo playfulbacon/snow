@@ -1,0 +1,524 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &502405611507979666
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 3895823804568854730}
+  m_Layer: 0
+  m_Name: SpeedBoat_Parked
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &3895823804568854730
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 502405611507979666}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 7842623966207115611}
+  - {fileID: 1032496181769330652}
+  - {fileID: 2154808900061636057}
+  - {fileID: 3837313440714290275}
+  - {fileID: 6266659201137851414}
+  - {fileID: 5999086067744437288}
+  - {fileID: 3036474008733106556}
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &3141976777208065714
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 7842623966207115611}
+  - component: {fileID: 252499153703044760}
+  - component: {fileID: 2506121423880217202}
+  - component: {fileID: 4409977340103998957}
+  m_Layer: 0
+  m_Name: SM_trailer_03
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &7842623966207115611
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3141976777208065714}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 3895823804568854730}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!23 &252499153703044760
+MeshRenderer:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3141976777208065714}
+  m_Enabled: 1
+  m_CastShadows: 1
+  m_ReceiveShadows: 1
+  m_DynamicOccludee: 1
+  m_StaticShadowCaster: 0
+  m_MotionVectors: 1
+  m_LightProbeUsage: 1
+  m_ReflectionProbeUsage: 1
+  m_RayTracingMode: 2
+  m_RayTraceProcedural: 0
+  m_RenderingLayerMask: 1
+  m_RendererPriority: 0
+  m_Materials:
+  - {fileID: 2100000, guid: abc00000000001345586070600154073, type: 2}
+  m_StaticBatchInfo:
+    firstSubMesh: 0
+    subMeshCount: 0
+  m_StaticBatchRoot: {fileID: 0}
+  m_ProbeAnchor: {fileID: 0}
+  m_LightProbeVolumeOverride: {fileID: 0}
+  m_ScaleInLightmap: 1
+  m_ReceiveGI: 1
+  m_PreserveUVs: 1
+  m_IgnoreNormalsForChartDetection: 0
+  m_ImportantGI: 0
+  m_StitchLightmapSeams: 1
+  m_SelectedEditorRenderState: 3
+  m_MinimumChartSize: 4
+  m_AutoUVMaxDistance: 0.5
+  m_AutoUVMaxAngle: 89
+  m_LightmapParameters: {fileID: 0}
+  m_SortingLayerID: 0
+  m_SortingLayer: 0
+  m_SortingOrder: 0
+  m_AdditionalVertexStreams: {fileID: 0}
+--- !u!33 &2506121423880217202
+MeshFilter:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3141976777208065714}
+  m_Mesh: {fileID: 4300000, guid: abc00000000016787744158062158486, type: 3}
+--- !u!64 &4409977340103998957
+MeshCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3141976777208065714}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 5
+  m_Convex: 1
+  m_CookingOptions: 30
+  m_Mesh: {fileID: 4300000, guid: abc00000000016787744158062158486, type: 3}
+--- !u!1001 &1032496182254721666
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 3895823804568854730}
+    m_Modifications:
+    - target: {fileID: 1030980957, guid: abc00000000015948701408852827882, type: 3}
+      propertyPath: m_Name
+      value: BP_SpeedBoat_Small_01_GEN_VARIABLE_BP_SpeedBoat_Small_01_C_CAT_1106_SM_boatEngine_4_1626
+      objectReference: {fileID: 0}
+    - target: {fileID: 1030980958, guid: abc00000000015948701408852827882, type: 3}
+      propertyPath: m_LocalScale.x
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 1030980958, guid: abc00000000015948701408852827882, type: 3}
+      propertyPath: m_LocalScale.y
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 1030980958, guid: abc00000000015948701408852827882, type: 3}
+      propertyPath: m_LocalScale.z
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 1030980958, guid: abc00000000015948701408852827882, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 1.8214194
+      objectReference: {fileID: 0}
+    - target: {fileID: 1030980958, guid: abc00000000015948701408852827882, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0.8993981
+      objectReference: {fileID: 0}
+    - target: {fileID: 1030980958, guid: abc00000000015948701408852827882, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 1030980958, guid: abc00000000015948701408852827882, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 0.00000020861623
+      objectReference: {fileID: 0}
+    - target: {fileID: 1030980958, guid: abc00000000015948701408852827882, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0.014792703
+      objectReference: {fileID: 0}
+    - target: {fileID: 1030980958, guid: abc00000000015948701408852827882, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0.99989057
+      objectReference: {fileID: 0}
+    - target: {fileID: 1030980958, guid: abc00000000015948701408852827882, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0.00000058952713
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: abc00000000015948701408852827882, type: 3}
+--- !u!4 &1032496181769330652 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 1030980958, guid: abc00000000015948701408852827882,
+    type: 3}
+  m_PrefabInstance: {fileID: 1032496182254721666}
+  m_PrefabAsset: {fileID: 0}
+--- !u!1001 &2154808899850838247
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 3895823804568854730}
+    m_Modifications:
+    - target: {fileID: 1030980925, guid: abc00000000004159845408220471684, type: 3}
+      propertyPath: m_Name
+      value: BP_SpeedBoat_Small_01_GEN_VARIABLE_BP_SpeedBoat_Small_01_C_CAT_1106_SM_boatTank_6_1628
+      objectReference: {fileID: 0}
+    - target: {fileID: 1030980926, guid: abc00000000004159845408220471684, type: 3}
+      propertyPath: m_LocalScale.x
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 1030980926, guid: abc00000000004159845408220471684, type: 3}
+      propertyPath: m_LocalScale.y
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 1030980926, guid: abc00000000004159845408220471684, type: 3}
+      propertyPath: m_LocalScale.z
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 1030980926, guid: abc00000000004159845408220471684, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 1.5288575
+      objectReference: {fileID: 0}
+    - target: {fileID: 1030980926, guid: abc00000000004159845408220471684, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0.9801793
+      objectReference: {fileID: 0}
+    - target: {fileID: 1030980926, guid: abc00000000004159845408220471684, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 0.44283694
+      objectReference: {fileID: 0}
+    - target: {fileID: 1030980926, guid: abc00000000004159845408220471684, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 0.10811732
+      objectReference: {fileID: 0}
+    - target: {fileID: 1030980926, guid: abc00000000004159845408220471684, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0.014706188
+      objectReference: {fileID: 0}
+    - target: {fileID: 1030980926, guid: abc00000000004159845408220471684, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0.9940281
+      objectReference: {fileID: 0}
+    - target: {fileID: 1030980926, guid: abc00000000004159845408220471684, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: -0.0015988599
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: abc00000000004159845408220471684, type: 3}
+--- !u!4 &2154808900061636057 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 1030980926, guid: abc00000000004159845408220471684,
+    type: 3}
+  m_PrefabInstance: {fileID: 2154808899850838247}
+  m_PrefabAsset: {fileID: 0}
+--- !u!1001 &3036474008549573714
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 3895823804568854730}
+    m_Modifications:
+    - target: {fileID: 1030980909, guid: abc00000000000848272853056190486, type: 3}
+      propertyPath: m_Name
+      value: BP_SpeedBoat_Small_01_GEN_VARIABLE_BP_SpeedBoat_Small_01_C_CAT_1106_SM_rope_7_1629
+      objectReference: {fileID: 0}
+    - target: {fileID: 1030980910, guid: abc00000000000848272853056190486, type: 3}
+      propertyPath: m_LocalScale.x
+      value: 0.458306
+      objectReference: {fileID: 0}
+    - target: {fileID: 1030980910, guid: abc00000000000848272853056190486, type: 3}
+      propertyPath: m_LocalScale.y
+      value: 0.45830604
+      objectReference: {fileID: 0}
+    - target: {fileID: 1030980910, guid: abc00000000000848272853056190486, type: 3}
+      propertyPath: m_LocalScale.z
+      value: 0.458306
+      objectReference: {fileID: 0}
+    - target: {fileID: 1030980910, guid: abc00000000000848272853056190486, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 0.5827452
+      objectReference: {fileID: 0}
+    - target: {fileID: 1030980910, guid: abc00000000000848272853056190486, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0.708432
+      objectReference: {fileID: 0}
+    - target: {fileID: 1030980910, guid: abc00000000000848272853056190486, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: -0.059720103
+      objectReference: {fileID: 0}
+    - target: {fileID: 1030980910, guid: abc00000000000848272853056190486, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 0.7068001
+      objectReference: {fileID: 0}
+    - target: {fileID: 1030980910, guid: abc00000000000848272853056190486, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0.010463383
+      objectReference: {fileID: 0}
+    - target: {fileID: 1030980910, guid: abc00000000000848272853056190486, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0.7072587
+      objectReference: {fileID: 0}
+    - target: {fileID: 1030980910, guid: abc00000000000848272853056190486, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: -0.010456368
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: abc00000000000848272853056190486, type: 3}
+--- !u!4 &3036474008733106556 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 1030980910, guid: abc00000000000848272853056190486,
+    type: 3}
+  m_PrefabInstance: {fileID: 3036474008549573714}
+  m_PrefabAsset: {fileID: 0}
+--- !u!1001 &3837313441306789214
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 3895823804568854730}
+    m_Modifications:
+    - target: {fileID: 1031221564, guid: abc00000000015451123355114227602, type: 3}
+      propertyPath: m_Name
+      value: BP_SpeedBoat_Small_01_GEN_VARIABLE_BP_SpeedBoat_Small_01_C_CAT_1106_SM_speedBoat_2_1624
+      objectReference: {fileID: 0}
+    - target: {fileID: 1031221565, guid: abc00000000015451123355114227602, type: 3}
+      propertyPath: m_LocalScale.x
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 1031221565, guid: abc00000000015451123355114227602, type: 3}
+      propertyPath: m_LocalScale.y
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 1031221565, guid: abc00000000015451123355114227602, type: 3}
+      propertyPath: m_LocalScale.z
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 1031221565, guid: abc00000000015451123355114227602, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: -0.17674996
+      objectReference: {fileID: 0}
+    - target: {fileID: 1031221565, guid: abc00000000015451123355114227602, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0.65225506
+      objectReference: {fileID: 0}
+    - target: {fileID: 1031221565, guid: abc00000000015451123355114227602, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 1031221565, guid: abc00000000015451123355114227602, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 0.00000020861623
+      objectReference: {fileID: 0}
+    - target: {fileID: 1031221565, guid: abc00000000015451123355114227602, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0.014792703
+      objectReference: {fileID: 0}
+    - target: {fileID: 1031221565, guid: abc00000000015451123355114227602, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0.99989057
+      objectReference: {fileID: 0}
+    - target: {fileID: 1031221565, guid: abc00000000015451123355114227602, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0.00000058952713
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: abc00000000015451123355114227602, type: 3}
+--- !u!4 &3837313440714290275 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 1031221565, guid: abc00000000015451123355114227602,
+    type: 3}
+  m_PrefabInstance: {fileID: 3837313441306789214}
+  m_PrefabAsset: {fileID: 0}
+--- !u!1001 &5999086066749239677
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 3895823804568854730}
+    m_Modifications:
+    - target: {fileID: 1030980948, guid: abc00000000008419833975697943344, type: 3}
+      propertyPath: m_Name
+      value: BP_SpeedBoat_Small_01_GEN_VARIABLE_BP_SpeedBoat_Small_01_C_CAT_1106_SM_boatRotor_5_1627
+      objectReference: {fileID: 0}
+    - target: {fileID: 1030980949, guid: abc00000000008419833975697943344, type: 3}
+      propertyPath: m_LocalScale.x
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 1030980949, guid: abc00000000008419833975697943344, type: 3}
+      propertyPath: m_LocalScale.y
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 1030980949, guid: abc00000000008419833975697943344, type: 3}
+      propertyPath: m_LocalScale.z
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 1030980949, guid: abc00000000008419833975697943344, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 1.8817548
+      objectReference: {fileID: 0}
+    - target: {fileID: 1030980949, guid: abc00000000008419833975697943344, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0.46994713
+      objectReference: {fileID: 0}
+    - target: {fileID: 1030980949, guid: abc00000000008419833975697943344, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 1030980949, guid: abc00000000008419833975697943344, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 0.0016852907
+      objectReference: {fileID: 0}
+    - target: {fileID: 1030980949, guid: abc00000000008419833975697943344, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0.014695788
+      objectReference: {fileID: 0}
+    - target: {fileID: 1030980949, guid: abc00000000008419833975697943344, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0.99338216
+      objectReference: {fileID: 0}
+    - target: {fileID: 1030980949, guid: abc00000000008419833975697943344, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0.113899894
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: abc00000000008419833975697943344, type: 3}
+--- !u!4 &5999086067744437288 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 1030980949, guid: abc00000000008419833975697943344,
+    type: 3}
+  m_PrefabInstance: {fileID: 5999086066749239677}
+  m_PrefabAsset: {fileID: 0}
+--- !u!1001 &6266659201220761078
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 3895823804568854730}
+    m_Modifications:
+    - target: {fileID: 1030973919, guid: abc00000000002229404563418857585, type: 3}
+      propertyPath: m_Name
+      value: BP_SpeedBoat_Small_01_GEN_VARIABLE_BP_SpeedBoat_Small_01_C_CAT_1106_SM_floater_3_1625
+      objectReference: {fileID: 0}
+    - target: {fileID: 1030973920, guid: abc00000000002229404563418857585, type: 3}
+      propertyPath: m_LocalScale.x
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 1030973920, guid: abc00000000002229404563418857585, type: 3}
+      propertyPath: m_LocalScale.y
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 1030973920, guid: abc00000000002229404563418857585, type: 3}
+      propertyPath: m_LocalScale.z
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 1030973920, guid: abc00000000002229404563418857585, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: -1.7786405
+      objectReference: {fileID: 0}
+    - target: {fileID: 1030973920, guid: abc00000000002229404563418857585, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 1.0659899
+      objectReference: {fileID: 0}
+    - target: {fileID: 1030973920, guid: abc00000000002229404563418857585, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 0.05854604
+      objectReference: {fileID: 0}
+    - target: {fileID: 1030973920, guid: abc00000000002229404563418857585, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 0.00000020861623
+      objectReference: {fileID: 0}
+    - target: {fileID: 1030973920, guid: abc00000000002229404563418857585, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0.014792703
+      objectReference: {fileID: 0}
+    - target: {fileID: 1030973920, guid: abc00000000002229404563418857585, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0.99989057
+      objectReference: {fileID: 0}
+    - target: {fileID: 1030973920, guid: abc00000000002229404563418857585, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0.00000058952713
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: abc00000000002229404563418857585, type: 3}
+--- !u!4 &6266659201137851414 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 1030973920, guid: abc00000000002229404563418857585,
+    type: 3}
+  m_PrefabInstance: {fileID: 6266659201220761078}
+  m_PrefabAsset: {fileID: 0}

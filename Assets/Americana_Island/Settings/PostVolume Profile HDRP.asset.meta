@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: c20fd6f459157d14ca40a1c6fda4b6ca
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 11400000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 304150
+  packageName: Americana Island HDRP
+  packageVersion: 1.5
+  assetPath: Assets/Americana_Island/Settings/PostVolume Profile HDRP.asset
+  uploadId: 962928

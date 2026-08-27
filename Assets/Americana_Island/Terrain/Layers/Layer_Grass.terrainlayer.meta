@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 0001b16561a9c614fb3b885ad5f89e77
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 8574412962073106934
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 304150
+  packageName: Americana Island HDRP
+  packageVersion: 1.5
+  assetPath: Assets/Americana_Island/Terrain/Layers/Layer_Grass.terrainlayer
+  uploadId: 962928

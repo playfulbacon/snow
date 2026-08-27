@@ -27,6 +27,11 @@ namespace Snowfield.Sculpture
 
         /// <summary>Hook for the field: (ball centre, radius). Set by whoever owns the terrain (SnowballRoller).</summary>
         public static System.Action<Vector3, float> TrenchStamper;
+        /// <summary>
+        /// Hook for the field: (ball centre, radius) → desired resting centre Y, or NaN for "leave it". The physics
+        /// floor can sit below the visible snow surface; this lifts a landed ball onto the snow. Set by SnowballRoller.
+        /// </summary>
+        public static System.Func<Vector3, float, float> RestHeightAdjuster;
 
         public State Current { get; private set; } = State.Resting;
         public bool IsLoose { get; private set; } = true;
@@ -127,8 +132,14 @@ namespace Snowfield.Sculpture
         void Land()
         {
             if (_rb != null) { _rb.isKinematic = true; Destroy(_rb); } // Destroy is deferred; kinematic bodies accept concave meshes meanwhile
-            if (_flightCollider != null) Destroy(_flightCollider);
+            if (_flightCollider != null) { _flightCollider.enabled = false; Destroy(_flightCollider); } // disable now: the adjuster raycasts
             _rb = null; _flightCollider = null;
+            if (RestHeightAdjuster != null)
+            {
+                float y = RestHeightAdjuster(transform.position, radius);
+                if (!float.IsNaN(y) && y > transform.position.y)
+                    transform.position = new Vector3(transform.position.x, y, transform.position.z);
+            }
             Sculpture.SetCollidersEnabled(true);
             Sculpture.ForceRebuildAllColliders();
             Physics.SyncTransforms();
