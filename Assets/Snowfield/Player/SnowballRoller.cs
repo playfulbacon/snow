@@ -31,10 +31,18 @@ namespace Snowfield.Player
         public float throwStartDistance = 0.25f;
 
         [Header("Throw")]
-        public float throwSpeedMin = 3f;
-        public float throwSpeedMax = 11f;
-        [Tooltip("Extra upward speed so a flat throw still arcs.")]
-        public float throwLift = 1.5f;
+        public float throwSpeedMin = 7f;
+        public float throwSpeedMax = 30f;
+        [Tooltip("Degrees above your aim that a throw leaves the hand, so a flat one still arcs. An ANGLE, not an added speed: a fixed upward speed bends a weak throw far more than a hard one, so the ball never lands where the reticle said it would.")]
+        [Range(0f, 30f)] public float throwLiftDegrees = 4f;
+        [Tooltip("Ball radius that throws at full speed (m). Anything heavier than this leaves the hand slower.")]
+        public float throwReferenceRadius = 0.15f;
+        [Tooltip("How hard size slows a throw. 0 = size is irrelevant (every ball flies the same, which is the tell that nothing is being simulated), 1 = speed falls with the cube root of the mass, 1.5 = with its square root, roughly what an arm does.")]
+        [Range(0f, 2f)] public float throwMassFalloff = 1f;
+        [Tooltip("How much of your own motion the throw carries. Throwing while sprinting should send it further than throwing from standstill.")]
+        [Range(0f, 1f)] public float throwInheritVelocity = 0.7f;
+        [Tooltip("Backspin at full power (turns per second). Barely readable on a smooth sphere, obvious on a lumpy marching-cubes one.")]
+        public float throwSpin = 2.5f;
         [Tooltip("Seconds of holding to reach full power.")]
         public float chargeTime = 1.2f;
         [Tooltip("Raycast mask used to find the ground under the ball.")]
@@ -173,7 +181,7 @@ namespace Snowfield.Player
             if (Ball == null) { DropHere(); return; }
             var ball = Ball;
             Carried = null; Ball = null;
-            ball.Launch(Vector3.zero); // gravity does the rest; Land() restores its colliders
+            ball.Launch(Vector3.zero, Vector3.zero, ThrowerColliders()); // gravity does the rest; Land() restores its colliders
         }
 
         /// <summary>Pick up a loose ball (by its centre) or a fixed sculpture (by the aimed point).</summary>
@@ -372,13 +380,45 @@ namespace Snowfield.Player
         public void Throw(Vector3 origin, Vector3 direction, float power)
         {
             if (!IsCarryingBall) return;
+            power = Mathf.Clamp01(power);
             direction = direction.normalized;
             var ball = Ball;
             Carried = null; Ball = null;
             ball.transform.position = origin + direction * (throwStartDistance + ball.radius);
-            float speed = Mathf.Lerp(throwSpeedMin, throwSpeedMax, Mathf.Clamp01(power));
-            ball.Launch(direction * speed + Vector3.up * throwLift);
+
+            // Lift as an angle about the horizontal axis across the aim, so the arc keeps its shape at every power.
+            Vector3 across = Vector3.Cross(Vector3.up, direction);
+            Vector3 launchDir = across.sqrMagnitude > 1e-6f
+                ? Quaternion.AngleAxis(-throwLiftDegrees, across.normalized) * direction
+                : direction;
+
+            // Heavier snow leaves the hand slower: the arm has a fixed amount to give, and a ball that flies the
+            // same whatever its size is the loudest way of saying nothing about it is being simulated.
+            float sizeScale = Mathf.Clamp(
+                Mathf.Pow(throwReferenceRadius / Mathf.Max(0.01f, ball.radius), throwMassFalloff), 0.2f, 1.4f);
+            float speed = Mathf.Lerp(throwSpeedMin, throwSpeedMax, power) * sizeScale;
+
+            // Your own momentum goes with it. A grounded CharacterController reports a constant downward stick
+            // velocity, so only the planar part and genuine upward motion are worth inheriting.
+            var cc = Capsule;
+            Vector3 carry = cc != null ? cc.velocity : Vector3.zero;
+            carry.y = Mathf.Max(0f, carry.y);
+
+            Vector3 spinAxis = Vector3.Cross(launchDir, Vector3.up); // backspin: the top of the ball turns back toward you
+            Vector3 spin = spinAxis.sqrMagnitude > 1e-6f
+                ? spinAxis.normalized * (throwSpin * 2f * Mathf.PI * Mathf.Lerp(0.35f, 1f, power))
+                : Vector3.zero;
+
+            ball.Launch(launchDir * speed + carry * throwInheritVelocity, spin, ThrowerColliders());
         }
+
+        /// <summary>
+        /// Everything on the thrower a launched ball must pass through. The ball is born a few centimetres outside
+        /// the capsule and you can outrun a soft throw, so without this a throw regularly clips its own thrower —
+        /// which the flight code reads as a landing and stops dead in your face for no visible reason.
+        /// </summary>
+        Collider[] ThrowerColliders() =>
+            character != null ? character.GetComponentsInChildren<Collider>(true) : System.Array.Empty<Collider>();
 
         /// <summary>Where the carried object's grab point previews when aimed at a surface.</summary>
         public Vector3 AttachCentre(Vector3 point, Vector3 normal) =>

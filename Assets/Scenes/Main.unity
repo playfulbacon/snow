@@ -36207,11 +36207,15 @@ MonoBehaviour:
   throwStartDistance: 0.25
   throwSpeedMin: 7
   throwSpeedMax: 30
-  throwLift: 1.5
+  throwLiftDegrees: 4
+  throwReferenceRadius: 0.15
+  throwMassFalloff: 1
+  throwInheritVelocity: 0.7
+  throwSpin: 2.5
   chargeTime: 1.2
   groundMask:
     serializedVersion: 2
-    m_Bits: 4294967291
+    m_Bits: 51
 --- !u!4 &397011566
 Transform:
   m_ObjectHideFlags: 0
@@ -36243,8 +36247,8 @@ MonoBehaviour:
   viewCamera: {fileID: 457004960}
   sculptMask:
     serializedVersion: 2
-    m_Bits: 4294967291
-  maxReach: 4
+    m_Bits: 51
+  maxReach: 1.8
   reachOrigin: {fileID: 485065691}
   cursor: {fileID: 9948961}
   hands: {fileID: 485065693}
@@ -94073,7 +94077,7 @@ Transform:
   m_GameObject: {fileID: 1005839027}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -0, y: 1.9, z: 0.276}
+  m_LocalPosition: {x: 0, y: 1.611, z: 0.156}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
