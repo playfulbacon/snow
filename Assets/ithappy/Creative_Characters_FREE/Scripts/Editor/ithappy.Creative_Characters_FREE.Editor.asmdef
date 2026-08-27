@@ -1,0 +1,17 @@
+{
+    "name": "ithappy.Creative_Characters_FREE.Editor",
+    "references": [
+        "ithappy.Creative_Characters_FREE"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
