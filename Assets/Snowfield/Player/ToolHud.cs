@@ -465,8 +465,8 @@ namespace Snowfield.Player
                 line += $"   ·   aim: {aim}{(tool.AimedProp != null ? " (prop)" : "")} [{tool.AimedColliderPath}]";
             }
             _statusLine1.text = $"[{ToolModeInfo.DisplayName(mode)}]  {line}";
-            _fieldLine.text = "";
-            _statusLine2.text = $"{ToolModeInfo.Hint(mode)}   ·   WASD move · Shift run · Space jump · Q crouch · E tiptoe · Esc cursor";
+            _fieldLine.text = NetStatus.Line; // written by the net layer; empty in single-player
+            _statusLine2.text = $"{ToolModeInfo.Hint(mode)}   ·   WASD move · Shift run · Space jump · Q crouch · E tiptoe · Esc cursor · Shift+N multiplayer";
         }
 
         // ------------------------------------------------------------------ helpers

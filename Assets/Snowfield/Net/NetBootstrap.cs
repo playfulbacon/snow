@@ -5,20 +5,23 @@ using Unity.Services.Authentication;
 using Unity.Services.Core;
 using Unity.Services.Multiplayer;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 namespace Snowfield.Net
 {
     /// <summary>
-    /// Joins everyone into one shared field on launch: UGS anonymous sign-in, then quick-join any open public
-    /// session or create one (P2P over Relay — the Sessions package starts the NGO host/client itself; never
-    /// call StartHost/StartClient around it). Every failure degrades to plain offline single-player.
+    /// Joins the shared field on <b>Shift+N</b>: UGS anonymous sign-in, then quick-join any open public session
+    /// or create one (P2P over Relay — the Sessions package starts the NGO host/client itself; never call
+    /// StartHost/StartClient around it). Shift+N again leaves. The game starts single-player and every failure
+    /// degrades back to it, so nothing about going online is load-bearing.
     /// Host leaving kills the session (NGO has no host migration); clients notice and re-quick-join, so the
     /// survivors reconvene under a new host after a few seconds.
     /// </summary>
     public sealed class NetBootstrap : MonoBehaviour
     {
-        [Tooltip("Join the public session automatically on play. Off for tests.")]
-        public bool autoConnect = true;
+        [Tooltip("Join on play instead of waiting for Shift+N. Off by default — going online is a choice. " +
+                 "MainSceneSetup rewrites this, so use --snow-autoconnect for a test instance instead.")]
+        public bool autoConnect;
         [Tooltip("Players per session incl. host; overflow quick-joins into a fresh session.")]
         public int maxPlayers = 8;
         public string sessionName = "snowfield";
@@ -31,8 +34,14 @@ namespace Snowfield.Net
         [Tooltip("World-sync channel prefab (NetworkObject + SnowNetChannel); host-spawned. Wired by MainSceneSetup.")]
         public GameObject channelPrefab;
 
-        /// <summary>One-line connection state, for logs and any future HUD.</summary>
-        public static string Status { get; private set; } = "offline";
+        /// <summary>One-line connection state, for logs and the HUD.</summary>
+        public static string Status
+        {
+            get => s_Status;
+            private set { s_Status = value; Snowfield.Player.NetStatus.Line = value == Offline ? "" : "net: " + value; }
+        }
+        static string s_Status = Offline;
+        const string Offline = "offline";
 
         ISession _session;
         bool _connecting;
@@ -42,17 +51,69 @@ namespace Snowfield.Net
 
         async void Start()
         {
-            if (!autoConnect) return;
+            Status = Offline; // also clears any HUD line left by a previous play session
+            if (!autoConnect && !AutoConnectRequested()) return;
             await ConnectAsync();
         }
 
         void Update()
         {
+            if (ToggleChordPressed(Keyboard.current)) Toggle();
+
             if (_retryAt > 0f && Time.unscaledTime >= _retryAt && !_connecting)
             {
                 _retryAt = -1f;
                 _ = ConnectAsync();
             }
+        }
+
+        /// <summary>
+        /// Shift+N — go online, or leave. Static and public so the binding itself is testable without a live
+        /// service standing behind it.
+        /// </summary>
+        public static bool ToggleChordPressed(Keyboard keyboard) =>
+            keyboard != null
+            && keyboard.nKey.wasPressedThisFrame
+            && (keyboard.leftShiftKey.isPressed || keyboard.rightShiftKey.isPressed);
+
+        /// <summary>Connect if offline, leave if connected. A press while still connecting is ignored.</summary>
+        public void Toggle()
+        {
+            if (_connecting)
+            {
+                Debug.Log("[SnowNet] Still connecting — press Shift+N again once it settles.");
+                return;
+            }
+            if (_session != null) { _ = DisconnectAsync(); return; }
+            _attempts = 0;   // a deliberate press starts the retry budget over
+            _retryAt = -1f;
+            _ = ConnectAsync();
+        }
+
+        /// <summary>
+        /// Leave the shared field and go back to sculpting alone. The world in memory stays as it is — a client
+        /// keeps the field it was just sharing (and keeps saving it to slot 1); their own field returns on the
+        /// next launch. Deliberately no auto-rejoin afterwards.
+        /// </summary>
+        public async Task DisconnectAsync()
+        {
+            var session = _session;
+            _session = null;   // session events check this, so nulling first suppresses the rejoin path
+            _retryAt = -1f;
+            _attempts = 0;
+            Status = Offline;
+            Debug.Log("[SnowNet] Leaving the shared field");
+            try { await VoiceChat.LeaveAsync(); }
+            catch (Exception e) { Debug.LogWarning($"[SnowNet] Voice leave failed: {e.Message}"); }
+            try
+            {
+                if (session != null)
+                {
+                    if (session.IsHost) await session.AsHost().DeleteAsync();
+                    else await session.LeaveAsync();
+                }
+            }
+            catch (Exception e) { Debug.LogWarning($"[SnowNet] Session leave failed: {e.Message}"); }
         }
 
         public async Task ConnectAsync()
@@ -103,8 +164,7 @@ namespace Snowfield.Net
                 };
                 _session = await MultiplayerService.Instance.MatchmakeSessionAsync(quickJoin, sessionOptions);
                 _attempts = 0;
-                Status = _session.IsHost ? $"hosting ({_session.PlayerCount}/{_session.MaxPlayers})"
-                                         : $"joined ({_session.PlayerCount}/{_session.MaxPlayers})";
+                Status = Describe(_session);
                 Debug.Log($"[SnowNet] {(_session.IsHost ? "Hosting" : "Joined")} session {_session.Id} " +
                           $"({_session.PlayerCount}/{_session.MaxPlayers}, code {_session.Code})");
                 WireSession(_session);
@@ -153,9 +213,13 @@ namespace Snowfield.Net
 
         static void UpdateCount(ISession session)
         {
-            try { Status = $"{(session.IsHost ? "hosting" : "joined")} ({session.PlayerCount}/{session.MaxPlayers})"; }
+            try { Status = Describe(session); }
             catch { /* session mid-teardown */ }
         }
+
+        static string Describe(ISession session) =>
+            $"{(session.IsHost ? "hosting" : "joined")} {session.PlayerCount}/{session.MaxPlayers}" +
+            "   ·   M mute   ·   Shift+N leave";
 
         void OnSessionEnded(string why)
         {
@@ -201,6 +265,16 @@ namespace Snowfield.Net
             }
         }
 
+        /// <summary>`--snow-autoconnect` / `SNOW_AUTOCONNECT=1`: go online without the keypress, for a second
+        /// instance launched by a script or a test rig that has no one to press Shift+N.</summary>
+        static bool AutoConnectRequested()
+        {
+            if (Environment.GetEnvironmentVariable("SNOW_AUTOCONNECT") == "1") return true;
+            foreach (var arg in Environment.GetCommandLineArgs())
+                if (arg == "--snow-autoconnect") return true;
+            return false;
+        }
+
         static string ProfileOverride()
         {
             // Two instances on one machine share the anonymous account unless profiles differ:
@@ -236,6 +310,7 @@ namespace Snowfield.Net
                 if (leave != null) await leave;
             }
             catch { /* quitting */ }
+            Status = Offline; // leave no stale HUD line behind for the next play session
         }
     }
 }

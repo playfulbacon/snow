@@ -9,6 +9,8 @@
         "Snowfield.Config",
         "Unity.Netcode.Runtime",
         "Unity.Netcode.Runtime.Tests",
+        "Unity.InputSystem",
+        "Unity.InputSystem.TestFramework",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner",
         "Unity.Collections",

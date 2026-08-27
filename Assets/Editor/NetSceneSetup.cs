@@ -53,6 +53,9 @@ namespace SnowDays.EditorTools
             var boot = netGo.GetComponent<NetBootstrap>() ?? netGo.AddComponent<NetBootstrap>();
             boot.avatarPrefab = avatarPrefab;
             boot.channelPrefab = channelPrefab;
+            // The field starts single-player; Shift+N goes online. Rewritten every run (like the roller's feel
+            // values) so the scene can't drift back to auto-joining a public session on play.
+            boot.autoConnect = false;
 
             Debug.Log("[NetSceneSetup] Networking ensured: Network root + NetAvatar/NetChannel prefabs.");
         }

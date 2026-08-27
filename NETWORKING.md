@@ -1,8 +1,9 @@
 # Snowfield multiplayer (P2P, one shared field)
 
-Implemented overnight Aug 27 2026. Everyone who launches the game lands in the same field: quick-join any
-open public session, or become the host of a new one. P2P over Unity Relay — no dedicated servers, no
-hosting costs beyond the UGS free tiers. Voice is Vivox positional audio (open mic, ~32 m falloff, M mutes).
+Implemented overnight Aug 27 2026. The game starts single-player; **Shift+N** puts you in the shared field —
+quick-join any open public session, or become the host of a new one — and Shift+N again leaves. P2P over
+Unity Relay: no dedicated servers, no hosting costs beyond the UGS free tiers. Voice is Vivox positional
+audio (open mic, ~32 m falloff, M mutes). Connection state shows on the HUD's third status line.
 
 ## Stack
 
@@ -112,7 +113,9 @@ gameplay code ──raises──▶ SculptureNet (static seam, Snowfield.Sculptu
 ## Knobs
 
 `NetBootstrap` (Network root in Main): `maxPlayers` (8 — also the Relay allocation size), `sessionName`,
-`quickJoinTimeout`, `rejoinDelay`, `autoConnect` (off = pure offline). `VoiceChat`: channel numbers are baked
+`quickJoinTimeout`, `rejoinDelay`, `autoConnect` (off — MainSceneSetup rewrites it every run, so use
+`--snow-autoconnect` / `SNOW_AUTOCONNECT=1` to bring up a test instance that has nobody to press Shift+N).
+`VoiceChat`: channel numbers are baked
 into the URI — every peer must use identical `Channel3DProperties` (32 m audible, 2 m conversational).
 
 ## Known gaps / next
