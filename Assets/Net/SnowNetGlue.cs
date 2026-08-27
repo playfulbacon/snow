@@ -35,6 +35,7 @@ namespace SnowDays
                 rig.root = _cachedLocal.transform;
                 rig.animator = _cachedLocal.GetComponentInChildren<Animator>();
                 rig.head = _cachedLocal.transform.Find("CameraPivot");
+                rig.hands = _cachedLocal.GetComponent<Snowfield.Player.HandRig>();
             }
             return rig;
         }

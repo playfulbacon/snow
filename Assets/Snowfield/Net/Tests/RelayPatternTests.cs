@@ -24,6 +24,7 @@ namespace Snowfield.Net.Tests
         {
             _prefab = CreateNetworkObjectPrefab("EchoChan");
             _prefab.AddComponent<EchoChannel>();
+            _prefab.AddComponent<HandsEcho>();
         }
 
         [UnityTest]
@@ -52,6 +53,57 @@ namespace Snowfield.Net.Tests
             }
             Assert.IsTrue(seenOn.Contains(m_ServerNetworkManager.LocalClientId), "host peer should receive the broadcast");
             Assert.IsTrue(seenOn.Contains(clientNm.LocalClientId), "origin peer should receive its own echo (and skip it by origin check)");
+        }
+
+        /// <summary>
+        /// The hand stream's exact wire configuration: a client-OWNED object sending SendTo.NotMe with
+        /// unreliable delivery and owner-only permission. NGO proxies that through the host by itself — this
+        /// pins that behaviour down, because NetAvatar has no manual relay to fall back on.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator OwnerHandStream_ReachesOtherPeers_WithoutAManualRelay()
+        {
+            HandsEcho.Received.Clear();
+            var clientNm = m_ClientNetworkManagers[0];
+            var instance = SpawnObject(_prefab, clientNm); // owned by the client, as an avatar is
+            var netObj = instance.GetComponent<NetworkObject>();
+            yield return WaitForSpawnedOnAllOrTimeOut(netObj);
+            AssertOnTimeout("client-owned object never spawned on the host");
+
+            var owned = clientNm.SpawnManager.SpawnedObjects[netObj.NetworkObjectId].GetComponent<HandsEcho>();
+            var pose = default(HandSyncPose);
+            pose.RightPosition = new Vector3(0.25f, 1.05f, 0.6f);
+            pose.RightAim = new Vector3(0f, 0f, 1f);
+            pose.RightWeight = 1f;
+            pose.LeftWeight = 0f;
+
+            // Unreliable: on loopback nothing drops, but send a few anyway — the real stream is continuous.
+            for (int i = 0; i < 5; i++) { owned.Send(pose); yield return null; }
+
+            yield return WaitForConditionOrTimeOut(() => HandsEcho.Received.Count > 0);
+            AssertOnTimeout("the owner's hand pose never reached the other peer");
+
+            var (got, localClient) = HandsEcho.Received[0];
+            Assert.AreEqual(m_ServerNetworkManager.LocalClientId, localClient,
+                "the host is the peer that should have received it");
+            Assert.AreEqual(pose.RightWeight, got.RightWeight, 1e-4f);
+            Assert.Less((pose.RightPosition - got.RightPosition).magnitude, 1e-4f, "hand position was mangled in transit");
+            Assert.Less((pose.RightAim - got.RightAim).magnitude, 1e-4f, "hand aim was mangled in transit");
+            Assert.IsFalse(got.LeftActive, "an idle hand should arrive idle");
+        }
+    }
+
+    public class HandsEcho : NetworkBehaviour
+    {
+        public static readonly List<(HandSyncPose pose, ulong localClient)> Received =
+            new List<(HandSyncPose, ulong)>();
+
+        public void Send(HandSyncPose pose) => HandsRpc(pose);
+
+        [Rpc(SendTo.NotMe, Delivery = RpcDelivery.Unreliable, InvokePermission = RpcInvokePermission.Owner)]
+        void HandsRpc(HandSyncPose pose)
+        {
+            Received.Add((pose, NetworkManager.LocalClientId));
         }
     }
 

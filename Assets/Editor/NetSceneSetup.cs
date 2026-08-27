@@ -24,6 +24,7 @@ namespace SnowDays.EditorTools
         const string ChannelPrefabPath = NetFolder + "/NetChannel.prefab";
         const string ModelFbxPath = "Assets/CharacterTest/base_basic_shaded.fbx";
         const string ControllerPath = "Assets/Player/FirstPersonPlayer.controller";
+        const string ConfigPath = "Assets/Settings/SculptFeelConfig.asset";
 
         [MenuItem("Snowfield/Ensure Main Scene Networking")]
         public static void RunStandalone()
@@ -98,6 +99,14 @@ namespace SnowDays.EditorTools
                         else
                             smr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
                     }
+
+                    // The same stretchy arms the local player has: NetAvatar replays the owner's hand goals
+                    // through this, so other people's arms reach for the snow they are actually working on.
+                    var hands = root.AddComponent<Snowfield.Player.HandRig>();
+                    hands.config = AssetDatabase.LoadAssetAtPath<Snowfield.Config.SculptFeelConfig>(ConfigPath);
+                    hands.animator = animator;
+                    if (hands.config == null)
+                        Debug.LogWarning($"[NetSceneSetup] {ConfigPath} missing; remote arms fall back to default spring feel.");
                 }
 
                 return PrefabUtility.SaveAsPrefabAsset(root, AvatarPrefabPath);

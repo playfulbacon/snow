@@ -15,6 +15,7 @@ namespace Snowfield.Net
             public Transform root;      // yaw + position live here
             public Animator animator;   // MoveX/MoveY/Speed/IsGrounded written by PlayerController
             public Transform head;      // camera pivot: the voice listener/speaker position
+            public Snowfield.Player.HandRig hands; // arm goals, mirrored onto this player's avatar elsewhere
         }
 
         /// <summary>Registered from Assembly-CSharp (SnowNetGlue). Null fields mean "not available yet".</summary>

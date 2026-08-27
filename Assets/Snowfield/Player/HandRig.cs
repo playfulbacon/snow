@@ -113,6 +113,25 @@ namespace Snowfield.Player
             a.pulseUntil = Time.time + seconds;
         }
 
+        /// <summary>
+        /// What a hand was actually asked for on the last solved frame, with any <see cref="Pulse"/> already
+        /// resolved into it. This is the whole hand state worth putting on a wire: replaying it through
+        /// <see cref="Reach"/> on another machine reproduces the pose, and a pulse needs no representation of
+        /// its own — it is simply the same goal being reported for as long as it holds.
+        /// </summary>
+        public readonly struct Goal
+        {
+            public readonly Vector3 Position;
+            public readonly Vector3 Aim;
+            public readonly float Weight;
+            public Goal(Vector3 position, Vector3 aim, float weight)
+            { Position = position; Aim = aim; Weight = weight; }
+            public bool Active => Weight > 0.001f;
+        }
+
+        /// <summary>The goal <paramref name="side"/> was solved against last frame. See <see cref="Goal"/>.</summary>
+        public Goal CurrentGoal(Side side) => IsReady ? _arms[(int)side].last : default;
+
         /// <summary>Where the shoulder joint currently is — the anchor callers should measure a hold pose from.</summary>
         public Vector3 ShoulderPosition(Side side)
         {
@@ -141,6 +160,7 @@ namespace Snowfield.Player
             Vector3 goal = pulsing ? a.pulseGoal : a.goal;
             Vector3 aim = pulsing ? a.pulseAim : a.aim;
             a.request = 0f; // callers re-ask every frame
+            a.last = new Goal(goal, aim, request); // what the network layer mirrors onto other machines
 
             Vector3 animHand = a.hand.position;
             bool idle = a.weight <= 0.002f;
@@ -274,6 +294,7 @@ namespace Snowfield.Player
             public float request;
             public Vector3 pulseGoal, pulseAim;
             public float pulseUntil;
+            public Goal last;           // pulse already resolved; what CurrentGoal reports
 
             public Vector3 pos, vel;    // spring, world space
             public float weight;

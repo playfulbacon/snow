@@ -12,6 +12,7 @@ GameObject:
   - component: {fileID: 822297753941067241}
   - component: {fileID: 2214446385686265768}
   - component: {fileID: 1173394685212020434}
+  - component: {fileID: 208230954148014092}
   m_Layer: 0
   m_Name: NetAvatar
   m_TagString: Untagged
@@ -47,7 +48,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Unity.Netcode.Runtime::Unity.Netcode.NetworkObject
-  GlobalObjectIdHash: 1333957540
+  GlobalObjectIdHash: 1626071826
   InScenePlacedSourceGlobalObjectIdHash: 0
   m_InScenePlacedDisabledByDefault: 0
   DeferredDespawnTick: 0
@@ -121,6 +122,27 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Snowfield.Net::Snowfield.Net.NetAvatar
   ShowTopMostFoldoutHeaderGroup: 1
+--- !u!114 &208230954148014092
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 9011214844247039027}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7e0fc48ebc46a40c5a42b633412c3f68, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Snowfield.Player::Snowfield.Player.HandRig
+  config: {fileID: 11400000, guid: 2385a60b928ffb644aaf5d39d6688edf, type: 2}
+  animator: {fileID: 8794284166639037638}
+  elbowHint: {x: 0.5, y: -0.8, z: -0.35}
+  elbowHintWeight: 0.55
+  shoulderAssist: 0.25
+  handAimWeight: 0.8
+  reachSlack: 0.96
+  engageTime: 0.07
+  releaseTime: 0.2
 --- !u!1001 &3125787806968582487
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -205,5 +227,10 @@ PrefabInstance:
 --- !u!4 &3236889726600443580 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: 4a61ecbbffa204caaaa0f46f3544870b, type: 3}
+  m_PrefabInstance: {fileID: 3125787806968582487}
+  m_PrefabAsset: {fileID: 0}
+--- !u!95 &8794284166639037638 stripped
+Animator:
+  m_CorrespondingSourceObject: {fileID: 5866666021909216657, guid: 4a61ecbbffa204caaaa0f46f3544870b, type: 3}
   m_PrefabInstance: {fileID: 3125787806968582487}
   m_PrefabAsset: {fileID: 0}

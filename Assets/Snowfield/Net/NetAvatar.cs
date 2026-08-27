@@ -1,3 +1,4 @@
+using Snowfield.Player;
 using Unity.Netcode;
 using Unity.Netcode.Components;
 using UnityEngine;
@@ -31,14 +32,23 @@ namespace Snowfield.Net
         Animator _animator;
         bool _followWarned;
 
+        // Hands. The owner mirrors its own rig's goals; everyone else replays them onto this avatar's rig.
+        const float HandSendInterval = 1f / 15f;
+        HandRig _hands;
+        readonly HandSyncReceiver _handReceiver = new HandSyncReceiver();
+        float _handTimer;
+        int _handReleaseSends;
+
         public override void OnNetworkSpawn()
         {
             _animator = GetComponentInChildren<Animator>(true);
+            _hands = GetComponent<HandRig>();
             if (IsOwner)
             {
                 // Your own avatar exists only so the others can see you.
                 foreach (var r in GetComponentsInChildren<Renderer>(true)) r.enabled = false;
                 if (_animator != null) _animator.enabled = false;
+                if (_hands != null) _hands.enabled = false; // nothing to solve on a hidden body
                 SnapToLocalPlayer();
             }
             else
@@ -60,7 +70,12 @@ namespace Snowfield.Net
         {
             if (!IsSpawned) return;
             if (IsOwner) PushFromLocalPlayer();
-            else PullIntoAnimator();
+            else
+            {
+                PullIntoAnimator();
+                // Before the rig's LateUpdate, which consumes the reach requests this posts.
+                _handReceiver.Tick(_hands, transform, Time.deltaTime);
+            }
         }
 
         void PushFromLocalPlayer()
@@ -72,12 +87,48 @@ namespace Snowfield.Net
                 return;
             }
             transform.SetPositionAndRotation(rig.Value.root.position, rig.Value.root.rotation);
+            PushHands(rig.Value);
             var anim = rig.Value.animator;
             if (anim == null || !anim.isActiveAndEnabled) return;
             SetIfChanged(_moveX, anim.GetFloat(MoveXHash));
             SetIfChanged(_moveY, anim.GetFloat(MoveYHash));
             SetIfChanged(_speed, anim.GetFloat(SpeedHash));
             if (_grounded.Value != anim.GetBool(GroundedHash)) _grounded.Value = anim.GetBool(GroundedHash);
+        }
+
+        void PushHands(in NetAvatarHooks.LocalPlayerRig rig)
+        {
+            if (rig.hands == null || rig.root == null) return;
+            _handTimer += Time.deltaTime;
+            if (_handTimer < HandSendInterval) return;
+
+            var pose = HandSyncPose.Sample(rig.hands, rig.root);
+            if (pose.AnyActive)
+            {
+                _handReleaseSends = 2; // idle again later: say so a couple of times, since this is unreliable
+            }
+            else if (_handReleaseSends > 0)
+            {
+                _handReleaseSends--;
+            }
+            else
+            {
+                return; // hands are down and everyone has been told; nothing to say
+            }
+
+            _handTimer = 0f;
+            HandsRpc(pose);
+        }
+
+        /// <summary>
+        /// Owner → everyone else. NGO proxies a client's RPC through the host on its own (keeping the unreliable
+        /// delivery and the true sender), so no manual relay is needed; the owner permission is enforced there too.
+        /// Unreliable and latest-wins: a dropped hand pose is one skipped frame of arm, corrected 66 ms later.
+        /// </summary>
+        [Rpc(SendTo.NotMe, Delivery = RpcDelivery.Unreliable, InvokePermission = RpcInvokePermission.Owner)]
+        void HandsRpc(HandSyncPose pose)
+        {
+            _handReceiver.Receive(pose);
         }
 
         static void SetIfChanged(NetworkVariable<float> v, float value)
