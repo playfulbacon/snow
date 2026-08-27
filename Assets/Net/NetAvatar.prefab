@@ -48,7 +48,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Unity.Netcode.Runtime::Unity.Netcode.NetworkObject
-  GlobalObjectIdHash: 1363399813
+  GlobalObjectIdHash: 2846922615
   InScenePlacedSourceGlobalObjectIdHash: 0
   m_InScenePlacedDisabledByDefault: 0
   DeferredDespawnTick: 0
@@ -152,6 +152,18 @@ PrefabInstance:
     m_TransformParent: {fileID: 5815186090923481302}
     m_Modifications:
     - target: {fileID: -8679921383154817045, guid: 4a61ecbbffa204caaaa0f46f3544870b, type: 3}
+      propertyPath: m_LocalScale.x
+      value: 0.8
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 4a61ecbbffa204caaaa0f46f3544870b, type: 3}
+      propertyPath: m_LocalScale.y
+      value: 0.8
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 4a61ecbbffa204caaaa0f46f3544870b, type: 3}
+      propertyPath: m_LocalScale.z
+      value: 0.8
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 4a61ecbbffa204caaaa0f46f3544870b, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0
       objectReference: {fileID: 0}
@@ -199,6 +211,30 @@ PrefabInstance:
       propertyPath: m_UpdateWhenOffscreen
       value: 1
       objectReference: {fileID: 0}
+    - target: {fileID: -5324531855699944674, guid: 4a61ecbbffa204caaaa0f46f3544870b, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: aaa47978a95714e2e842b9a53e2d89a8, type: 2}
+    - target: {fileID: -5324531855699944674, guid: 4a61ecbbffa204caaaa0f46f3544870b, type: 3}
+      propertyPath: 'm_Materials.Array.data[1]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 3177b041b15de4599ac2963365113530, type: 2}
+    - target: {fileID: -5324531855699944674, guid: 4a61ecbbffa204caaaa0f46f3544870b, type: 3}
+      propertyPath: 'm_Materials.Array.data[2]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 9026fed7d4ee347fbb99da8a2f93b878, type: 2}
+    - target: {fileID: -5324531855699944674, guid: 4a61ecbbffa204caaaa0f46f3544870b, type: 3}
+      propertyPath: 'm_Materials.Array.data[3]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 36e7cae0020c94d7bbcd4aba2882b576, type: 2}
+    - target: {fileID: -5324531855699944674, guid: 4a61ecbbffa204caaaa0f46f3544870b, type: 3}
+      propertyPath: 'm_Materials.Array.data[4]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 2c819ebf66e19449190e1f69c08f1286, type: 2}
+    - target: {fileID: -5324531855699944674, guid: 4a61ecbbffa204caaaa0f46f3544870b, type: 3}
+      propertyPath: 'm_Materials.Array.data[5]'
+      value: 
+      objectReference: {fileID: 2100000, guid: f48e449a42b5e4d699a61b77584c283a, type: 2}
     - target: {fileID: 919132149155446097, guid: 4a61ecbbffa204caaaa0f46f3544870b, type: 3}
       propertyPath: m_Name
       value: Model
