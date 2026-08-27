@@ -145,8 +145,8 @@ namespace Snowfield.Player
 
             if (Mode == ToolMode.Accessory)
             {
-                if (onSnow) p = CursorAction.PlaceAccessory;
-                if (AimedProp != null) s = CursorAction.RetrieveAccessory;
+                p = AimedProp != null ? CursorAction.RetrieveAccessory
+                  : onSnow ? CursorAction.PlaceAccessory : CursorAction.None;
             }
             else if (Roller.IsCarrying)
             {
@@ -461,13 +461,12 @@ namespace Snowfield.Player
             HideBrushCursor();
             ThrowCharge = 0f;
 
-            _placer.UpdatePreview(HasHit, BrushPoint, BrushNormal);
+            // Hovering a placed accessory hides the ghost: this click takes that one back instead of adding another.
+            _placer.UpdatePreview(HasHit && AimedProp == null, BrushPoint, BrushNormal);
 
-            if (mouse == null) return;
-            if (mouse.leftButton.wasPressedThisFrame && HasHit && Target != null)
-                _placer.Place(Target, BrushPoint, BrushNormal);
-            if (mouse.rightButton.wasPressedThisFrame && AimedProp != null)
-                _placer.Retrieve(AimedProp);
+            if (mouse == null || !mouse.leftButton.wasPressedThisFrame) return;
+            if (AimedProp != null) _placer.Retrieve(AimedProp);
+            else if (HasHit && Target != null) _placer.Place(Target, BrushPoint, BrushNormal);
         }
     }
 }
