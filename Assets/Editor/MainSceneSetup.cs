@@ -135,6 +135,9 @@ namespace SnowDays.EditorTools
             hud.colors.statusText = new Color(0.85f, 0.88f, 0.95f); // Main is a night scene; the default dark text vanishes
             hud.RebuildNow();
 
+            // --- Multiplayer: NetworkManager root + avatar/channel prefabs ---
+            NetSceneSetup.Ensure();
+
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene);
             Debug.Log("[MainSceneSetup] Sculpting kit ensured in Main scene.");
