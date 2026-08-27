@@ -94,6 +94,53 @@ namespace Snowfield.Player
                 terrain.StampDepression(groundPoint, r * 1.6f, config.scoopDivotDepth, 0.6f);
         }
 
+        /// <summary>
+        /// Mass continuity: a chunk cut out of a sculpture lands in the hands. Starts a ball of that size at
+        /// <paramref name="point"/>, or merges the volume into the ball already held.
+        /// </summary>
+        public void GainChunk(Vector3 point, float radius)
+        {
+            if (IsCarryingSculpture || radius <= 0f) return;
+            float maxR = config != null ? config.snowballMaxRadius : 0.6f;
+            if (Ball == null)
+            {
+                var factory = SculptureFactory.Instance;
+                if (factory == null) return;
+                var ball = factory.CreateSnowball(point, Mathf.Min(radius, maxR));
+                Engage(ball.Sculpture, ball.Centre);
+                ball.SetState(Snowball.State.Carrying);
+                return;
+            }
+            float merged = RadiusForVolume(VolumeOf(Ball.radius) + VolumeOf(radius));
+            Ball.Grow(Mathf.Min(maxR, merged));
+            Ball.Sculpture.Remesh();
+        }
+
+        static float VolumeOf(float r) => 4f / 3f * Mathf.PI * r * r * r;
+        static float RadiusForVolume(float v) => Mathf.Pow(Mathf.Max(0f, v) * 3f / (4f * Mathf.PI), 1f / 3f);
+
+        /// <summary>Fuse the carried object into <paramref name="target"/> exactly where it currently sits — no repositioning.</summary>
+        public void PlaceWhereItIs(SnowSculpture target)
+        {
+            if (!IsCarrying || target == null || target == Carried) return;
+            var factory = SculptureFactory.Instance;
+            if (factory == null) return;
+            var carried = Carried;
+            Carried = null; Ball = null;
+            SetInteractable(carried, true);
+            factory.Fuse(target, carried);
+        }
+
+        /// <summary>Let go: a ball falls from where it is under gravity; a sculpture is set down on the ground beneath it.</summary>
+        public void DropFalling()
+        {
+            if (!IsCarrying) return;
+            if (Ball == null) { DropHere(); return; }
+            var ball = Ball;
+            Carried = null; Ball = null;
+            ball.Launch(Vector3.zero); // gravity does the rest; Land() restores its colliders
+        }
+
         /// <summary>Pick up a loose ball (by its centre) or a fixed sculpture (by the aimed point).</summary>
         public void PickUp(SnowSculpture sculpture, Vector3 grabPoint)
         {
