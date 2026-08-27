@@ -38,6 +38,10 @@ namespace Snowfield.Net
             if (!_initialized)
             {
                 await VivoxService.Instance.InitializeAsync();
+                // Vivox can tear the login down from its side (network loss it can't recover); without this,
+                // Joined stays true forever and voice is silently dead. One-time subscription.
+                VivoxService.Instance.LoggedOut += () => Joined = false;
+                VivoxService.Instance.ConnectionFailedToRecover += () => Joined = false;
                 _initialized = true;
             }
             if (!VivoxService.Instance.IsLoggedIn)

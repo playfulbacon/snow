@@ -310,7 +310,9 @@ namespace Snowfield.Net
             int op = r.ReadByte();
             Vector3 point = ReadV3(r);
             float radius = r.ReadSingle();
-            int ticks = r.ReadUInt16();
+            // Honest peers batch ≤8 ticks/frame; a forged 65535 would freeze the main thread in brush jobs.
+            int ticks = Mathf.Min(r.ReadUInt16(), (ushort)64);
+            radius = Mathf.Clamp(radius, 0.01f, 4f);
             ReadTargets(r, _targetScratch);
             foreach (var s in _targetScratch)
             {
@@ -600,9 +602,10 @@ namespace Snowfield.Net
                 float radius = r.ReadSingle();
                 bool isLoose = r.ReadBoolean();
                 int blobLen = r.ReadInt32();
+                if (gridSize <= 0 || gridSize % 16 != 0 || gridSize > 512
+                    || blobLen <= 0 || blobLen > 32 * 1024 * 1024)
+                { Debug.LogWarning($"[SnowNet] Snapshot with bad grid size {gridSize} / blob {blobLen}; dropped"); return; }
                 byte[] blob = r.ReadBytes(blobLen);
-                if (gridSize <= 0 || gridSize % 16 != 0 || gridSize > 512)
-                { Debug.LogWarning($"[SnowNet] Snapshot with bad grid size {gridSize}; dropped"); return; }
 
                 if (Registry.TryGet(id, out var existing))
                     UnityEngine.Object.DestroyImmediate(existing.gameObject); // re-sync: replace
@@ -610,7 +613,17 @@ namespace Snowfield.Net
                 Registry.PendingId = id;
                 var s = factory.CreateEmpty(gridSize, gridOffset, pos, rot);
                 Registry.PendingId = null;
-                GridSerializer.Decode(blob, s.Grid.Density);
+                try
+                {
+                    GridSerializer.Decode(blob, s.Grid.Density);
+                }
+                catch
+                {
+                    // A corrupt blob must not leave a mapped empty ghost behind.
+                    UnityEngine.Object.DestroyImmediate(s.gameObject);
+                    Registry.Sweep();
+                    throw;
+                }
                 s.Grid.MarkAllDirty();
 
                 if (isSnowball)

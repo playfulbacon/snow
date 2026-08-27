@@ -82,8 +82,9 @@ namespace Snowfield.Net
             catch (Exception e)
             {
                 Status = "offline (services unavailable)";
-                Debug.LogWarning($"[SnowNet] Unity Services init/sign-in failed — playing offline. {e.Message}");
+                Debug.LogWarning($"[SnowNet] Unity Services init/sign-in failed — retrying. {e.Message}");
                 _connecting = false;
+                ScheduleRetry();
                 return;
             }
 
