@@ -50,6 +50,8 @@ namespace Snowfield.Player
         // ---- aim results (refreshed every frame) ----
         public SnowSculpture Target { get; set; }
         public SculptureProp AimedProp { get; private set; }
+        /// <summary>A clickable point of the chain being placed, when the reticle is on one.</summary>
+        public DrapeAnchor AimedAnchor { get; private set; }
         /// <summary>A loose, resting snowball under the reticle (it is also <see cref="Target"/>).</summary>
         public Snowball AimedSnowball { get; private set; }
         /// <summary>Hit point/normal of whatever the centre ray struck (sculpture, ball, ground...).</summary>
@@ -118,6 +120,7 @@ namespace Snowfield.Player
             if (!locked || justLocked)
             {
                 if (IsSculpting) { IsSculpting = false; Flush(); }
+                if (_placer != null && _placer.ActiveChain != null) FinishChainWithFlourish();
                 HideBrushCursor();
                 if (_placer != null) _placer.HidePreview();
                 PrimaryAction = SecondaryAction = TertiaryAction = CursorAction.None;
@@ -128,6 +131,7 @@ namespace Snowfield.Player
 
             if (kb != null && kb.tabKey.wasPressedThisFrame)
             {
+                if (_placer.ActiveChain != null) FinishChainWithFlourish();
                 Mode = Mode == ToolMode.Accessory ? ToolMode.Hand : ToolMode.Accessory;
                 _placer.HidePreview();
                 HideBrushCursor();
@@ -164,8 +168,18 @@ namespace Snowfield.Player
 
             if (Mode == ToolMode.Accessory)
             {
-                p = AimedProp != null ? CursorAction.RetrieveAccessory
-                  : onSnow ? CursorAction.PlaceAccessory : CursorAction.None;
+                if (_placer.ActiveChain != null)
+                {
+                    p = AimedAnchor != null && AimedAnchor.Chain == _placer.ActiveChain ? CursorAction.UsePoint
+                      : onSnow ? CursorAction.AddPoint : CursorAction.None;
+                    s = CursorAction.FinishChain;
+                }
+                else
+                {
+                    p = AimedProp != null ? CursorAction.RetrieveAccessory
+                      : onSnow ? (_placer.Selected.Drape != null ? CursorAction.AddPoint : CursorAction.PlaceAccessory)
+                      : CursorAction.None;
+                }
             }
             else if (Roller.IsCarrying)
             {
@@ -320,6 +334,7 @@ namespace Snowfield.Player
             HasGroundHit = false;
             Target = null;
             AimedProp = null;
+            AimedAnchor = null;
             AimedSnowball = null;
             AimedColliderPath = "";
             var ray = viewCamera.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
@@ -334,6 +349,7 @@ namespace Snowfield.Player
             AimedColliderPath = hit.collider.transform.parent != null
                 ? hit.collider.transform.parent.name + "/" + hit.collider.name : hit.collider.name;
 
+            AimedAnchor = hit.collider.GetComponent<DrapeAnchor>();
             AimedProp = hit.collider.GetComponentInParent<SculptureProp>();
             var s = hit.collider.GetComponentInParent<SnowSculpture>();
             if (s != null)
@@ -617,11 +633,32 @@ namespace Snowfield.Player
         {
             HideBrushCursor();
             ThrowCharge = 0f;
+            bool shift = kb != null && kb.leftShiftKey.isPressed;
+            bool lmbDown = mouse != null && mouse.leftButton.wasPressedThisFrame;
+
+            // --- a chain is being placed: clicks add points, the strand drapes live to the cursor ---
+            if (_placer.ActiveChain != null)
+            {
+                _placer.UpdateChainTip(HasHit && Target != null ? BrushPoint : (Vector3?)null);
+                if (!lmbDown) return;
+                if (shift) { FinishChainWithFlourish(); return; }
+                if (AimedAnchor != null && AimedAnchor.Chain == _placer.ActiveChain)
+                {
+                    _placer.UseExistingPoint(AimedAnchor);
+                    PulseFree(AimedAnchor.transform.position, -(Vector3)BrushNormal);
+                }
+                else if (HasHit && Target != null)
+                {
+                    _placer.AppendPoint(BrushPoint);
+                    PulseFree(BrushPoint, -(Vector3)BrushNormal);
+                }
+                return;
+            }
 
             // Hovering a placed accessory hides the ghost: this click takes that one back instead of adding another.
             _placer.UpdatePreview(HasHit && AimedProp == null, BrushPoint, BrushNormal);
 
-            if (mouse == null || !mouse.leftButton.wasPressedThisFrame) return;
+            if (!lmbDown) return;
             if (AimedProp != null)
             {
                 Vector3 at = AimedProp.transform.position; // read before it is unparented and destroyed
@@ -630,9 +667,21 @@ namespace Snowfield.Player
             }
             else if (HasHit && Target != null)
             {
-                _placer.Place(Target, BrushPoint, BrushNormal);
+                if (_placer.Selected.Drape != null) _placer.BeginChain(Target, BrushPoint);
+                else _placer.Place(Target, BrushPoint, BrushNormal);
                 PulseFree(BrushPoint, -(Vector3)BrushNormal);
             }
+        }
+
+        /// <summary>End the chain: a one-point chain was a misclick, so drop it rather than leaving a stub.</summary>
+        void FinishChainWithFlourish()
+        {
+            var chain = _placer.ActiveChain;
+            if (chain == null) return;
+            Vector3 at = chain.transform.position;
+            if (chain.PointCount < 2) _placer.CancelChain();
+            else _placer.FinishChain();
+            PulseFree(at, at - Body.position);
         }
     }
 }

@@ -107,5 +107,14 @@ namespace Snowfield.Sculpture
         public static event Action<SnowSculpture, string, Vector3> PropRemoved;
         public static void RaisePropRemoved(SnowSculpture s, string accessoryId, Vector3 localPos)
         { if (Broadcastable) PropRemoved?.Invoke(s, accessoryId, localPos); }
+
+        /// <summary>
+        /// A chained accessory (lights, scarf) was finished: (sculpture, catalog id, points in sculpture-local space).
+        /// Only the points travel — every peer re-derives the drape from them, the same way a thrown ball's flight is
+        /// local and only its result is shared. Removal reuses <see cref="PropRemoved"/>: a chain is one prop.
+        /// </summary>
+        public static event Action<SnowSculpture, string, IReadOnlyList<Vector3>> DrapePlaced;
+        public static void RaiseDrapePlaced(SnowSculpture s, string accessoryId, IReadOnlyList<Vector3> pointsLocal)
+        { if (Broadcastable) DrapePlaced?.Invoke(s, accessoryId, pointsLocal); }
     }
 }

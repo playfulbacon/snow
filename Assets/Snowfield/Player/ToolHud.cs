@@ -452,7 +452,10 @@ namespace Snowfield.Player
             if (playing && tool.config != null)
             {
                 line = mode == ToolMode.Accessory
-                    ? (placer != null ? placer.Selected.DisplayName : "")
+                    ? (placer == null ? ""
+                       : placer.ActiveChain != null
+                         ? $"{placer.Selected.DisplayName} — {placer.ActiveChain.PointCount} point{(placer.ActiveChain.PointCount == 1 ? "" : "s")} (Shift+click to finish)"
+                         : placer.Selected.DisplayName)
                     : tool.Roller != null && tool.Roller.IsEngaged
                         ? (tool.Roller.Ball != null ? $"snowball {tool.Roller.Radius * 2f:0.00} m" : "carrying sculpture")
                         : $"radius {tool.CurrentRadius():0.00} m   rate {tool.config.addRatePerTick:0}/tick @ {tool.config.ticksPerSecond:0} Hz";
@@ -598,7 +601,7 @@ namespace Snowfield.Player
         }
 
         /// <summary>Bump whenever CursorAction values are added/removed/reordered: stored rows are keyed by the enum's int.</summary>
-        const int PromptSchemaVersion = 3;
+        const int PromptSchemaVersion = 4;
         [SerializeField, HideInInspector] int _promptSchemaVersion;
 
         /// <summary>Make sure the inspector list has one row per action, with default labels filled in.</summary>

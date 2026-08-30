@@ -5,8 +5,10 @@ using UnityEngine;
 namespace Snowfield.Player
 {
     /// <summary>
-    /// Accessory mode: keeps the selected accessory, shows a ghost preview on the aimed snow surface, places on
-    /// LMB, removes an aimed prop on RMB. Driven by <see cref="SculptTool"/>; owns no input itself.
+    /// Accessory mode: keeps the selected accessory, shows a ghost preview on the aimed snow surface, and places or
+    /// removes on LMB. Chained accessories (lights, scarf) instead run a placing *session*: each click adds a point,
+    /// the strand drapes live between them, and Shift+click finishes. Driven by <see cref="SculptTool"/>; owns no
+    /// input itself.
     /// </summary>
     public class AccessoryPlacer : MonoBehaviour
     {
@@ -28,11 +30,71 @@ namespace Snowfield.Player
             SelectedIndex = ((index % n) + n) % n;
         }
 
-        public void Step(int delta) => Select(SelectedIndex + delta);
+        public void Step(int delta)
+        {
+            if (ActiveChain != null) return; // finish the strand before switching accessory
+            Select(SelectedIndex + delta);
+        }
+
+        // ---------- chained accessories (lights, scarf) ----------
+
+        /// <summary>The chain being placed, or null. While one exists it owns the clicks.</summary>
+        public DrapedAccessory ActiveChain { get; private set; }
+
+        /// <summary>Start a chain of the selected style with its first point.</summary>
+        public void BeginChain(SnowSculpture sculpture, Vector3 worldPoint)
+        {
+            if (ActiveChain != null || sculpture == null || Selected.Drape == null) return;
+            HidePreview();
+            var local = sculpture.transform.InverseTransformPoint(worldPoint);
+            ActiveChain = DrapedAccessory.Create(sculpture, Selected, new[] { local }, frozen: false);
+        }
+
+        public void AppendPoint(Vector3 worldPoint)
+        {
+            if (ActiveChain == null) return;
+            ActiveChain.AddPointWorld(worldPoint);
+        }
+
+        /// <summary>Reuse a point already in this chain — how a scarf closes into a loop.</summary>
+        public void UseExistingPoint(DrapeAnchor anchor)
+        {
+            if (ActiveChain == null || anchor == null || anchor.Chain != ActiveChain) return;
+            ActiveChain.AddExistingPoint(anchor.Index);
+        }
+
+        /// <summary>Run the live drape out to the cursor. Pass null when the cursor is off the snow.</summary>
+        public void UpdateChainTip(Vector3? worldPoint)
+        {
+            if (ActiveChain == null) return;
+            ActiveChain.SetTip(worldPoint);
+            ActiveChain.StepLive();
+        }
+
+        /// <summary>Settle the strand and hand it over as an ordinary placed accessory.</summary>
+        public void FinishChain()
+        {
+            var chain = ActiveChain;
+            ActiveChain = null;
+            if (chain == null) return;
+            chain.Freeze();
+            if (chain.Sculpture != null)
+                SculptureNet.RaiseDrapePlaced(chain.Sculpture, chain.prefabId, chain.Points);
+        }
+
+        /// <summary>Throw away a chain that never got a second point (or was abandoned).</summary>
+        public void CancelChain()
+        {
+            if (ActiveChain == null) return;
+            var chain = ActiveChain;
+            ActiveChain = null;
+            chain.Remove();
+        }
 
         /// <summary>Show/hide and position the ghost. Call every frame while in accessory mode.</summary>
         public void UpdatePreview(bool visible, Vector3 point, Vector3 normal)
         {
+            if (ActiveChain != null) visible = false; // the live strand is the preview
             if (!visible)
             {
                 if (_preview != null) _preview.SetActive(false);
