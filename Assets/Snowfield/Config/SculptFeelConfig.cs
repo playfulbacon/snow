@@ -100,5 +100,25 @@ namespace Snowfield.Config
         public float snowfallTickSeconds = 2f;
         [Tooltip("Recovery speed while holding the debug 'let it snow' key (m/s).")]
         public float letItSnowPerSecond = 0.05f;
+
+        [Header("Draped accessories")]
+        [Tooltip("Gravity on a hanging strand (m/s^2). Stronger = tighter sag against the snow.")]
+        public float drapeGravity = -9.81f;
+        [Tooltip("Spacing between strand particles (m). Smaller drapes more smoothly and costs more.")]
+        public float drapeSegmentLength = 0.05f;
+        [Tooltip("Velocity kept per step. Lower settles faster and deader.")]
+        [Range(0f, 1f)] public float drapeDamping = 0.92f;
+        [Tooltip("Simulation step (s). FIXED on purpose: every peer and every reload must solve the same strand from the same points.")]
+        public float drapeStepSeconds = 0.016f;
+        [Tooltip("Distance-constraint passes per step. More = less stretchy.")]
+        [Range(1, 16)] public int drapeConstraintPasses = 4;
+        [Tooltip("Steps per frame while you are still adding points (the live drape).")]
+        [Range(1, 32)] public int drapeLiveSteps = 4;
+        [Tooltip("Steps run once when a chain is finished, so it settles before it freezes.")]
+        [Range(1, 600)] public int drapeSettleSteps = 160;
+        [Tooltip("How far a strand rests off the snow surface (m), on top of its own thickness.")]
+        public float drapeSurfaceOffset = 0.01f;
+        [Tooltip("Hard cap on particles in one strand, so a very long chain cannot stall the frame.")]
+        public int drapeMaxParticles = 400;
     }
 }
