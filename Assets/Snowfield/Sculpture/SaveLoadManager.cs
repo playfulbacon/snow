@@ -101,7 +101,11 @@ namespace Snowfield.Sculpture
                 densityB64 = Convert.ToBase64String(GridSerializer.Encode(s.Grid.Density)),
             };
             foreach (var p in s.Props)
-                r.props.Add(new PropRecord { prefabId = p.prefabId, localPos = p.LocalPos, localRot = p.LocalRot });
+            {
+                var rec = new PropRecord { prefabId = p.prefabId, localPos = p.LocalPos, localRot = p.LocalRot };
+                if (p is DrapedAccessory chain) rec.points.AddRange(chain.Points);
+                r.props.Add(rec);
+            }
             return r;
         }
 
@@ -154,6 +158,12 @@ namespace Snowfield.Sculpture
             {
                 var entry = AccessoryCatalog.Find(pr.prefabId);
                 if (entry == null) continue;
+                if (entry.Drape != null)
+                {
+                    if (pr.points != null && pr.points.Count > 0)
+                        DrapedAccessory.Create(s, entry, pr.points, frozen: true);
+                    continue;
+                }
                 var go = entry.Build();
                 AccessoryCatalog.MakePickable(go);
                 var prop = go.AddComponent<SculptureProp>();

@@ -29,6 +29,11 @@ namespace Snowfield.Sculpture
         public string prefabId;
         public Vector3 localPos;
         public Quaternion localRot;
+        /// <summary>
+        /// Chained accessories (lights, scarf) only: the points, in sculpture-local space. Empty for rigid props,
+        /// so records written before draped accessories existed still load. The drape itself is re-derived.
+        /// </summary>
+        public List<Vector3> points = new List<Vector3>();
     }
 
     /// <summary>JsonUtility can't serialize a bare list, so files wrap one record.</summary>

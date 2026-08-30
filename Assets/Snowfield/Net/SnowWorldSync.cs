@@ -20,12 +20,14 @@ namespace Snowfield.Net
     /// </summary>
     public sealed class SnowWorldSync
     {
-        public const byte Version = 2;
+        public const byte Version = 3;
+        /// <summary>Wire cap on chain length, like every other clamped wire value.</summary>
+        public const int MaxDrapePoints = 64;
 
         enum Kind : byte
         {
             Stroke = 1, Scoop = 2, GroundScoop = 3, Fuse = 4, Regrow = 5,
-            Throw = 6, Rest = 7, Grab = 8, PropPlace = 9, PropRemove = 10,
+            Throw = 6, Rest = 7, Grab = 8, PropPlace = 9, PropRemove = 10, DrapePlace = 11,
         }
 
         public readonly SculptureRegistry Registry = new SculptureRegistry();
@@ -58,6 +60,7 @@ namespace Snowfield.Net
             SculptureNet.Grabbed += OnGrabbed;
             SculptureNet.PropPlaced += OnPropPlaced;
             SculptureNet.PropRemoved += OnPropRemoved;
+            SculptureNet.DrapePlaced += OnDrapePlaced;
         }
 
         public void Detach()
@@ -75,6 +78,7 @@ namespace Snowfield.Net
             SculptureNet.Grabbed -= OnGrabbed;
             SculptureNet.PropPlaced -= OnPropPlaced;
             SculptureNet.PropRemoved -= OnPropRemoved;
+            SculptureNet.DrapePlaced -= OnDrapePlaced;
         }
 
         /// <summary>Deferred collider cooks for remote strokes + registry hygiene. Call every frame.</summary>
@@ -250,6 +254,19 @@ namespace Snowfield.Net
             Dispatch(w, ms);
         }
 
+        void OnDrapePlaced(SnowSculpture s, string accessoryId, IReadOnlyList<Vector3> pointsLocal)
+        {
+            if (Send == null || pointsLocal == null || pointsLocal.Count == 0) return;
+            if (!Registry.TryGetId(s, out ulong id)) return;
+            var w = NewEvent(Kind.DrapePlace, out var ms);
+            w.Write(id);
+            w.Write(accessoryId);
+            int n = Mathf.Min(pointsLocal.Count, MaxDrapePoints);
+            w.Write((byte)n);
+            for (int i = 0; i < n; i++) WriteV3(w, pointsLocal[i]);
+            Dispatch(w, ms);
+        }
+
         // ------------------------------------------------------------------ incoming
 
         /// <summary>Replay one remote event. Never rebroadcasts (Suppress held for the duration).</summary>
@@ -275,6 +292,7 @@ namespace Snowfield.Net
                     case Kind.Grab: ApplyGrab(r); break;
                     case Kind.PropPlace: ApplyPropPlace(r); break;
                     case Kind.PropRemove: ApplyPropRemove(r); break;
+                    case Kind.DrapePlace: ApplyDrapePlace(r); break;
                     default: Debug.LogWarning($"[SnowNet] Unknown event kind {kind}"); break;
                 }
             }
@@ -492,6 +510,20 @@ namespace Snowfield.Net
             AccessoryPlacer.PlaceEntry(s, entry, point, normal);
         }
 
+        void ApplyDrapePlace(BinaryReader r)
+        {
+            ulong id = r.ReadUInt64();
+            string accessoryId = r.ReadString();
+            int n = Mathf.Clamp(r.ReadByte(), 0, MaxDrapePoints);
+            var points = new List<Vector3>(n);
+            for (int i = 0; i < n; i++) points.Add(ReadV3(r));
+            if (!Registry.TryGet(id, out var s) || points.Count == 0) return;
+            var entry = AccessoryCatalog.Find(accessoryId);
+            if (entry == null || entry.Drape == null) { Debug.LogWarning($"[SnowNet] Unknown drape '{accessoryId}'"); return; }
+            // Only the points travel: the strand is re-solved here, deterministically, from the same numbers.
+            DrapedAccessory.Create(s, entry, points, frozen: true);
+        }
+
         void ApplyPropRemove(BinaryReader r)
         {
             ulong id = r.ReadUInt64();
@@ -577,6 +609,10 @@ namespace Snowfield.Net
                 w.Write(p.prefabId ?? "");
                 WriteV3(w, p.LocalPos);
                 WriteQ(w, p.LocalRot);
+                var chain = p as DrapedAccessory;
+                int pts = chain != null ? Mathf.Min(chain.Points.Count, MaxDrapePoints) : 0;
+                w.Write((byte)pts);
+                for (int i = 0; i < pts; i++) WriteV3(w, chain.Points[i]);
             }
             w.Flush();
             return ms.ToArray();
@@ -639,8 +675,20 @@ namespace Snowfield.Net
                     string prefabId = r.ReadString();
                     Vector3 localPos = ReadV3(r);
                     Quaternion localRot = ReadQ(r);
+                    int pts = Mathf.Clamp(r.ReadByte(), 0, MaxDrapePoints);
+                    List<Vector3> points = null;
+                    if (pts > 0)
+                    {
+                        points = new List<Vector3>(pts);
+                        for (int k = 0; k < pts; k++) points.Add(ReadV3(r));
+                    }
                     var entry = AccessoryCatalog.Find(prefabId);
                     if (entry == null) continue;
+                    if (entry.Drape != null)
+                    {
+                        if (points != null) DrapedAccessory.Create(s, entry, points, frozen: true);
+                        continue;
+                    }
                     var go = entry.Build();
                     AccessoryCatalog.MakePickable(go);
                     var prop = go.AddComponent<SculptureProp>();
@@ -679,6 +727,13 @@ namespace Snowfield.Net
                 h = h * 31 + BitConverter.SingleToInt32Bits(c.smoothShoulder);
                 h = h * 31 + BitConverter.SingleToInt32Bits(c.scoopRadius);
                 h = h * 31 + BitConverter.SingleToInt32Bits(c.ticksPerSecond);
+                // drape geometry is derived from these, so mismatched configs would draw different strands
+                h = h * 31 + BitConverter.SingleToInt32Bits(c.drapeGravity);
+                h = h * 31 + BitConverter.SingleToInt32Bits(c.drapeSegmentLength);
+                h = h * 31 + BitConverter.SingleToInt32Bits(c.drapeDamping);
+                h = h * 31 + BitConverter.SingleToInt32Bits(c.drapeStepSeconds);
+                h = h * 31 + c.drapeConstraintPasses;
+                h = h * 31 + c.drapeSettleSteps;
                 return h;
             }
         }

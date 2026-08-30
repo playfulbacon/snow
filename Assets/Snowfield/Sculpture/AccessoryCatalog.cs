@@ -28,17 +28,8 @@ namespace Snowfield.Sculpture
             public System.Func<GameObject> Build;
         }
 
-        public static readonly IReadOnlyList<Entry> Entries = new List<Entry>
-        {
-            new Entry { Id = "twig",   DisplayName = "Twig",   Sink = 0.06f,  GroundRest = Quaternion.Euler(90f, 0f, 0f), GroundLift = 0.012f, Build = BuildTwig },
-            new Entry { Id = "carrot", DisplayName = "Carrot", Sink = 0.12f,  GroundRest = Quaternion.Euler(90f, 0f, 0f), GroundLift = 0.06f,  Build = BuildCarrot },
-            new Entry { Id = "button", DisplayName = "Button", Sink = 0.015f, GroundRest = Quaternion.identity,          GroundLift = 0f,     Build = BuildButton },
-            new Entry { Id = "pebble", DisplayName = "Pebble", Sink = 0.015f, GroundRest = Quaternion.identity,          GroundLift = 0f,     Build = BuildPebble },
-            new Entry { Id = "lights", DisplayName = "Lights", Sink = 0f,     GroundRest = Quaternion.identity,          GroundLift = 0f,     Drape = LightsStyle, Build = BuildLightsSample },
-            new Entry { Id = "scarf",  DisplayName = "Scarf",  Sink = 0f,     GroundRest = Quaternion.identity,          GroundLift = 0f,     Drape = ScarfStyle,  Build = BuildScarfSample },
-        };
 
-        // ---------- draped styles ----------
+        // ---------- draped styles (declared before Entries: static initializers run in order) ----------
 
         public static readonly DrapeStyle LightsStyle = new DrapeStyle
         {
@@ -69,6 +60,17 @@ namespace Snowfield.Sculpture
             FringeLength = 0.12f,
             FringeCount = 5,
         };
+
+        public static readonly IReadOnlyList<Entry> Entries = new List<Entry>
+        {
+            new Entry { Id = "twig",   DisplayName = "Twig",   Sink = 0.06f,  GroundRest = Quaternion.Euler(90f, 0f, 0f), GroundLift = 0.012f, Build = BuildTwig },
+            new Entry { Id = "carrot", DisplayName = "Carrot", Sink = 0.12f,  GroundRest = Quaternion.Euler(90f, 0f, 0f), GroundLift = 0.06f,  Build = BuildCarrot },
+            new Entry { Id = "button", DisplayName = "Button", Sink = 0.015f, GroundRest = Quaternion.identity,          GroundLift = 0f,     Build = BuildButton },
+            new Entry { Id = "pebble", DisplayName = "Pebble", Sink = 0.015f, GroundRest = Quaternion.identity,          GroundLift = 0f,     Build = BuildPebble },
+            new Entry { Id = "lights", DisplayName = "Lights", Sink = 0f,     GroundRest = Quaternion.identity,          GroundLift = 0f,     Drape = LightsStyle, Build = BuildLightsSample },
+            new Entry { Id = "scarf",  DisplayName = "Scarf",  Sink = 0f,     GroundRest = Quaternion.identity,          GroundLift = 0f,     Drape = ScarfStyle,  Build = BuildScarfSample },
+        };
+
 
         public static Entry Find(string id)
         {

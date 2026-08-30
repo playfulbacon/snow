@@ -137,7 +137,7 @@ namespace Snowfield.Sculpture
         {
             if (Sculpture == null) return;
             var mat = AccessoryCatalog.Mat("drape_anchor", new Color(1f, 0.85f, 0.3f, 1f), 0.4f);
-            float r = Mathf.Max(0.02f, _style.Radius * 2.5f);
+            float r = Mathf.Clamp(_style.Radius * 1.5f, 0.02f, 0.05f); // a marker, not a bead: scarf half-width would be huge
             _markers.Add(DrapeAnchor.Create(this, index, Sculpture.transform.TransformPoint(_points[index]), r, mat));
         }
 

@@ -34,7 +34,7 @@ gameplay code ──raises──▶ SculptureNet (static seam, Snowfield.Sculptu
 - **Local-first feel**: the acting player applies every op instantly, then broadcasts; the host relays in
   arrival order; the origin skips its own echo. Brush ticks carry explicit tick counts (never re-derived
   from dt) and explicit target ids (never re-resolved by physics on the remote).
-- **Structural ops** (scoop, fuse/splat, regrow, prop attach/remove, rest) are single events carrying their
+- **Structural ops** (scoop, fuse/splat, regrow, prop attach/remove, draped-chain place, rest) are single events carrying their
   full parameter set, including poses that came from physics. Regrow broadcasts its exact grid size+origin so
   peers regrow byte-identically. A Fuse replays its inner Promote/Regrow on every peer (only the outermost op
   broadcasts — `SculptureNet.StructuralDepth`).
