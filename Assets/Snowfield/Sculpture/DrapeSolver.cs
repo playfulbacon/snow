@@ -150,6 +150,28 @@ namespace Snowfield.Sculpture
             }
         }
 
+        /// <summary>
+        /// Outward surface direction near <paramref name="p"/>, from the density gradient — what a ribbon lies flat
+        /// against. Falls back when the point is nowhere near snow.
+        /// </summary>
+        public static Vector3 SurfaceUp(IReadOnlyList<SnowSculpture> surfaces, Vector3 p, Vector3 fallback)
+        {
+            if (surfaces == null) return fallback;
+            for (int i = 0; i < surfaces.Count; i++)
+            {
+                var s = surfaces[i];
+                if (s == null || s.Grid == null || !s.Grid.IsCreated) continue;
+                if (!s.WorldBounds.Contains(p)) continue;
+                float h = s.Info.voxelSize;
+                Vector3 grad = new Vector3(
+                    s.SampleDensityWorld(p + new Vector3(h, 0f, 0f)) - s.SampleDensityWorld(p - new Vector3(h, 0f, 0f)),
+                    s.SampleDensityWorld(p + new Vector3(0f, h, 0f)) - s.SampleDensityWorld(p - new Vector3(0f, h, 0f)),
+                    s.SampleDensityWorld(p + new Vector3(0f, 0f, h)) - s.SampleDensityWorld(p - new Vector3(0f, 0f, h)));
+                if (grad.sqrMagnitude > 1e-6f) return (-grad).normalized;
+            }
+            return fallback;
+        }
+
         /// <summary>Move a point that is inside the snow back out to just above the iso-surface.</summary>
         public static void PushOutOf(SnowSculpture s, ref Vector3 p, float offset)
         {
