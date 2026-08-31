@@ -79,8 +79,8 @@ namespace Snowfield.Player
             if (character == null) character = transform.root != transform ? transform.root : transform;
             Snowball.TrenchStamper = StampTrenchAt;
             Snowball.RestHeightAdjuster = RestingCentreY;
-            // Sculpture cannot see SnowGround, so hand the drape solver a ground probe the same way.
-            DrapeRope.GroundSampler = GroundHeightForDrape;
+            // Sculpture cannot see SnowGround, so hand the drape a ground probe the same way.
+            DrapeCurve.GroundSampler = GroundHeightForDrape;
         }
 
         void OnDestroy()
@@ -89,8 +89,8 @@ namespace Snowfield.Player
                 Snowball.TrenchStamper = null;
             if (Snowball.RestHeightAdjuster != null && ReferenceEquals(Snowball.RestHeightAdjuster.Target, this))
                 Snowball.RestHeightAdjuster = null;
-            if (DrapeRope.GroundSampler != null && ReferenceEquals(DrapeRope.GroundSampler.Target, this))
-                DrapeRope.GroundSampler = null;
+            if (DrapeCurve.GroundSampler != null && ReferenceEquals(DrapeCurve.GroundSampler.Target, this))
+                DrapeCurve.GroundSampler = null;
         }
 
         /// <summary>Ground height under a strand particle; -infinity when there is no field, so nothing clamps.</summary>

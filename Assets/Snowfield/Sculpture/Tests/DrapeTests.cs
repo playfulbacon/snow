@@ -42,7 +42,7 @@ namespace Snowfield.Sculpture.Tests
             if (_go != null) Object.Destroy(_go);
             Object.Destroy(_cfg);
             Object.Destroy(_mat);
-            DrapeRope.GroundSampler = null;
+            DrapeCurve.GroundSampler = null;
         }
 
         List<Vector3> AnchorsAcrossTheBall()
@@ -58,27 +58,47 @@ namespace Snowfield.Sculpture.Tests
         }
 
         [Test]
-        public void Solve_IsDeterministic_AndLeavesTheStrandOutsideTheSnow()
+        public void Curve_IsDeterministic_AndLeavesTheStrandOutsideTheSnow()
         {
             var anchors = AnchorsAcrossTheBall();
             var surfaces = new List<SnowSculpture> { _s };
             var style = AccessoryCatalog.LightsStyle;
 
-            var a = new DrapeRope();
-            a.Solve(anchors, style, _cfg, surfaces);
+            var a = new List<Vector3>();
+            var b = new List<Vector3>();
+            DrapeCurve.Build(anchors, style, _cfg, surfaces, a);
+            DrapeCurve.Build(anchors, style, _cfg, surfaces, b);
 
-            var b = new DrapeRope();
-            b.Solve(anchors, style, _cfg, surfaces);
-
-            Assert.Greater(a.Count, 2, "the strand should have particles between its anchors");
-            Assert.AreEqual(a.Count, b.Count, "same input, same particle count");
+            Assert.Greater(a.Count, 2, "the strand should have points between its anchors");
+            Assert.AreEqual(a.Count, b.Count, "same input, same point count");
             for (int i = 0; i < a.Count; i++)
-                Assert.AreEqual(a.Points[i], b.Points[i], $"particle {i} differs between two identical solves");
+                Assert.AreEqual(a[i], b[i], $"point {i} differs between two identical builds");
 
-            // Every particle must end up on or outside the surface, or the strand would be buried in the snowman.
+            // Every point must end up on or outside the surface, or the strand would be buried in the snowman.
             for (int i = 0; i < a.Count; i++)
-                Assert.LessOrEqual(_s.SampleDensityWorld(a.Points[i]), VoxelGridInfo.Iso + 1f,
-                    $"particle {i} ended up inside the snow");
+                Assert.LessOrEqual(_s.SampleDensityWorld(a[i]), VoxelGridInfo.Iso + 1f,
+                    $"point {i} ended up inside the snow");
+        }
+
+        [Test]
+        public void Curve_MovesSmoothlyWhenAnAnchorMoves()
+        {
+            // The verlet rope that lived here jittered because it carried state; a shape cannot. A hair of anchor
+            // movement must only ever produce a hair of strand movement.
+            var anchors = AnchorsAcrossTheBall();
+            var surfaces = new List<SnowSculpture> { _s };
+            var style = AccessoryCatalog.LightsStyle;
+
+            var before = new List<Vector3>();
+            var after = new List<Vector3>();
+            DrapeCurve.Build(anchors, style, _cfg, surfaces, before);
+            anchors[anchors.Count - 1] += new Vector3(0.001f, 0f, 0f);
+            DrapeCurve.Build(anchors, style, _cfg, surfaces, after);
+
+            Assert.AreEqual(before.Count, after.Count, "a 1 mm nudge should not change the point count");
+            for (int i = 0; i < before.Count; i++)
+                Assert.Less(Vector3.Distance(before[i], after[i]), 0.02f,
+                    $"point {i} jumped for a 1 mm anchor nudge");
         }
 
         [Test]
@@ -90,7 +110,7 @@ namespace Snowfield.Sculpture.Tests
             Assert.Greater(_s.SampleDensityWorld(buried), VoxelGridInfo.Iso, "test point should start buried");
 
             Vector3 p = buried;
-            for (int i = 0; i < 8; i++) DrapeRope.PushOutOf(_s, ref p, 0.01f);
+            for (int i = 0; i < 8; i++) DrapeCurve.PushOutOf(_s, ref p, 0.01f);
             Assert.LessOrEqual(_s.SampleDensityWorld(p), VoxelGridInfo.Iso + 1f, "point should have been pushed out of the snow");
         }
 

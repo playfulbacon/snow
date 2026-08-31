@@ -144,6 +144,7 @@ namespace Snowfield.Player
 
             ComputeActions(kb);
             DriveHands();
+            NudgeDrapes();
 
             // timed remesh while a stroke is in progress
             if (_dirtyTargets.Count > 0)
@@ -205,6 +206,19 @@ namespace Snowfield.Player
 
         /// <summary>Reach and hold poses are measured from here (the player root).</summary>
         Transform Body => reachOrigin != null ? reachOrigin : transform;
+
+        Vector3 _lastBodyPos;
+
+        /// <summary>Walking past a string of lights should set it swinging.</summary>
+        void NudgeDrapes()
+        {
+            Vector3 here = Body.position;
+            float moved = (here - _lastBodyPos).magnitude;
+            _lastBodyPos = here;
+            if (moved < 0.002f) return;                                                      // standing still knocks nothing
+            float speed = moved / Mathf.Max(0.0001f, Time.deltaTime);
+            DrapedAccessory.BumpAt(here + Vector3.up * 0.5f, config.drapeBumpRadius, Mathf.Clamp01(speed / 4f) * 0.8f);
+        }
 
         /// <summary>
         /// Aim the arms at whatever snow is in play. The rule is just "the hands are where the snow is": a carried

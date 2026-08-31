@@ -96,7 +96,7 @@ namespace Snowfield.Sculpture
             for (int i = 0; i < path.Count; i++)
             {
                 Vector3 t = Tangent(path, i);
-                Vector3 up = DrapeRope.SurfaceUp(surfaces, path[i], Vector3.up);
+                Vector3 up = DrapeCurve.SurfaceUp(surfaces, path[i], Vector3.up);
                 Vector3 side = Vector3.Cross(t, up);
                 if (side.sqrMagnitude < 1e-6f) side = Vector3.Cross(t, Vector3.forward);
                 side.Normalize();

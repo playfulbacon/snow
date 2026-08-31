@@ -102,23 +102,25 @@ namespace Snowfield.Config
         public float letItSnowPerSecond = 0.05f;
 
         [Header("Draped accessories")]
-        [Tooltip("Gravity on a hanging strand (m/s^2). Stronger = tighter sag against the snow.")]
-        public float drapeGravity = -9.81f;
-        [Tooltip("Spacing between strand particles (m). Smaller drapes more smoothly and costs more.")]
+        [Tooltip("Spacing between strand points (m). Smaller = a smoother curve and more geometry.")]
         public float drapeSegmentLength = 0.05f;
-        [Tooltip("Velocity kept per step. Lower settles faster and deader.")]
-        [Range(0f, 1f)] public float drapeDamping = 0.92f;
-        [Tooltip("Simulation step (s). FIXED on purpose: every peer and every reload must solve the same strand from the same points.")]
-        public float drapeStepSeconds = 0.016f;
-        [Tooltip("Distance-constraint passes per step. More = less stretchy.")]
-        [Range(1, 16)] public int drapeConstraintPasses = 4;
-        [Tooltip("Steps in a solve. The strand is re-solved from scratch every time rather than animated, so this is how far it settles — and the live preview is exactly what you get when you finish.")]
-        [Range(1, 600)] public int drapeSettleSteps = 160;
-        [Tooltip("How quickly the strand's live end follows the cursor. Lower = smoother but laggier; this is what takes the shake out of the raycast.")]
-        [Range(1f, 60f)] public float drapeTipFollow = 18f;
+        [Tooltip("Smoothing passes after the strand is laid on the snow - takes the corners out of the curve.")]
+        [Range(0, 8)] public int drapeSmoothPasses = 2;
         [Tooltip("How far a strand rests off the snow surface (m), on top of its own thickness.")]
         public float drapeSurfaceOffset = 0.01f;
-        [Tooltip("Hard cap on particles in one strand, so a very long chain cannot stall the frame.")]
+        [Tooltip("Hard cap on points in one strand, so a very long chain cannot stall the frame.")]
         public int drapeMaxParticles = 400;
+        [Tooltip("How quickly the strand's live end follows the cursor. Lower = smoother but laggier; this is what takes the shake out of the raycast.")]
+        [Range(1f, 60f)] public float drapeTipFollow = 18f;
+
+        [Header("Draped accessories - jiggle")]
+        [Tooltip("How far a strand swings when it is placed or knocked (m). The strand is a fixed shape; this is the only thing that moves it.")]
+        public float drapeJiggleAmplitude = 0.035f;
+        [Tooltip("Swings per second.")]
+        public float drapeJiggleFrequency = 4.5f;
+        [Tooltip("Seconds for a swing to die away.")]
+        public float drapeJiggleDecay = 1.1f;
+        [Tooltip("How close you have to pass for a strand to notice you (m).")]
+        public float drapeBumpRadius = 0.45f;
     }
 }

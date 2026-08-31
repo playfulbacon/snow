@@ -728,12 +728,9 @@ namespace Snowfield.Net
                 h = h * 31 + BitConverter.SingleToInt32Bits(c.scoopRadius);
                 h = h * 31 + BitConverter.SingleToInt32Bits(c.ticksPerSecond);
                 // drape geometry is derived from these, so mismatched configs would draw different strands
-                h = h * 31 + BitConverter.SingleToInt32Bits(c.drapeGravity);
                 h = h * 31 + BitConverter.SingleToInt32Bits(c.drapeSegmentLength);
-                h = h * 31 + BitConverter.SingleToInt32Bits(c.drapeDamping);
-                h = h * 31 + BitConverter.SingleToInt32Bits(c.drapeStepSeconds);
-                h = h * 31 + c.drapeConstraintPasses;
-                h = h * 31 + c.drapeSettleSteps;
+                h = h * 31 + BitConverter.SingleToInt32Bits(c.drapeSurfaceOffset);
+                h = h * 31 + c.drapeSmoothPasses;
                 return h;
             }
         }
