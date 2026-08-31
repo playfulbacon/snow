@@ -54,28 +54,68 @@ namespace Snowfield.Sculpture
                 }
             }
 
-            LayOnSnow(into, surfaces, offset);
+            LayOnSnow(into, surfaces, offset, style.SurfaceCling);
             int passes = cfg != null ? cfg.drapeSmoothPasses : 2;
             for (int p = 0; p < passes; p++) Smooth(into);
-            if (passes > 0) LayOnSnow(into, surfaces, offset); // smoothing can pull it back into the surface
+            if (passes > 0) LayOnSnow(into, surfaces, offset, style.SurfaceCling); // smoothing pulls it off again
         }
 
-        /// <summary>Push every interior point out of the snow and off the ground. Endpoints are the player's clicks; they stay.</summary>
-        static void LayOnSnow(List<Vector3> points, IReadOnlyList<SnowSculpture> surfaces, float offset)
+        /// <summary>
+        /// Settle every interior point onto the snow: out of anything it is inside, and - for a clinging style -
+        /// back onto the surface if it is hanging in the air beside it. Endpoints are the player's clicks; they stay.
+        /// </summary>
+        static void LayOnSnow(List<Vector3> points, IReadOnlyList<SnowSculpture> surfaces, float offset, float cling)
         {
             var ground = GroundSampler;
             for (int i = 1; i < points.Count - 1; i++)
             {
                 Vector3 p = points[i];
                 if (surfaces != null)
+                {
                     for (int c = 0; c < surfaces.Count; c++)
                         PushOutOf(surfaces[c], ref p, offset);
+                    if (cling > 0f)
+                        for (int c = 0; c < surfaces.Count; c++)
+                            ClingTo(surfaces[c], ref p, offset, cling);
+                }
                 if (ground != null)
                 {
                     float gy = ground(p) + offset;
                     if (p.y < gy) p.y = gy;
                 }
                 points[i] = p;
+            }
+        }
+
+        /// <summary>
+        /// Pull a point that is hanging in the air back onto a nearby surface, so a scarf wraps the shape instead of
+        /// sagging off it like a flag. This has to march: away from the surface the density is flat zero, so there is
+        /// no gradient to follow back in.
+        /// </summary>
+        static void ClingTo(SnowSculpture s, ref Vector3 p, float offset, float maxDistance)
+        {
+            if (s == null || s.Grid == null || !s.Grid.IsCreated) return;
+            var reachBounds = s.WorldBounds;
+            reachBounds.Expand(maxDistance * 2f);
+            if (!reachBounds.Contains(p)) return;
+            if (s.SampleDensityWorld(p) > VoxelGridInfo.Iso) return;   // inside: PushOutOf owns this case
+
+            Vector3 toward = s.WorldBounds.center - p;
+            float distance = toward.magnitude;
+            if (distance < 1e-4f) return;
+            toward /= distance;
+
+            float step = Mathf.Max(s.Info.voxelSize, maxDistance / 16f);
+            float travelled = 0f;
+            Vector3 probe = p;
+            while (travelled < maxDistance)
+            {
+                probe += toward * step;
+                travelled += step;
+                if (s.SampleDensityWorld(probe) <= VoxelGridInfo.Iso) continue;
+                PushOutOf(s, ref probe, offset);   // sit just outside, not at the step we happened to land on
+                p = probe;
+                return;
             }
         }
 
@@ -99,13 +139,22 @@ namespace Snowfield.Sculpture
         public static Vector3 SurfaceUp(IReadOnlyList<SnowSculpture> surfaces, Vector3 p, Vector3 fallback)
         {
             if (surfaces == null) return fallback;
+            SnowSculpture near = null;
             for (int i = 0; i < surfaces.Count; i++)
             {
                 var s = surfaces[i];
                 if (s == null || s.Grid == null || !s.Grid.IsCreated) continue;
                 if (!s.WorldBounds.Contains(p)) continue;
+                near = s;
                 Vector3 grad = Gradient(s, p, s.Info.voxelSize);
                 if (grad.sqrMagnitude > 1e-6f) return (-grad).normalized;
+            }
+            // A hair off the surface the density is flat zero and there is no gradient to read. Pointing away from the
+            // shape still beats world up, which lays a scarf out flat like a banner.
+            if (near != null)
+            {
+                Vector3 radial = p - near.WorldBounds.center;
+                if (radial.sqrMagnitude > 1e-6f) return radial.normalized;
             }
             return fallback;
         }

@@ -36,6 +36,7 @@ namespace Snowfield.Sculpture
             Shape = DrapeStyle.Form.Cord,
             Radius = 0.008f,
             Slack = 1.18f,
+            SurfaceCling = 0.15f,    // a cord mostly hangs free, but settles onto a surface right beside it
             StrandColor = new Color(0.11f, 0.12f, 0.14f),
             StrandSmoothness = 0.25f,
             TubeSides = 5,
@@ -53,8 +54,9 @@ namespace Snowfield.Sculpture
         public static readonly DrapeStyle ScarfStyle = new DrapeStyle
         {
             Shape = DrapeStyle.Form.Ribbon,
-            Radius = 0.09f,          // half-width: an 18 cm band
+            Radius = 0.07f,          // half-width: a 14 cm band
             Slack = 1.06f,           // wool pulls tighter to the snow than a cord
+            SurfaceCling = 0.6f,     // wool lies against the shape instead of hanging off it like a flag
             StrandColor = new Color(0.72f, 0.16f, 0.19f),
             StrandSmoothness = 0.1f,
             FringeLength = 0.12f,

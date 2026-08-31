@@ -92,11 +92,16 @@ namespace Snowfield.Sculpture
         {
             float half = Mathf.Max(0.002f, style.Radius);
             int start = Verts.Count;
+            Vector3 prevUp = Vector3.up;
 
             for (int i = 0; i < path.Count; i++)
             {
                 Vector3 t = Tangent(path, i);
-                Vector3 up = DrapeCurve.SurfaceUp(surfaces, path[i], Vector3.up);
+                // Carry the previous facing as the fallback, and never let it flip: a band whose up vector alternates
+                // between neighbouring points folds itself into a bow tie.
+                Vector3 up = DrapeCurve.SurfaceUp(surfaces, path[i], prevUp);
+                if (Vector3.Dot(up, prevUp) < 0f) up = -up;
+                prevUp = up;
                 Vector3 side = Vector3.Cross(t, up);
                 if (side.sqrMagnitude < 1e-6f) side = Vector3.Cross(t, Vector3.forward);
                 side.Normalize();

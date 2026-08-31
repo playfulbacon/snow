@@ -23,6 +23,11 @@ namespace Snowfield.Sculpture
         public float Radius = 0.012f;
         /// <summary>Length between anchors as a multiple of the straight line. 1 = taut, 1.25 = a lazy sag.</summary>
         public float Slack = 1.15f;
+        /// <summary>
+        /// How far (m) the strand will reach back to lie against the shape it is draped over. Wool clings; a light
+        /// cord strung between two snowmen should hang in the air, so keep that small.
+        /// </summary>
+        public float SurfaceCling = 0f;
         public Color StrandColor = new Color(0.16f, 0.17f, 0.2f);
         [Range(0f, 1f)] public float StrandSmoothness = 0.3f;
 
