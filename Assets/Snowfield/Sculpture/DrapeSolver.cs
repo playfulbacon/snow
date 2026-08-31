@@ -188,22 +188,42 @@ namespace Snowfield.Sculpture
             if (s == null || s.Grid == null || !s.Grid.IsCreated) return;
             var bounds = s.WorldBounds;
             if (!bounds.Contains(p)) return;
-
-            float density = s.SampleDensityWorld(p);
-            if (density <= VoxelGridInfo.Iso) return;
+            if (s.SampleDensityWorld(p) <= VoxelGridInfo.Iso) return;
 
             float h = s.Info.voxelSize;
-            Vector3 grad = new Vector3(
-                s.SampleDensityWorld(p + new Vector3(h, 0f, 0f)) - s.SampleDensityWorld(p - new Vector3(h, 0f, 0f)),
-                s.SampleDensityWorld(p + new Vector3(0f, h, 0f)) - s.SampleDensityWorld(p - new Vector3(0f, h, 0f)),
-                s.SampleDensityWorld(p + new Vector3(0f, 0f, h)) - s.SampleDensityWorld(p - new Vector3(0f, 0f, h)))
-                / (2f * h); // density units per metre
-
+            Vector3 grad = Gradient(s, p, h);
             float slope = grad.magnitude;
-            if (slope < 1e-4f) { p += Vector3.up * offset; return; } // flat interior: nudge up rather than stall
+
+            if (slope < 1e-4f)
+            {
+                // Deep inside, density saturates at 255 and the gradient vanishes — there is no surface to follow.
+                // Walk outward from the grid centre until the surface comes into view, then let the gradient finish.
+                Vector3 dir = p - bounds.center;
+                if (dir.sqrMagnitude < 1e-8f) dir = Vector3.up;
+                dir.Normalize();
+                float step = h * 4f;
+                for (int i = 0; i < 64; i++)
+                {
+                    p += dir * step;
+                    if (!bounds.Contains(p)) return;                       // left the grid entirely: it is out
+                    if (s.SampleDensityWorld(p) <= VoxelGridInfo.Iso) break;
+                }
+                grad = Gradient(s, p, h);
+                slope = grad.magnitude;
+                if (slope < 1e-4f) return;
+            }
+
             Vector3 outward = -grad / slope;
-            float depth = (density - VoxelGridInfo.Iso) / slope; // metres to the surface
-            p += outward * Mathf.Min(depth + offset, 0.5f);      // cap so a bad gradient cannot fling the strand
+            float depth = (s.SampleDensityWorld(p) - VoxelGridInfo.Iso) / slope; // metres to the surface
+            p += outward * (depth > 0f ? Mathf.Min(depth + offset, 0.5f) : offset); // cap: a bad gradient must not fling it
         }
+
+        /// <summary>Central-difference density gradient, in density units per metre. Points into the snow.</summary>
+        static Vector3 Gradient(SnowSculpture s, Vector3 p, float h) => new Vector3(
+            s.SampleDensityWorld(p + new Vector3(h, 0f, 0f)) - s.SampleDensityWorld(p - new Vector3(h, 0f, 0f)),
+            s.SampleDensityWorld(p + new Vector3(0f, h, 0f)) - s.SampleDensityWorld(p - new Vector3(0f, h, 0f)),
+            s.SampleDensityWorld(p + new Vector3(0f, 0f, h)) - s.SampleDensityWorld(p - new Vector3(0f, 0f, h)))
+            / (2f * h);
+
     }
 }
