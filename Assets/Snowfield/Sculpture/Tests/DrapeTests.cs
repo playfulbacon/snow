@@ -65,12 +65,10 @@ namespace Snowfield.Sculpture.Tests
             var style = AccessoryCatalog.LightsStyle;
 
             var a = new DrapeRope();
-            a.Seed(anchors, style, _cfg);
-            a.Run(_cfg.drapeSettleSteps, style, _cfg, surfaces);
+            a.Solve(anchors, style, _cfg, surfaces);
 
             var b = new DrapeRope();
-            b.Seed(anchors, style, _cfg);
-            b.Run(_cfg.drapeSettleSteps, style, _cfg, surfaces);
+            b.Solve(anchors, style, _cfg, surfaces);
 
             Assert.Greater(a.Count, 2, "the strand should have particles between its anchors");
             Assert.AreEqual(a.Count, b.Count, "same input, same particle count");

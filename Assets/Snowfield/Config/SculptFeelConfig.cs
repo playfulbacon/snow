@@ -112,10 +112,10 @@ namespace Snowfield.Config
         public float drapeStepSeconds = 0.016f;
         [Tooltip("Distance-constraint passes per step. More = less stretchy.")]
         [Range(1, 16)] public int drapeConstraintPasses = 4;
-        [Tooltip("Steps per frame while you are still adding points (the live drape).")]
-        [Range(1, 32)] public int drapeLiveSteps = 4;
-        [Tooltip("Steps run once when a chain is finished, so it settles before it freezes.")]
+        [Tooltip("Steps in a solve. The strand is re-solved from scratch every time rather than animated, so this is how far it settles — and the live preview is exactly what you get when you finish.")]
         [Range(1, 600)] public int drapeSettleSteps = 160;
+        [Tooltip("How quickly the strand's live end follows the cursor. Lower = smoother but laggier; this is what takes the shake out of the raycast.")]
+        [Range(1f, 60f)] public float drapeTipFollow = 18f;
         [Tooltip("How far a strand rests off the snow surface (m), on top of its own thickness.")]
         public float drapeSurfaceOffset = 0.01f;
         [Tooltip("Hard cap on particles in one strand, so a very long chain cannot stall the frame.")]

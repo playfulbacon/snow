@@ -74,15 +74,19 @@ namespace Snowfield.Sculpture
             return Mathf.Max(0.01f, len * style.Slack);
         }
 
-        /// <summary>Move the pinned ends onto (possibly moved) anchors without reseeding — used for the live tip.</summary>
-        public void PinFirst(Vector3 world) { if (Points.Count > 0) { Points[0] = world; _prev[0] = world; } }
-        public void PinLast(Vector3 world)
+        /// <summary>
+        /// Seed and settle in one go. The strand is a pure function of its anchors — solved from scratch, never
+        /// carried frame to frame — which is what keeps it from wobbling while you move the cursor, and what makes
+        /// the live preview identical to the finished strand.
+        /// </summary>
+        public void Solve(IReadOnlyList<Vector3> anchorsWorld, DrapeStyle style, SculptFeelConfig cfg,
+                          IReadOnlyList<SnowSculpture> colliders)
         {
-            int i = Points.Count - 1;
-            if (i >= 0) { Points[i] = world; _prev[i] = world; }
+            Seed(anchorsWorld, style, cfg);
+            Run(cfg != null ? cfg.drapeSettleSteps : 160, style, cfg, colliders);
         }
 
-        /// <summary>Advance the simulation. <paramref name="steps"/> is small while placing, large for the settle.</summary>
+        /// <summary>Advance the simulation. Normally reached through <see cref="Solve"/>.</summary>
         public void Run(int steps, DrapeStyle style, SculptFeelConfig cfg, IReadOnlyList<SnowSculpture> colliders)
         {
             if (Points.Count < 2) return;
@@ -95,8 +99,14 @@ namespace Snowfield.Sculpture
             for (int s = 0; s < steps; s++)
             {
                 Integrate(dt, damping, gravity);
-                for (int p = 0; p < passes; p++) Constrain();
-                Collide(colliders, offset);
+                // Collision sits INSIDE the constraint loop. Resolving it afterwards let the rope sink each step and
+                // get shoved back out the next one — an oscillator by construction.
+                for (int p = 0; p < passes; p++)
+                {
+                    Constrain();
+                    if (p == passes - 1 || p == passes / 2) Collide(colliders, offset);
+                }
+                Constrain();
             }
         }
 

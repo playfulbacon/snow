@@ -46,6 +46,7 @@ namespace Snowfield.Player
         {
             if (ActiveChain != null || sculpture == null || Selected.Drape == null) return;
             HidePreview();
+            _hasSmoothTip = false;
             var local = sculpture.transform.InverseTransformPoint(worldPoint);
             ActiveChain = DrapedAccessory.Create(sculpture, Selected, new[] { local }, frozen: false);
         }
@@ -63,11 +64,32 @@ namespace Snowfield.Player
             ActiveChain.AddExistingPoint(anchor.Index);
         }
 
-        /// <summary>Run the live drape out to the cursor. Pass null when the cursor is off the snow.</summary>
+        Vector3 _smoothTip;
+        bool _hasSmoothTip;
+
+        /// <summary>
+        /// Run the live drape out to the cursor. Pass null when the cursor is off the snow.
+        /// The point is smoothed first: the raw raycast hit jitters by a millimetre or two per frame and the strand
+        /// would whip with it.
+        /// </summary>
         public void UpdateChainTip(Vector3? worldPoint)
         {
             if (ActiveChain == null) return;
-            ActiveChain.SetTip(worldPoint);
+            if (!worldPoint.HasValue)
+            {
+                _hasSmoothTip = false;
+                ActiveChain.SetTip(null);
+            }
+            else
+            {
+                var cfg = ActiveChain.Sculpture != null ? ActiveChain.Sculpture.Config : null;
+                float follow = cfg != null ? cfg.drapeTipFollow : 18f;
+                _smoothTip = _hasSmoothTip
+                    ? Vector3.Lerp(_smoothTip, worldPoint.Value, 1f - Mathf.Exp(-follow * Time.deltaTime))
+                    : worldPoint.Value;
+                _hasSmoothTip = true;
+                ActiveChain.SetTip(_smoothTip);
+            }
             ActiveChain.StepLive();
         }
 
@@ -103,7 +125,8 @@ namespace Snowfield.Player
             if (_preview == null || _previewIndex != SelectedIndex)
             {
                 if (_preview != null) Destroy(_preview);
-                _preview = Selected.Build();
+                // A chain has no shape until it has points, so preview just the point you are about to plant.
+                _preview = Selected.Drape != null ? DrapedAccessory.BuildPointMarker(Selected.Drape) : Selected.Build();
                 _preview.name = "AccessoryPreview";
                 AccessoryCatalog.SetColliders(_preview, false);
                 AccessoryCatalog.SetLayerRecursive(_preview, LayerMask.NameToLayer("Ignore Raycast"));

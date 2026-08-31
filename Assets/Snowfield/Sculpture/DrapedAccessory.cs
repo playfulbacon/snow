@@ -56,7 +56,7 @@ namespace Snowfield.Sculpture
             chain.BuildVisuals();
             chain.RefreshSurfaces();
             if (frozen) chain.Freeze();
-            else { chain.Reseed(); chain.Rebuild(); }
+            else chain.Rebuild();
             return chain;
         }
 
@@ -69,7 +69,6 @@ namespace Snowfield.Sculpture
             _points.Add(Sculpture.transform.InverseTransformPoint(world));
             AddMarker(_points.Count - 1);
             RefreshSurfaces();
-            Reseed();
             Rebuild();
         }
 
@@ -79,7 +78,6 @@ namespace Snowfield.Sculpture
             if (Frozen || index < 0 || index >= _points.Count) return;
             _points.Add(_points[index]);
             AddMarker(_points.Count - 1);
-            Reseed();
             Rebuild();
         }
 
@@ -87,19 +85,15 @@ namespace Snowfield.Sculpture
         public void SetTip(Vector3? world)
         {
             if (Frozen) return;
-            bool had = _hasTip;
             _tipWorld = world;
             _hasTip = world.HasValue;
-            if (had != _hasTip) Reseed();
         }
 
-        /// <summary>One frame of the live drape.</summary>
+        /// <summary>Re-solve the strand for this frame. Deterministic from the points, so it cannot drift or shake.</summary>
         public void StepLive()
         {
             if (Frozen) return;
-            if (_hasTip && _rope.Count > 0) _rope.PinLast(_tipWorld.Value);
-            _rope.Run(_config != null ? _config.drapeLiveSteps : 4, _style, _config, _surfaces);
-            Rebuild(solve: false);
+            Rebuild();
         }
 
         /// <summary>Settle the strand and stop simulating; the chain becomes an ordinary placed accessory.</summary>
@@ -108,9 +102,7 @@ namespace Snowfield.Sculpture
             _hasTip = false;
             _tipWorld = null;
             RefreshSurfaces();
-            Reseed();
-            _rope.Run(_config != null ? _config.drapeSettleSteps : 160, _style, _config, _surfaces);
-            Rebuild(solve: false);
+            Rebuild();          // same solve as the preview, so nothing shifts when you finish
             ClearMarkers();
             Frozen = true;
         }
@@ -133,12 +125,25 @@ namespace Snowfield.Sculpture
             for (int i = 0; i < _points.Count; i++) AddMarker(i);
         }
 
+        /// <summary>Marker size for a style: a marker, not a bead — a scarf's half-width would be enormous.</summary>
+        public static float MarkerRadius(DrapeStyle style) => Mathf.Clamp(style.Radius * 1.5f, 0.02f, 0.05f);
+        public static Material MarkerMaterial() => AccessoryCatalog.Mat("drape_anchor", new Color(1f, 0.85f, 0.3f, 1f), 0.4f);
+
+        /// <summary>A lone point, for the hover preview before a chain exists.</summary>
+        public static GameObject BuildPointMarker(DrapeStyle style)
+        {
+            var go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            go.name = "DrapePointPreview";
+            go.transform.localScale = Vector3.one * MarkerRadius(style) * 2f;
+            go.GetComponent<MeshRenderer>().sharedMaterial = MarkerMaterial();
+            return go;
+        }
+
         void AddMarker(int index)
         {
             if (Sculpture == null) return;
-            var mat = AccessoryCatalog.Mat("drape_anchor", new Color(1f, 0.85f, 0.3f, 1f), 0.4f);
-            float r = Mathf.Clamp(_style.Radius * 1.5f, 0.02f, 0.05f); // a marker, not a bead: scarf half-width would be huge
-            _markers.Add(DrapeAnchor.Create(this, index, Sculpture.transform.TransformPoint(_points[index]), r, mat));
+            _markers.Add(DrapeAnchor.Create(this, index, Sculpture.transform.TransformPoint(_points[index]),
+                                            MarkerRadius(_style), MarkerMaterial()));
         }
 
         void ClearMarkers()
@@ -147,18 +152,16 @@ namespace Snowfield.Sculpture
             _markers.Clear();
         }
 
-        void Reseed()
-        {
-            var anchors = new List<Vector3>(_points.Count + 1);
-            if (Sculpture != null)
-                foreach (var p in _points) anchors.Add(Sculpture.transform.TransformPoint(p));
-            if (_hasTip && _tipWorld.HasValue) anchors.Add(_tipWorld.Value);
-            _rope.Seed(anchors, _style, _config);
-        }
+        readonly List<Vector3> _anchorScratch = new List<Vector3>();
 
-        void Rebuild(bool solve = true)
+        void Rebuild()
         {
-            if (solve) _rope.Run(_config != null ? _config.drapeLiveSteps : 4, _style, _config, _surfaces);
+            _anchorScratch.Clear();
+            if (Sculpture != null)
+                foreach (var p in _points) _anchorScratch.Add(Sculpture.transform.TransformPoint(p));
+            if (_hasTip && _tipWorld.HasValue) _anchorScratch.Add(_tipWorld.Value);
+
+            _rope.Solve(_anchorScratch, _style, _config, _surfaces);
             DrapeMesh.Build(_mesh, _rope.Points, _strand, _style, _surfaces);
             RebuildBulbs();
         }
