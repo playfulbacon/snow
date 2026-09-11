@@ -93,7 +93,7 @@ namespace Snowfield.Player
         }
 
         /// <summary>Ground line for the connectivity check; NaN when the ground snow is not ready (the check then uses the snow's own floor).</summary>
-        static float GroundHeightForStructure(Vector3 p)
+        float GroundHeightForStructure(Vector3 p)
         {
             var ground = SnowGround.Instance;
             return ground != null && ground.IsCreated ? ground.SampleHeight(p) : float.NaN;
