@@ -5,11 +5,16 @@ using Unity.Mathematics;
 
 namespace Snowfield.Voxel
 {
-    /// <summary>Vertex layout uploaded to the Mesh: position + gradient normal, both in sculpture-local metres.</summary>
+    /// <summary>
+    /// Vertex layout uploaded to the Mesh: position + gradient normal, both in sculpture-local metres, plus the
+    /// compaction (0..1) sampled at the vertex with the same trilinear interpolation the normal uses — the shader
+    /// tints packed snow denser and bluer, which is how the material teaches itself.
+    /// </summary>
     public struct SnowVertex
     {
         public float3 Position;
         public float3 Normal;
+        public float Compaction;
     }
 
     /// <summary>
@@ -53,6 +58,7 @@ namespace Snowfield.Voxel
     public struct MeshChunkJob : IJob
     {
         [ReadOnly] public NativeArray<byte> Density;
+        [ReadOnly] public NativeArray<byte> Compaction;
         public VoxelGridInfo Info;
         public int3 ChunkCoord;
         public MarchingCubesLookup Lookup;
@@ -139,6 +145,7 @@ namespace Snowfield.Voxel
             {
                 Position = voxelPos * Info.voxelSize,
                 Normal = GradientNormal(voxelPos),
+                Compaction = SampleCompaction(voxelPos),
             });
         }
 
@@ -166,6 +173,30 @@ namespace Snowfield.Voxel
             float c0 = math.lerp(c00, c10, f.y);
             float c1 = math.lerp(c01, c11, f.y);
             return math.lerp(c0, c1, f.z);
+        }
+
+        /// <summary>
+        /// Compaction at a surface vertex, 0..1. Mass-weighted over the cell's corners so the air corners (which
+        /// carry compaction 0) do not drag a packed surface toward "fluffy".
+        /// </summary>
+        float SampleCompaction(float3 p)
+        {
+            p = math.clamp(p, 0f, Info.size - 1.001f);
+            int3 i0 = (int3)math.floor(p);
+            int3 i1 = math.min(i0 + 1, Info.size - 1);
+            float3 f = p - i0;
+            float weighted = 0f, mass = 0f;
+            for (int c = 0; c < 8; c++)
+            {
+                int3 corner = new int3((c & 1) != 0 ? i1.x : i0.x, (c & 2) != 0 ? i1.y : i0.y, (c & 4) != 0 ? i1.z : i0.z);
+                float w = ((c & 1) != 0 ? f.x : 1f - f.x) * ((c & 2) != 0 ? f.y : 1f - f.y) * ((c & 4) != 0 ? f.z : 1f - f.z);
+                int idx = Info.Index(corner);
+                float d = Density[idx];
+                if (d <= 0f) continue;
+                weighted += w * d * Compaction[idx];
+                mass += w * d;
+            }
+            return mass > 0f ? weighted / (mass * 255f) : 0f;
         }
 
         float3 GradientNormal(float3 p)

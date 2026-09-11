@@ -99,6 +99,7 @@ namespace Snowfield.Sculpture
                 snowballRadius = ball != null ? ball.radius : 0f,
                 isLoose = ball != null && ball.IsLoose,
                 densityB64 = Convert.ToBase64String(GridSerializer.Encode(s.Grid.Density)),
+                compactionB64 = Convert.ToBase64String(GridSerializer.Encode(s.Grid.Compaction)),
             };
             foreach (var p in s.Props)
                 r.props.Add(new PropRecord { prefabId = p.prefabId, localPos = p.LocalPos, localRot = p.LocalRot });
@@ -138,10 +139,14 @@ namespace Snowfield.Sculpture
 
         public static SnowSculpture FromRecord(SculptureFactory factory, SculptureRecord r)
         {
-            var s = factory.CreateEmpty(r.gridSize, r.gridOffset, r.position, r.rotation);
+            var s = factory.CreateEmpty(r.gridSize, r.gridOffset, r.position, r.rotation, r.voxelSize);
             var blob = Convert.FromBase64String(r.densityB64);
             GridSerializer.Decode(blob, s.Grid.Density);
-            s.Grid.MarkAllDirty();
+            if (!string.IsNullOrEmpty(r.compactionB64))
+                GridSerializer.Decode(Convert.FromBase64String(r.compactionB64), s.Grid.Compaction);
+            else
+                s.FillCompaction(factory.config.compactionLegacy); // pre-compaction save: settled snow
+            s.TouchAll();
 
             if (r.isSnowball)
             {

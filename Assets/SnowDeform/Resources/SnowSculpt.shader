@@ -17,6 +17,8 @@ Shader "SnowDays/SnowSculpt"
         // Multiplies the ambient probe so shadowed snow reads cold.
         _SnowShadowTint("Shadow Tint", Color) = (0.72, 0.82, 1.0, 1)
         _SnowLightBands("Light Bands", Range(2, 6)) = 3
+        // Packed snow reads denser and bluer: albedo is multiplied by this at full compaction.
+        _SnowPackedTint("Packed Tint", Color) = (0.86, 0.90, 1.0, 1)
     }
 
     SubShader
@@ -35,6 +37,7 @@ Shader "SnowDays/SnowSculpt"
         CBUFFER_START(UnityPerMaterial)
         half4 _SnowAlbedo;
         half4 _SnowShadowTint;
+        half4 _SnowPackedTint;
         half _SnowLightBands;
         float _SnowTexTiling;
         CBUFFER_END
@@ -67,6 +70,8 @@ Shader "SnowDays/SnowSculpt"
             {
                 float3 positionOS : POSITION;
                 float3 normalOS : NORMAL;
+                // Compaction 0..1, sampled per vertex from the voxel grid (MeshChunkJob).
+                float packing : TEXCOORD0;
             };
 
             struct Varyings
@@ -75,6 +80,7 @@ Shader "SnowDays/SnowSculpt"
                 float3 positionWS : TEXCOORD0;
                 half3 normalWS : TEXCOORD1;
                 half fogFactor : TEXCOORD2;
+                half packing : TEXCOORD3;
             };
 
             Varyings SculptVertex(Attributes input)
@@ -85,6 +91,7 @@ Shader "SnowDays/SnowSculpt"
                 output.normalWS = TransformObjectToWorldNormal(input.normalOS);
                 output.positionCS = TransformWorldToHClip(positionWS);
                 output.fogFactor = ComputeFogFactor(output.positionCS.z);
+                output.packing = saturate(input.packing);
                 return output;
             }
 
@@ -109,6 +116,8 @@ Shader "SnowDays/SnowSculpt"
                 inputData.shadowMask = half4(1, 1, 1, 1);
 
                 half3 albedo = SnowTexTriplanar(positionWS, normalWS, _SnowTexTiling) * _SnowAlbedo.rgb;
+                // Packed snow: the same texture, slightly denser and bluer. This is how the material teaches itself.
+                albedo *= lerp(half3(1, 1, 1), _SnowPackedTint.rgb, input.packing);
                 half3 color = SnowShade(inputData, albedo, 1.0, _SnowShadowTint.rgb, _SnowLightBands);
 
                 color = MixFog(color, input.fogFactor);

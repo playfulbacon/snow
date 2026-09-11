@@ -440,7 +440,7 @@ namespace Snowfield.Player
             ApplyPrompt(_tertiary, playing ? tool.TertiaryAction : previewTertiary);
 
             // throw charge ring
-            float charge = playing ? tool.ThrowCharge : 0f;
+            float charge = playing ? Mathf.Max(tool.ThrowCharge, tool.SqueezeProgress) : 0f;
             bool showRing = charge > 0f || (!playing && previewChargeRing);
             _chargeBg.gameObject.SetActive(showRing);
             _chargeFill.gameObject.SetActive(showRing);

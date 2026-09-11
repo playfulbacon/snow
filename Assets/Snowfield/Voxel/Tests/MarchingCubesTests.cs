@@ -30,8 +30,8 @@ namespace Snowfield.Voxel.Tests
             int3 ext = max - min;
             new SphereStampJob
             {
-                Density = _grid.Density, Info = _grid.Info, AabbMin = min, AabbExtent = ext,
-                CenterVoxel = c, RadiusVoxels = r, Shoulder = 0.6f, ClipBelowY = -1e9f,
+                Density = _grid.Density, Compaction = _grid.Compaction, Info = _grid.Info, AabbMin = min, AabbExtent = ext,
+                CenterVoxel = c, RadiusVoxels = r, Shoulder = 0.6f, ClipBelowY = -1e9f, StampCompaction = 200f,
             }.Schedule(ext.x * ext.y * ext.z, 64).Complete();
         }
 
@@ -39,7 +39,7 @@ namespace Snowfield.Voxel.Tests
         {
             var v = new NativeList<SnowVertex>(Allocator.TempJob);
             var i = new NativeList<int>(Allocator.TempJob);
-            new MeshChunkJob { Density = _grid.Density, Info = _grid.Info, ChunkCoord = chunk, Lookup = _lookup, Vertices = v, Indices = i }
+            new MeshChunkJob { Density = _grid.Density, Compaction = _grid.Compaction, Info = _grid.Info, ChunkCoord = chunk, Lookup = _lookup, Vertices = v, Indices = i }
                 .Schedule().Complete();
             return (v, i);
         }
@@ -120,8 +120,8 @@ namespace Snowfield.Voxel.Tests
             int3 ext = max - min;
             new AddBrushJob
             {
-                Density = _grid.Density, Info = _grid.Info, AabbMin = min, AabbExtent = ext,
-                CenterVoxel = c, RadiusVoxels = 3f, RatePerTick = 10f, Shoulder = 0.6f,
+                Density = _grid.Density, Compaction = _grid.Compaction, Info = _grid.Info, AabbMin = min, AabbExtent = ext,
+                CenterVoxel = c, RadiusVoxels = 3f, RatePerTick = 10f, Shoulder = 0.6f, ArrivalCompaction = 40f,
             }.Schedule(ext.x * ext.y * ext.z, 64).Complete();
             _grid.MarkDirty(min, max);
 
@@ -136,15 +136,17 @@ namespace Snowfield.Voxel.Tests
         {
             StampSphere(new float3(16, 16, 16), 12f);
             var snapshot = new NativeArray<byte>(_grid.Density, Allocator.TempJob);
+            var snapshotC = new NativeArray<byte>(_grid.Compaction, Allocator.TempJob);
             float3 c = new float3(16, 16, 16);
             Assert.IsTrue(_grid.SphereAabb(c, 4f, out var min, out var max));
             int3 ext = max - min;
             new SmoothBrushJob
             {
-                Source = snapshot, Density = _grid.Density, Info = _grid.Info, AabbMin = min, AabbExtent = ext,
-                CenterVoxel = c, RadiusVoxels = 4f, Strength = 1f, Shoulder = 0.5f,
+                Source = snapshot, SourceCompaction = snapshotC, Density = _grid.Density, Compaction = _grid.Compaction,
+                Info = _grid.Info, AabbMin = min, AabbExtent = ext,
+                CenterVoxel = c, RadiusVoxels = 4f, Strength = 1f, Shoulder = 0.5f, KernelRadius = 1,
             }.Schedule(ext.x * ext.y * ext.z, 64).Complete();
-            snapshot.Dispose();
+            snapshot.Dispose(); snapshotC.Dispose();
             Assert.AreEqual(255, _grid.Density[_grid.Info.Index(16, 16, 16)], "solid core should stay solid");
         }
     }

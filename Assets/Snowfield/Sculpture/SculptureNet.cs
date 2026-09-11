@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using Snowfield.Voxel;
+using Unity.Mathematics;
 using UnityEngine;
 
 namespace Snowfield.Sculpture
@@ -58,6 +60,7 @@ namespace Snowfield.Sculpture
         {
             public Vector3 point;
             public float radius;
+            public float shoulder;                       // bite falloff (crisp on small packed bites)
             public IReadOnlyList<SnowSculpture> targets; // grids the bite came out of
             public Snowball chunk;                       // the freshly created hand chunk
             public float resultRadius;                   // nominal radius assigned after volume measurement
@@ -70,6 +73,47 @@ namespace Snowfield.Sculpture
         public static event Action<Vector3, Snowball> GroundScooped;
         public static void RaiseGroundScooped(Vector3 groundPoint, Snowball ball)
         { if (Broadcastable) GroundScooped?.Invoke(groundPoint, ball); }
+
+        public struct ShaveStamp
+        {
+            public Vector3 point;
+            public Vector3 normal;
+            public ShaveParams prm;
+        }
+        public struct ShaveInfo
+        {
+            public float radius;
+            public float slump;                          // relaxation strength after the stamps (fluffy snow), 0 = none
+            public IReadOnlyList<ShaveStamp> stamps;     // one frame's worth, in order
+            public IReadOnlyList<SnowSculpture> targets;
+        }
+        /// <summary>A frame of shave/score stamps was applied locally. Params are derived on the origin and replayed verbatim.</summary>
+        public static event Action<ShaveInfo> Shaved;
+        public static void RaiseShaved(in ShaveInfo info) { if (Broadcastable) Shaved?.Invoke(info); }
+
+        /// <summary>A held ball was squeezed one stage: (ball, linear scale of this stage, compaction blend of this stage).</summary>
+        public static event Action<Snowball, float, float> Squeezed;
+        public static void RaiseSqueezed(Snowball ball, float linearScale, float compactionBlend)
+        { if (Broadcastable) Squeezed?.Invoke(ball, linearScale, compactionBlend); }
+
+        /// <summary>Shaved-off snow shed as a loose lump at the player's feet: (new ball, launch velocity).</summary>
+        public static event Action<Snowball, Vector3> Shed;
+        public static void RaiseShed(Snowball ball, Vector3 velocity) { if (Broadcastable) Shed?.Invoke(ball, velocity); }
+
+        /// <summary>Thin features crumbled: (sculpture, region min, region extent, region mask — non-zero = cleared).</summary>
+        public static event Action<SnowSculpture, int3, int3, byte[]> Thinned;
+        public static void RaiseThinned(SnowSculpture s, int3 regionMin, int3 regionExtent, byte[] mask)
+        { if (Broadcastable) Thinned?.Invoke(s, regionMin, regionExtent, mask); }
+
+        /// <summary>An island lifted out as a falling ball: (source, ball holding the island, voxel offset ball→source).</summary>
+        public static event Action<SnowSculpture, Snowball, int3> Detached;
+        public static void RaiseDetached(SnowSculpture source, Snowball island, int3 offset)
+        { if (Broadcastable) Detached?.Invoke(source, island, offset); }
+
+        /// <summary>A fluffy ball burst on landing: (the ball — already consumed, its crumbs, their launch velocities).</summary>
+        public static event Action<Snowball, IReadOnlyList<Snowball>, Vector3[]> Burst;
+        public static void RaiseBurst(Snowball ball, IReadOnlyList<Snowball> crumbs, Vector3[] velocities)
+        { if (Broadcastable) Burst?.Invoke(ball, crumbs, velocities); }
 
         /// <summary>
         /// A fuse is about to run: (target before EnsureRoom/Regrow, source at its final pose). Raised at entry so

@@ -7,11 +7,16 @@ namespace Snowfield.Voxel
     /// <summary>
     /// Owns the density array for one sculpture plus per-chunk dirty flags.
     /// No UnityEngine dependency so it is unit-testable; lifetime managed by the owner.
+    ///
+    /// Two bytes per voxel: <see cref="Density"/> (0 = air, 255 = solid, iso 128) and <see cref="Compaction"/>
+    /// (0 = fresh powder … 255 = fully packed). Compaction only means anything where density is non-zero; every
+    /// job that moves snow carries it along mass-weighted, so it is set by how snow arrives, never by a mode.
     /// </summary>
     public sealed class VoxelGrid : IDisposable
     {
         public VoxelGridInfo Info;
         public NativeArray<byte> Density;
+        public NativeArray<byte> Compaction;
         public NativeArray<bool> ChunkDirty;
 
         public VoxelGrid(int size, float voxelSize)
@@ -20,6 +25,7 @@ namespace Snowfield.Voxel
                 throw new ArgumentException($"Grid size {size} must be a multiple of {VoxelGridInfo.ChunkSize}");
             Info = new VoxelGridInfo(size, voxelSize);
             Density = new NativeArray<byte>(Info.VoxelCount, Allocator.Persistent, NativeArrayOptions.ClearMemory);
+            Compaction = new NativeArray<byte>(Info.VoxelCount, Allocator.Persistent, NativeArrayOptions.ClearMemory);
             ChunkDirty = new NativeArray<bool>(Info.ChunkCount, Allocator.Persistent, NativeArrayOptions.ClearMemory);
         }
 
@@ -57,9 +63,16 @@ namespace Snowfield.Voxel
             return math.all(max > min);
         }
 
+        /// <summary>Set the compaction of every voxel holding snow (density &gt; 0) to one value. Air stays 0.</summary>
+        public void FillCompaction(byte value)
+        {
+            for (int i = 0; i < Density.Length; i++) Compaction[i] = Density[i] > 0 ? value : (byte)0;
+        }
+
         public void Dispose()
         {
             if (Density.IsCreated) Density.Dispose();
+            if (Compaction.IsCreated) Compaction.Dispose();
             if (ChunkDirty.IsCreated) ChunkDirty.Dispose();
         }
     }

@@ -6,7 +6,8 @@ namespace Snowfield.Sculpture
 {
     /// <summary>
     /// Serializable snapshot of one sculpture (or loose snowball). Local save files are JSON of this;
-    /// Phase 3 uploads the same shape (densityB64 is the RLE blob from GridSerializer).
+    /// Phase 3 uploads the same shape (densityB64 / compactionB64 are RLE blobs from GridSerializer).
+    /// compactionB64 is optional: records from before the compaction channel load with a legacy value.
     /// </summary>
     [Serializable]
     public class SculptureRecord
@@ -20,6 +21,7 @@ namespace Snowfield.Sculpture
         public float snowballRadius;
         public bool isLoose;
         public string densityB64;
+        public string compactionB64;
         public List<PropRecord> props = new List<PropRecord>();
     }
 

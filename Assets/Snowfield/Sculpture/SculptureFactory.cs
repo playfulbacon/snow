@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using Snowfield.Config;
 using UnityEngine;
@@ -39,8 +40,8 @@ namespace Snowfield.Sculpture
             return s;
         }
 
-        /// <summary>Bare sculpture with an explicit grid shape and pose; density is the caller's job (loading).</summary>
-        public SnowSculpture CreateEmpty(int gridSize, Vector3 gridOffset, Vector3 position, Quaternion rotation)
+        /// <summary>Bare sculpture with an explicit grid shape and pose; density is the caller's job (loading). voxelSize 0 = config.</summary>
+        public SnowSculpture CreateEmpty(int gridSize, Vector3 gridOffset, Vector3 position, Quaternion rotation, float voxelSize = 0f)
         {
             var go = new GameObject("Sculpture");
             go.SetActive(false);
@@ -49,6 +50,7 @@ namespace Snowfield.Sculpture
             var s = go.AddComponent<SnowSculpture>();
             s.EditorAssign(config, snowMaterial);
             s.gridSizeOverride = gridSize;
+            s.voxelSizeOverride = voxelSize;
             s.gridOffset = gridOffset;
             go.SetActive(true);
             SculptureNet.RaiseCreated(s);
@@ -59,7 +61,7 @@ namespace Snowfield.Sculpture
         public SnowSculpture CreateMound(Vector3 groundPoint, float radius)
         {
             var s = CreateAt(groundPoint);
-            s.StampSphere(groundPoint, radius, 0.7f, clipBelowWorldY: groundPoint.y - config.voxelSize);
+            s.StampSphere(groundPoint, radius, 0.7f, config.compactionLegacy, clipBelowWorldY: groundPoint.y - config.voxelSize);
             s.Remesh();
             s.RebuildColliders();
             return s;
@@ -67,22 +69,24 @@ namespace Snowfield.Sculpture
 
         /// <summary>
         /// New loose snowball: a small sculpture whose grid is centred on <paramref name="centre"/>, pre-stamped with a sphere.
-        /// The root transform is the ball centre (so rolling can rotate it).
+        /// The root transform is the ball centre (so rolling can rotate it). <paramref name="compaction"/> &lt; 0 = rolled (packed).
         /// </summary>
-        public Snowball CreateSnowball(Vector3 centre, float radius)
+        public Snowball CreateSnowball(Vector3 centre, float radius, float compaction = -1f)
         {
             var ball = CreateEmptySnowball(centre, radius);
-            ball.Sculpture.StampSphere(centre, radius, ball.stampShoulder);
+            ball.Sculpture.StampSphere(centre, radius, ball.stampShoulder,
+                compaction < 0f ? config.compactionRolled : compaction, float.NegativeInfinity);
             ball.Sculpture.Remesh();
             ball.Sculpture.RebuildColliders();
             return ball;
         }
 
-        /// <summary>An empty snowball shell (grid centred on <paramref name="centre"/>); the caller fills the density.</summary>
-        public Snowball CreateEmptySnowball(Vector3 centre, float nominalRadius)
+        /// <summary>An empty snowball shell (grid centred on <paramref name="centre"/>); the caller fills the density. gridSize 0 = config.</summary>
+        public Snowball CreateEmptySnowball(Vector3 centre, float nominalRadius, int gridSize = 0, float voxelSize = 0f)
         {
-            int size = Mathf.Max(16, config.snowballGridSize / 16 * 16);
-            float extent = size * config.voxelSize;
+            int size = Mathf.Max(16, (gridSize > 0 ? gridSize : config.snowballGridSize) / 16 * 16);
+            float vs = voxelSize > 0f ? voxelSize : config.voxelSize;
+            float extent = size * vs;
             var go = new GameObject("Snowball");
             go.SetActive(false);
             go.transform.SetParent(container != null ? container : transform, false);
@@ -90,6 +94,7 @@ namespace Snowfield.Sculpture
             var s = go.AddComponent<SnowSculpture>();
             s.EditorAssign(config, snowMaterial);
             s.gridSizeOverride = size;
+            s.voxelSizeOverride = voxelSize;
             s.gridOffset = new Vector3(-extent * 0.5f, -extent * 0.5f, -extent * 0.5f);
             var ball = go.AddComponent<Snowball>();
             ball.radius = nominalRadius;
@@ -216,6 +221,45 @@ namespace Snowfield.Sculpture
                 return target;
             }
             finally { SculptureNet.PopStructural(); }
+        }
+
+        /// <summary>
+        /// A fluffy ball hitting something hard: it bursts into a few powder lumps that carry its snow onward.
+        /// The ball is consumed. Positions and velocities are explicit so the network replays exactly these.
+        /// </summary>
+        public List<Snowball> Burst(Snowball ball, Vector3 contact, Vector3 normal, Vector3 velocity)
+        {
+            var crumbs = new List<Snowball>();
+            if (ball == null) return crumbs;
+            const int n = 3;
+            float volume = ball.Sculpture.DensityVolume();
+            float r = SculptureStructure.SnowballRadius(volume / n);
+            Vector3 along = Vector3.ProjectOnPlane(velocity, normal);
+            Vector3 t1 = Vector3.Cross(normal, along.sqrMagnitude > 1e-4f ? along.normalized : Vector3.forward);
+            if (t1.sqrMagnitude < 1e-4f) t1 = Vector3.Cross(normal, Vector3.right);
+            t1.Normalize();
+            Vector3 t2 = Vector3.Cross(normal, t1);
+            var positions = new Vector3[n];
+            var velocities = new Vector3[n];
+            for (int i = 0; i < n; i++)
+            {
+                float a = i * (2f * Mathf.PI / n);
+                Vector3 side = t1 * Mathf.Cos(a) + t2 * Mathf.Sin(a);
+                positions[i] = contact + normal * (r * 1.05f) + side * (r * 1.2f);
+                velocities[i] = along * 0.45f + side * (1.2f + 0.15f * along.magnitude) + normal * 0.8f;
+            }
+            SculptureNet.PushStructural();
+            try
+            {
+                for (int i = 0; i < n; i++)
+                    crumbs.Add(CreateSnowball(positions[i], r, config.compactionScooped));
+            }
+            finally { SculptureNet.PopStructural(); }
+            SculptureNet.RaiseBurst(ball, crumbs, velocities); // before Removed: the ball's id must still resolve
+            SculptureNet.RaiseRemoved(ball.Sculpture);
+            Destroy(ball.gameObject);
+            for (int i = 0; i < n; i++) crumbs[i].Launch(velocities[i]);
+            return crumbs;
         }
     }
 }

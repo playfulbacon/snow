@@ -79,6 +79,7 @@ namespace Snowfield.Player
             if (character == null) character = transform.root != transform ? transform.root : transform;
             Snowball.TrenchStamper = StampTrenchAt;
             Snowball.RestHeightAdjuster = RestingCentreY;
+            SculptureStructure.GroundHeight = GroundHeightForStructure;
         }
 
         void OnDestroy()
@@ -87,7 +88,46 @@ namespace Snowfield.Player
                 Snowball.TrenchStamper = null;
             if (Snowball.RestHeightAdjuster != null && ReferenceEquals(Snowball.RestHeightAdjuster.Target, this))
                 Snowball.RestHeightAdjuster = null;
+            if (SculptureStructure.GroundHeight != null && ReferenceEquals(SculptureStructure.GroundHeight.Target, this))
+                SculptureStructure.GroundHeight = null;
         }
+
+        /// <summary>Ground line for the connectivity check; NaN when the ground snow is not ready (the check then uses the snow's own floor).</summary>
+        static float GroundHeightForStructure(Vector3 p)
+        {
+            var ground = SnowGround.Instance;
+            return ground != null && ground.IsCreated ? ground.SampleHeight(p) : float.NaN;
+        }
+
+        /// <summary>
+        /// The work pose: a packed ball held up in front of the body, low enough to look at, so the free hand
+        /// can shave and score it in the palms. Colliders come back on so the cursor can find it.
+        /// </summary>
+        public bool InWorkPose { get; private set; }
+
+        public void SetWorkPose(bool on)
+        {
+            if (!IsCarryingBall || InWorkPose == on) { if (!IsCarryingBall) InWorkPose = false; return; }
+            InWorkPose = on;
+            Carried.SetCollidersEnabled(on);
+            if (on)
+            {
+                Carried.transform.position = WorkPosition();
+                Carried.ForceRebuildAllColliders(); // it moved (and may have been carved) while its colliders were off
+                Physics.SyncTransforms();
+            }
+        }
+
+        /// <summary>Where the ball centre sits in the work pose.</summary>
+        public Vector3 WorkPosition()
+        {
+            var t = character != null ? character : transform;
+            var pose = config != null ? config.workPose : new Vector2(0.55f, 0.72f);
+            return t.position + t.forward * pose.x + Vector3.up * pose.y;
+        }
+
+        /// <summary>The player's own colliders, for anything launched from the hands (throws, shed lumps).</summary>
+        public Collider[] OwnColliders() => ThrowerColliders();
 
         /// <summary>Where a landed ball's centre should rest: on the visible snow surface, sunk by its trench.</summary>
         float RestingCentreY(Vector3 centre, float radius)
@@ -125,7 +165,7 @@ namespace Snowfield.Player
             var factory = SculptureFactory.Instance;
             if (factory == null) return;
             float r = config != null ? config.scoopRadius : 0.12f;
-            var ball = factory.CreateSnowball(groundPoint + Vector3.up * r, r);
+            var ball = factory.CreateSnowball(groundPoint + Vector3.up * r, r, config != null ? config.compactionScooped : 40f);
             Engage(ball.Sculpture, ball.Centre);
             ball.SetState(Snowball.State.Carrying);
             var ground = SnowGround.Instance;
@@ -167,6 +207,7 @@ namespace Snowfield.Player
         public void PlaceWhereItIs(SnowSculpture target)
         {
             if (!IsCarrying || target == null || target == Carried) return;
+            InWorkPose = false;
             var factory = SculptureFactory.Instance;
             if (factory == null) return;
             var carried = Carried;
@@ -179,6 +220,7 @@ namespace Snowfield.Player
         public void DropFalling()
         {
             if (!IsCarrying) return;
+            InWorkPose = false;
             if (Ball == null) { DropHere(); return; }
             var ball = Ball;
             Carried = null; Ball = null;
@@ -256,6 +298,7 @@ namespace Snowfield.Player
         public void AttachTo(SnowSculpture target, Vector3 surfacePoint, Vector3 surfaceNormal)
         {
             if (!IsCarrying || target == null || target == Carried) return;
+            InWorkPose = false;
             var factory = SculptureFactory.Instance;
             if (factory == null) return;
             var carried = Carried;
@@ -274,6 +317,7 @@ namespace Snowfield.Player
 
         void Rest()
         {
+            InWorkPose = false;
             var carried = Carried;
             var ball = Ball;
             Carried = null; Ball = null;
@@ -305,6 +349,12 @@ namespace Snowfield.Player
         {
             if (!IsCarrying) return;
             var t = Carried.transform;
+
+            if (InWorkPose && Ball != null)
+            {
+                t.position = Vector3.Lerp(t.position, WorkPosition(), 1f - Mathf.Exp(-18f * Time.deltaTime));
+                return;
+            }
 
             if (Ball != null && rollOnGround && !liftToHand && !previewGrabPoint.HasValue)
             {
@@ -384,6 +434,7 @@ namespace Snowfield.Player
         public void Throw(Vector3 origin, Vector3 direction, float power)
         {
             if (!IsCarryingBall) return;
+            InWorkPose = false;
             power = Mathf.Clamp01(power);
             direction = direction.normalized;
             var ball = Ball;

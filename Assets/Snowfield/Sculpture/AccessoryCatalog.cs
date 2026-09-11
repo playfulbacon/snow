@@ -37,6 +37,19 @@ namespace Snowfield.Sculpture
             return null;
         }
 
+        /// <summary>
+        /// Accessories that act as an armature: snow near their segment (origin → +Y × length) is held up by them.
+        /// Only the twig today — it is the real snow-sculptor's trick for necks, raised arms and tails.
+        /// </summary>
+        public static bool IsArmature(string id, out float length)
+        {
+            if (id == "twig") { length = TwigLength; return true; }
+            length = 0f;
+            return false;
+        }
+
+        public const float TwigLength = 0.45f;
+
         // ---------- materials (cached) ----------
 
         static readonly Dictionary<string, Material> Mats = new Dictionary<string, Material>();
@@ -76,7 +89,7 @@ namespace Snowfield.Sculpture
             var bark = Mat("bark", new Color(0.32f, 0.22f, 0.13f), 0.1f);
             var root = Root("Twig");
             // main stick: 45 cm long, 2 cm thick, leaning slightly so a pair reads as arms
-            float len = 0.45f;
+            float len = TwigLength;
             Part(PrimitiveType.Cylinder, root.transform,
                 new Vector3(0f, len * 0.5f, 0f), Quaternion.Euler(0f, 0f, 8f),
                 new Vector3(0.02f, len * 0.5f, 0.02f), bark);

@@ -9,18 +9,24 @@ using UnityEngine.InputSystem;
 namespace Snowfield.Player
 {
     /// <summary>
-    /// The player's hands. One persistent state (Hand) plus a Tab accessory overlay:
+    /// The player's hands. One persistent state (Hand) plus a Tab accessory overlay. Left hand moves mass, right
+    /// hand refines it — coarse in, fine out:
     ///   LMB — scoop: on a sculpture, bite out a chunk; on bare ground, a handful. Either way that snow is now in
     ///         your hands (mass continuity). While carrying: a tap lets go where the snow already is (fusing into
     ///         snow, falling otherwise), a hold charges a throw.
-    ///   Shift+LMB — smooth/pat snow (works with a ball in hand too)
-    ///   A carried ball rides the ground in front of you and rolls (grows) while the cursor points near you.
+    ///   Shift+LMB — pat: blur + weld + a little compaction (works with a ball in hand too)
+    ///   RMB drag — shave: surface-relative removal, crisp on packed snow, ragged and crumbly on powder.
+    ///   Shift+RMB drag — score: a narrow groove along the stroke.
+    ///   RMB hold, ball in hand — squeeze it packed (crunch, crunch, crunch); a packed ball comes up to a work
+    ///         pose instead and RMB shaves/scores it in the palms.
+    ///   Shaved-off snow sheds as loose lumps at your feet; anything you cut too thin (for its packing) or cut
+    ///   free of the ground breaks off — see <see cref="SculptureStructure"/>.
     ///   Scroll — brush radius (accessory selection while the overlay is open) · Tab — accessory overlay
     /// Remesh on a timer while stroking; colliders rebuild on release. The HUD is a separate object reading this.
     /// </summary>
     public class SculptTool : MonoBehaviour
     {
-        public enum BrushOp { None, Add, Carve, Smooth }
+        public enum BrushOp { None, Add, Carve, Smooth, Shave, Score }
 
         public SculptFeelConfig config;
         public Camera viewCamera;
@@ -37,11 +43,15 @@ namespace Snowfield.Player
         public float throwTapThreshold = 0.2f;
         [Tooltip("A carried ball rolls on the ground only while the cursor points within this distance of you; otherwise it is held overhead.")]
         public float rollEngageDistance = 2.2f;
+        [Tooltip("While shaving, colliders re-cook this often (s) so a long drag keeps finding the receding surface.")]
+        public float shaveColliderRefresh = 0.5f;
         [Header("Brush cursor colours")]
         [Tooltip("Cursor while smoothing (Shift held).")]
         public Color cursorAddColor = new Color(0.4f, 0.7f, 1f, 0.25f);
         [Tooltip("Default cursor: this sphere is the chunk LMB will scoop out.")]
         public Color cursorCarveColor = new Color(1f, 0.35f, 0.3f, 0.3f);
+        [Tooltip("Cursor while shaving/scoring (RMB).")]
+        public Color cursorShaveColor = new Color(1f, 0.85f, 0.3f, 0.3f);
 
         public ToolMode Mode { get; private set; } = ToolMode.Hand;
         public BrushOp CurrentOp { get; private set; } = BrushOp.None;
@@ -62,10 +72,14 @@ namespace Snowfield.Player
         public Vector3 GroundPoint { get; private set; }
         /// <summary>Diagnostic: collider the centre ray hit this frame.</summary>
         public string AimedColliderPath { get; private set; } = "";
+        /// <summary>Packing (0 powder … 1 packed) of the snow under the cursor this frame; 0 with no hit. HUD/tuning readout.</summary>
+        public float AimedPack { get; private set; }
 
         public SnowballRoller Roller { get; private set; }
         /// <summary>0..1 while charging a throw (LMB held with a carried ball); 0 otherwise. Drives the HUD ring.</summary>
         public float ThrowCharge { get; private set; }
+        /// <summary>0..1 while squeezing a held ball (RMB held); 0 otherwise. Drives the hands' clench and the HUD ring.</summary>
+        public float SqueezeProgress { get; private set; }
         /// <summary>What LMB would do right now (HUD prompt). Recomputed every frame.</summary>
         public CursorAction PrimaryAction { get; private set; }
         /// <summary>What RMB would do right now (HUD prompt). Recomputed every frame.</summary>
@@ -84,6 +98,23 @@ namespace Snowfield.Player
         readonly HashSet<IBrushTarget> _dirtyTargets = new HashSet<IBrushTarget>();
         readonly List<IBrushTarget> _strokeTargets = new List<IBrushTarget>();
         readonly Collider[] _overlapScratch = new Collider[32];
+
+        // ---- shave stroke state ----
+        Vector3 _lastStampPoint;
+        Vector3 _lastStampNormal;
+        bool _hasLastStamp;
+        float _colliderRefresh;
+        readonly List<SculptureNet.ShaveStamp> _stamps = new List<SculptureNet.ShaveStamp>();
+        readonly Dictionary<SnowSculpture, (int3 min, int3 max)> _strokeRegions = new Dictionary<SnowSculpture, (int3, int3)>();
+        /// <summary>Snow shaved off but not yet shed at the feet (m³), and its packing (mass-weighted).</summary>
+        float _crumbs, _crumbPackMass;
+
+        // ---- RMB with a ball in hand ----
+        enum RmbMode { None, Squeeze, Work }
+        RmbMode _rmbMode;
+        float _squeezeHeld;
+        int _squeezeStage;
+        float _squeezePack0;
 
         void Awake()
         {
@@ -123,6 +154,7 @@ namespace Snowfield.Player
                 PrimaryAction = SecondaryAction = TertiaryAction = CursorAction.None;
                 ThrowCharge = 0f;
                 _lmbDownTime = -1f;
+                EndRmb();
                 return;
             }
 
@@ -131,6 +163,7 @@ namespace Snowfield.Player
                 Mode = Mode == ToolMode.Accessory ? ToolMode.Hand : ToolMode.Accessory;
                 _placer.HidePreview();
                 HideBrushCursor();
+                EndRmb();
             }
             HandleScroll(mouse);
             Aim();
@@ -151,8 +184,22 @@ namespace Snowfield.Player
                     foreach (var t in _dirtyTargets)
                         if (!(t is Component c && c == null)) t.Remesh();
                 }
+                if (IsShaveOp(CurrentOp))
+                {
+                    // A shave plane follows the collider surface; without a mid-stroke cook a long drag would
+                    // keep landing on the pre-cut surface and stop biting. On release Flush cooks anyway.
+                    _colliderRefresh += Time.deltaTime;
+                    if (_colliderRefresh >= shaveColliderRefresh)
+                    {
+                        _colliderRefresh = 0f;
+                        foreach (var t in _dirtyTargets)
+                            if (!(t is Component c && c == null)) t.RebuildColliders();
+                    }
+                }
             }
         }
+
+        static bool IsShaveOp(BrushOp op) => op == BrushOp.Shave || op == BrushOp.Score;
 
         // ---------- prompts ----------
 
@@ -169,14 +216,23 @@ namespace Snowfield.Player
             }
             else if (Roller.IsCarrying)
             {
-                if (shift && onSnow && Roller.IsCarryingBall) p = CursorAction.Smooth;
+                bool onOther = onSnow && Target != Roller.Carried;
+                if (Roller.InWorkPose) p = CursorAction.None;
+                else if (shift && onOther && Roller.IsCarryingBall) p = CursorAction.Smooth;
                 else p = ThrowCharge > 0f ? CursorAction.Throw
-                       : (onSnow && Target != Roller.Carried) ? CursorAction.AttachSnowball
+                       : onOther ? CursorAction.AttachSnowball
                        : CursorAction.Drop;
+                if (Roller.IsCarryingBall)
+                {
+                    if (_rmbMode == RmbMode.Work) s = shift ? CursorAction.Score : CursorAction.Shave;
+                    else if (HeldBallPacked()) s = CursorAction.CarveInHand;
+                    else if (_rmbMode == RmbMode.Squeeze || Roller.Ball.Sculpture.MeanCompaction() < 250f) s = CursorAction.Squeeze;
+                }
             }
             else if (onSnow)
             {
                 p = shift ? CursorAction.Smooth : CursorAction.ScoopSnow;
+                s = shift ? CursorAction.Score : CursorAction.Shave;
             }
             else if (HasGroundHit && Roller.CanReachGround(GroundPoint) && !shift)
             {
@@ -186,6 +242,8 @@ namespace Snowfield.Player
             SecondaryAction = s;
             TertiaryAction = CursorAction.None;
         }
+
+        bool HeldBallPacked() => Roller.IsCarryingBall && Roller.Ball.Sculpture.MeanCompaction() >= config.packedThreshold;
 
         // ---------- hands ----------
 
@@ -215,6 +273,15 @@ namespace Snowfield.Player
                 aim = Vector3.ProjectOnPlane(goal - Body.position, n);
                 weight = 1f;
             }
+            else if (IsShaveOp(CurrentOp) && Target != null)
+            {
+                // Shaving: the edge of the hand rides the surface, dragged along the stroke.
+                Vector3 n = (Vector3)BrushNormal;
+                goal = (Vector3)BrushPoint + n * 0.01f;
+                Vector3 along = _hasLastStamp ? (Vector3)BrushPoint - _lastStampPoint : goal - Body.position;
+                aim = Vector3.ProjectOnPlane(along.sqrMagnitude > 1e-6f ? along : goal - Body.position, n);
+                weight = 1f;
+            }
             else if (Mode == ToolMode.Accessory && AimedProp != null)
             {
                 goal = AimedProp.transform.position;      // about to pull this one back off
@@ -241,7 +308,9 @@ namespace Snowfield.Player
                 Vector3 centre = Roller.HoldCentre;
                 float radius = Roller.HoldRadius;
                 // The second hand joins only once the ball is worth it — and not if it is busy, or cocked back.
-                bool bothHands = Roller.TwoHandedCarry && weight <= 0f && ThrowCharge <= 0f;
+                // A squeeze always takes both: that is what a squeeze is.
+                bool squeezing = SqueezeProgress > 0f;
+                bool bothHands = squeezing || (Roller.TwoHandedCarry && weight <= 0f && ThrowCharge <= 0f);
                 Vector3 right = HoldPoint(centre, radius, HandRig.Side.Right, bothHands);
                 hands.Reach(HandRig.Side.Right, right, 1f, centre - right);
                 if (bothHands)
@@ -257,7 +326,8 @@ namespace Snowfield.Player
         /// <summary>
         /// Where a hand grips held snow, sunk a little into the surface. A two-handed ball is gripped from the
         /// sides; a handful sits in the one palm — under it, or on top of one down at your feet. Either way the
-        /// hand goes over a ball the shoulder looks down on and under one held above.
+        /// hand goes over a ball the shoulder looks down on and under one held above. A squeeze clenches both
+        /// hands into the ball as it shrinks.
         /// </summary>
         Vector3 HoldPoint(Vector3 centre, float radius, HandRig.Side side, bool bothHands)
         {
@@ -271,7 +341,8 @@ namespace Snowfield.Player
             Vector3 vertical = (overTheTop ? Vector3.up : Vector3.down)
                              * (bothHands ? (overTheTop ? 0.45f : 0.15f) : 0.9f);
             Vector3 dir = lateral * (bothHands ? 0.85f : 0.2f) + toBody * (bothHands ? 0.3f : 0.25f) + vertical;
-            return centre + dir.normalized * (radius * 0.95f);
+            float grip = 0.95f - 0.3f * SqueezeProgress;
+            return centre + dir.normalized * (radius * grip);
         }
 
         /// <summary>Leave both hands on the snow they just let go of, so a fuse or a drop still reads as a press.</summary>
@@ -322,6 +393,7 @@ namespace Snowfield.Player
             AimedProp = null;
             AimedSnowball = null;
             AimedColliderPath = "";
+            AimedPack = 0f;
             var ray = viewCamera.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
             Vector3 origin = reachOrigin != null ? reachOrigin.position + Vector3.up : ray.origin;
             float rayLength = maxReach + Vector3.Distance(ray.origin, origin);
@@ -344,6 +416,7 @@ namespace Snowfield.Player
                 HasHit = AimedProp == null; // aiming at a prop is not a snow hit
                 var ball = s.GetComponent<Snowball>();
                 if (ball != null && ball.IsLoose && !ball.IsFlying) AimedSnowball = ball;
+                if (HasHit) AimedPack = SculptFeelConfig.Pack(s.CompactionUnderSurface(BrushPoint, BrushNormal));
                 return;
             }
             if (hit.normal.y > 0.6f)
@@ -353,19 +426,37 @@ namespace Snowfield.Player
             }
         }
 
-        // ---------- hand: brush, scoop, carry, roll, throw ----------
+        // ---------- hand: brush, scoop, carry, roll, throw, squeeze, shave ----------
 
         void UpdateHand(Mouse mouse, Keyboard kb)
         {
             bool lmb = mouse != null && mouse.leftButton.isPressed;
             bool lmbDown = mouse != null && mouse.leftButton.wasPressedThisFrame;
             bool lmbUp = mouse != null && mouse.leftButton.wasReleasedThisFrame;
+            bool rmb = mouse != null && mouse.rightButton.isPressed;
+            bool rmbDown = mouse != null && mouse.rightButton.wasPressedThisFrame;
             bool shift = kb != null && kb.leftShiftKey.isPressed;
             _placer.HidePreview();
 
             // --- carrying: LMB tap lets go where the snow is, hold charges a throw; Shift+LMB still smooths ---
             if (Roller.IsCarrying)
             {
+                // RMB with a ball in hand: squeeze a soft ball, or bring a packed one up and carve it. The mode
+                // latches on the press so a squeeze that finishes mid-hold does not slide straight into carving.
+                if (Roller.IsCarryingBall && rmb && !lmb)
+                {
+                    if (rmbDown || _rmbMode == RmbMode.None) BeginRmb();
+                }
+                else if (_rmbMode != RmbMode.None) EndRmb();
+
+                if (_rmbMode == RmbMode.Squeeze) { UpdateSqueeze(); HideBrushCursor(); return; }
+                if (_rmbMode == RmbMode.Work)
+                {
+                    Roller.UpdateCarrying(null);
+                    UpdateBrush(mouse, shift);
+                    return;
+                }
+
                 bool onSnow = HasHit && Target != null && Target != Roller.Carried;
                 // Shift doubles as the run key now, so it only means "keep the snow in hand and smooth" when
                 // it can actually smooth (a ball in hand, aiming at snow) — otherwise a sprinting LMB tap
@@ -419,9 +510,10 @@ namespace Snowfield.Player
 
             ThrowCharge = 0f;
             _lmbDownTime = -1f;
+            if (_rmbMode != RmbMode.None) EndRmb();
 
             // --- free hands, LMB: scoop a chunk out of the aimed sculpture, or a handful off the ground ---
-            if (lmbDown && !shift)
+            if (lmbDown && !shift && !rmb)
             {
                 if (HasHit && Target != null) { ScoopChunk(CurrentRadius()); return; }
                 if (HasGroundHit && Roller.CanReachGround(GroundPoint))
@@ -435,20 +527,90 @@ namespace Snowfield.Player
             UpdateBrush(mouse, shift);
         }
 
+        // ---------- RMB with a ball in hand: squeeze / work pose ----------
+
+        void BeginRmb()
+        {
+            if (!Roller.IsCarryingBall) return;
+            if (HeldBallPacked())
+            {
+                _rmbMode = RmbMode.Work;
+                Roller.SetWorkPose(true);
+            }
+            else
+            {
+                _rmbMode = RmbMode.Squeeze;
+                _squeezeHeld = 0f;
+                _squeezeStage = 0;
+                _squeezePack0 = SculptFeelConfig.Pack(Roller.Ball.Sculpture.MeanCompaction());
+            }
+        }
+
+        void EndRmb()
+        {
+            if (_rmbMode == RmbMode.Work)
+            {
+                if (IsSculpting) { IsSculpting = false; Flush(); }
+                Roller.SetWorkPose(false);
+                HideBrushCursor();
+            }
+            _rmbMode = RmbMode.None;
+            _squeezeHeld = 0f;
+            _squeezeStage = 0;
+            SqueezeProgress = 0f;
+        }
+
+        /// <summary>
+        /// Hold to pack: over squeezeTime the ball crunches through the configured stages, each one shrinking it
+        /// and blending its compaction toward fully packed, so the last stage lands exactly on 255. Lossy on
+        /// purpose — the volume it loses is the price of workability.
+        /// </summary>
+        void UpdateSqueeze()
+        {
+            if (!Roller.IsCarryingBall) { EndRmb(); return; }
+            Roller.UpdateCarrying(null, liftToHand: true);
+            int stages = Mathf.Max(1, config.squeezeStages);
+            _squeezeHeld += Time.deltaTime;
+            SqueezeProgress = Mathf.Clamp01(_squeezeHeld / Mathf.Max(0.05f, config.squeezeTime));
+            int due = Mathf.Min(stages, Mathf.FloorToInt(SqueezeProgress * stages + 1e-4f));
+            while (_squeezeStage < due)
+            {
+                _squeezeStage++;
+                SqueezeStage(_squeezeStage, stages);
+            }
+        }
+
+        void SqueezeStage(int stage, int stages)
+        {
+            var ball = Roller.Ball;
+            if (ball == null) return;
+            // Total shrink is what this ball still has to give: a half-packed ball loses half as much again.
+            float total = Mathf.Pow(1f - config.squeezeShrink * (1f - _squeezePack0), 1f / 3f);
+            float linear = Mathf.Pow(total, 1f / stages);
+            float blend = 1f / (stages - stage + 1);
+            ball.Sculpture.Squeeze(linear, blend);
+            ball.radius *= linear;
+            ball.Sculpture.Remesh();
+            SculptureNet.RaiseSqueezed(ball, linear, blend);
+            SnowAudio.Play(SnowAudio.Kind.Crunch, ball.Centre, stage / (float)stages);
+        }
+
         /// <summary>
         /// One discrete bite. The chunk is built from the snow the brush sphere actually overlaps - so a bite at the
         /// edge of a sculpture hands you a half-sphere - and the same kernel is then removed from every grid under it.
+        /// Small bites in packed snow use the crisp shoulder and leave edges, not scoops.
         /// </summary>
         void ScoopChunk(float radius)
         {
             var factory = SculptureFactory.Instance;
             if (factory == null) return;
             GatherStrokeTargets(Target, radius);
+            float shoulder = config.BiteShoulder(AimedPack, radius);
 
             var chunk = factory.CreateEmptySnowball(BrushPoint, radius);
             foreach (var t in _strokeTargets)
                 if (t is SnowSculpture s && s != null && s != chunk.Sculpture)
-                    chunk.Sculpture.ExtractFrom(s, BrushPoint, radius, config.addShoulder);
+                    chunk.Sculpture.ExtractFrom(s, BrushPoint, radius, shoulder);
 
             float volume = chunk.Sculpture.DensityVolume();
             if (volume <= 1e-5f)
@@ -461,14 +623,24 @@ namespace Snowfield.Player
             foreach (var t in _strokeTargets)
             {
                 if (t is Component c && c == null) continue;
-                t.ApplyAdd(BrushPoint, radius, -255f, config.addShoulder); // full-strength one-shot removal
+                t.ApplyAdd(BrushPoint, radius, -255f, shoulder); // full-strength one-shot removal
                 t.Remesh();
                 t.RebuildColliders();
             }
             Roller.TakeChunk(chunk, volume);
             CollectNetTargets(chunk.Sculpture);
             SculptureNet.RaiseScooped(new SculptureNet.ScoopInfo
-            { point = BrushPoint, radius = radius, targets = _netTargets, chunk = chunk, resultRadius = chunk.radius });
+            { point = BrushPoint, radius = radius, shoulder = shoulder, targets = _netTargets, chunk = chunk, resultRadius = chunk.radius });
+            SnowAudio.Play(SnowAudio.Kind.Pat, BrushPoint, AimedPack, 0.8f);
+
+            // A bite is a removal: what it left too thin, or cut free, comes off now.
+            foreach (var s in _netTargets)
+            {
+                if (s == null || s.Grid == null) continue;
+                float3 c = s.WorldToVoxel(BrushPoint);
+                if (!s.Grid.SphereAabb(c, s.MetresToVoxels(radius), out var min, out var max)) continue;
+                CheckStructure(s, min, max);
+            }
         }
 
         readonly List<SnowSculpture> _netTargets = new List<SnowSculpture>();
@@ -482,15 +654,21 @@ namespace Snowfield.Player
                     _netTargets.Add(s);
         }
 
-        /// <summary>The stroke loop: Shift+LMB smooths. (Adding is disabled; LMB scoops instead.) Multi-target.</summary>
+        /// <summary>The stroke loop: Shift+LMB pats, RMB shaves, Shift+RMB scores. Multi-target.</summary>
         void UpdateBrush(Mouse mouse, bool shift)
         {
             bool lmb = mouse != null && mouse.leftButton.isPressed;
+            bool rmb = mouse != null && mouse.rightButton.isPressed;
 
-            BrushOp op = lmb && shift ? BrushOp.Smooth : BrushOp.None;
+            BrushOp op = BrushOp.None;
+            if (lmb && shift && !rmb) op = BrushOp.Smooth;
+            else if (rmb && !lmb && (!Roller.IsCarrying || _rmbMode == RmbMode.Work)) op = shift ? BrushOp.Score : BrushOp.Shave;
+            if (op != CurrentOp && IsSculpting) { IsSculpting = false; Flush(); } // switching verbs mid-hold ends the stroke
             CurrentOp = op;
 
             IBrushTarget target = Target;
+            // In the work pose the only thing you can carve is the ball in your hands.
+            if (_rmbMode == RmbMode.Work && Target != Roller.Carried) target = null;
 
             float radius = CurrentRadius();
             if (cursor != null)
@@ -501,15 +679,24 @@ namespace Snowfield.Player
                 if (show)
                 {
                     cursor.position = BrushPoint;
-                    cursor.localScale = Vector3.one * radius * 2f;
-                    SetCursorColor(shift ? cursorAddColor : cursorCarveColor);
+                    cursor.localScale = Vector3.one * (rmb && !lmb && shift ? radius * config.scoreRadiusFraction : radius) * 2f;
+                    SetCursorColor(rmb && !lmb ? cursorShaveColor : shift ? cursorAddColor : cursorCarveColor);
                 }
             }
 
             bool pressing = op != BrushOp.None;
             if (pressing && target != null)
             {
-                if (!IsSculpting) { IsSculpting = true; _tickAccumulator = 1f / config.ticksPerSecond; } // first tick immediate
+                if (!IsSculpting)
+                {
+                    IsSculpting = true;
+                    _tickAccumulator = 1f / config.ticksPerSecond; // first tick immediate
+                    _hasLastStamp = false;
+                    _colliderRefresh = 0f;
+                    _strokeRegions.Clear();
+                }
+                if (IsShaveOp(op)) { ShaveTick(op, target, radius, shift); return; }
+
                 // Adding at the wall of a fixed sculpture: grow the grid first so the stroke continues seamlessly.
                 var targetBall = Target != null ? Target.GetComponent<Snowball>() : null;
                 if (op == BrushOp.Add && Target != null && (targetBall == null || !targetBall.IsLoose)
@@ -537,12 +724,139 @@ namespace Snowfield.Player
                     if (_netTargets.Count > 0)
                         SculptureNet.RaiseStroke(new SculptureNet.StrokeInfo
                         { op = (int)op, point = BrushPoint, radius = radius, ticks = ticks, targets = _netTargets });
+                    if (op == BrushOp.Smooth) SnowAudio.Play(SnowAudio.Kind.Pat, BrushPoint, AimedPack, 0.5f);
                 }
             }
             else if (IsSculpting && !pressing)
             {
                 IsSculpting = false;
                 Flush();
+            }
+        }
+
+        /// <summary>
+        /// Shave/score is stamped along the drag path, not per tick: a stamp lands every shaveStampSpacing radii
+        /// of cursor travel over the surface, so a fast drag does not gap and a still cursor takes one layer.
+        /// Params derive from the packing under the cursor (crisp and thin on packed snow, deep, ragged and
+        /// slumping on powder) and are sent verbatim so peers replay the identical cut.
+        /// </summary>
+        void ShaveTick(BrushOp op, IBrushTarget aimed, float radius, bool score)
+        {
+            float stampRadius = score
+                ? Mathf.Max(radius * config.scoreRadiusFraction, config.voxelSize * 2f)
+                : radius;
+            Vector3 point = BrushPoint, normal = BrushNormal;
+            _stamps.Clear();
+            if (!_hasLastStamp)
+            {
+                _stamps.Add(new SculptureNet.ShaveStamp { point = point, normal = normal });
+            }
+            else
+            {
+                float spacing = Mathf.Max(config.shaveStampSpacing * stampRadius, config.voxelSize * 0.5f);
+                Vector3 travel = point - _lastStampPoint;
+                int k = Mathf.Min(8, Mathf.FloorToInt(travel.magnitude / spacing));
+                for (int i = 1; i <= k; i++)
+                {
+                    float t = i / (float)k;
+                    _stamps.Add(new SculptureNet.ShaveStamp
+                    {
+                        point = Vector3.Lerp(_lastStampPoint, point, t),
+                        normal = Vector3.Slerp(_lastStampNormal, normal, t).normalized,
+                    });
+                }
+                if (k == 0) return; // not far enough yet
+            }
+            _lastStampPoint = point; _lastStampNormal = normal; _hasLastStamp = true;
+
+            float pack = AimedPack;
+            float slump = config.Slump(pack);
+            for (int i = 0; i < _stamps.Count; i++)
+            {
+                var st = _stamps[i];
+                st.prm = SculptureShave.ParamsFor(config, Target != null ? Target.Info.voxelSize : config.voxelSize, pack, score, st.point);
+                _stamps[i] = st;
+            }
+
+            GatherStrokeTargets(aimed, stampRadius);
+            float removed = 0f;
+            foreach (var t in _strokeTargets)
+            {
+                if (!(t is SnowSculpture s) || s == null) continue;
+                _dirtyTargets.Add(s);
+                removed += SculptureShave.ApplyStamps(s, stampRadius, slump, _stamps, out int3 min, out int3 max);
+                if (math.all(max > min)) GrowRegion(s, min, max);
+            }
+            CollectNetTargets(null);
+            if (_netTargets.Count > 0)
+                SculptureNet.RaiseShaved(new SculptureNet.ShaveInfo
+                { radius = stampRadius, slump = slump, stamps = _stamps, targets = _netTargets });
+            SnowAudio.Play(SnowAudio.Kind.Shave, point, pack, score ? 0.6f : 1f);
+
+            if (removed > 0f) AddCrumbs(removed, pack);
+        }
+
+        void GrowRegion(SnowSculpture s, int3 min, int3 max)
+        {
+            if (_strokeRegions.TryGetValue(s, out var r))
+                _strokeRegions[s] = (math.min(r.min, min), math.max(r.max, max));
+            else
+                _strokeRegions[s] = (min, max);
+        }
+
+        // ---------- crumbs: shaved-off snow sheds at your feet ----------
+
+        void AddCrumbs(float volume, float pack)
+        {
+            _crumbs += volume;
+            _crumbPackMass += volume * pack;
+            float lump = config.ShedVolume(pack);
+            while (_crumbs >= lump && lump > 0f) ShedLump(lump);
+        }
+
+        /// <summary>Drop one loose, fluffy lump of the accumulated shavings at the player's feet (conservation; the pile is the tell).</summary>
+        void ShedLump(float volume)
+        {
+            var factory = SculptureFactory.Instance;
+            if (factory == null || volume <= 0f) { _crumbs = 0f; _crumbPackMass = 0f; return; }
+            volume = Mathf.Min(volume, _crumbs);
+            _crumbPackMass = Mathf.Max(0f, _crumbPackMass - volume * (_crumbs > 0f ? _crumbPackMass / _crumbs : 0f));
+            _crumbs -= volume;
+
+            float r = SculptureStructure.SnowballRadius(volume);
+            var body = Body;
+            Vector3 lateral = body.right * Random.Range(-0.3f, 0.3f);
+            Vector3 foot = body.position + body.forward * (0.35f + r) + lateral;
+            var ground = SnowGround.Instance;
+            float groundY = ground != null && ground.IsCreated ? ground.SampleHeight(foot) : body.position.y;
+            Vector3 pos = new Vector3(foot.x, groundY + r + 0.25f, foot.z);
+            Vector3 vel = body.forward * Random.Range(0.2f, 0.6f) + lateral * 0.5f;
+
+            var lump = factory.CreateSnowball(pos, r, config.compactionScooped);
+            lump.Launch(vel, Vector3.zero, Roller.OwnColliders());
+            SculptureNet.RaiseShed(lump, vel);
+            SnowAudio.Play(SnowAudio.Kind.Crumble, pos, 0f, 0.5f);
+        }
+
+        // ---------- structure ----------
+
+        /// <summary>After a removal on a fixed sculpture: thin bits crumble into the shed pile, islands drop as balls.</summary>
+        void CheckStructure(SnowSculpture s, int3 regionMin, int3 regionMax)
+        {
+            if (s == null || s.Grid == null) return;
+            int versionBefore = s.Version;
+            var result = SculptureStructure.Check(s, regionMin, regionMax);
+            if (result.CrumbVolume > 0f)
+            {
+                AddCrumbs(result.CrumbVolume, 0f);
+                SnowAudio.Play(SnowAudio.Kind.Crumble, s.VoxelToWorld((float3)(regionMin + regionMax) * 0.5f), 0f, 0.8f);
+            }
+            if (result.Detached.Count > 0)
+                SnowAudio.Play(SnowAudio.Kind.Crumble, result.Detached[0].Centre, 0.5f, 1f);
+            if (s.Version != versionBefore)
+            {
+                s.Remesh();
+                s.RebuildColliders();
             }
         }
 
@@ -577,12 +891,12 @@ namespace Snowfield.Player
                 if (s == null) continue;
                 var ball = s.GetComponent<Snowball>();
                 if (ball != null && ball.IsFlying) continue;
-                if (Roller != null && s == Roller.Carried) continue;
+                if (Roller != null && s == Roller.Carried && !Roller.InWorkPose) continue;
                 if (!_strokeTargets.Contains(s)) _strokeTargets.Add(s);
             }
         }
 
-        /// <summary>Finish a stroke: final remesh + collider cook for every touched grid.</summary>
+        /// <summary>Finish a stroke: final remesh + collider cook for every touched grid, then the structural rules for a removal.</summary>
         public void Flush()
         {
             foreach (var t in _dirtyTargets)
@@ -593,6 +907,17 @@ namespace Snowfield.Player
             }
             _dirtyTargets.Clear();
             _remeshAccumulator = 0f;
+            _hasLastStamp = false;
+
+            if (_strokeRegions.Count > 0)
+            {
+                foreach (var kv in _strokeRegions)
+                    if (kv.Key != null) CheckStructure(kv.Key, kv.Value.min, kv.Value.max);
+                _strokeRegions.Clear();
+            }
+            // Leftover shavings worth a lump go now rather than riding to the next stroke.
+            float lump = config != null ? config.ShedVolume(_crumbs > 0f ? _crumbPackMass / _crumbs : 0f) : 0f;
+            if (lump > 0f && _crumbs >= lump * 0.3f) ShedLump(_crumbs);
         }
 
         MaterialPropertyBlock _cursorBlock;

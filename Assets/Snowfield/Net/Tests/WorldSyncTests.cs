@@ -4,6 +4,7 @@ using NUnit.Framework;
 using Snowfield.Config;
 using Snowfield.Player;
 using Snowfield.Sculpture;
+using Unity.Mathematics;
 using UnityEngine;
 using UnityEngine.TestTools;
 
@@ -135,7 +136,7 @@ namespace Snowfield.Net.Tests
             chunk.radius = 0.11f;
             Assert.IsTrue(_sync.Registry.TryGetId(chunk.Sculpture, out ulong chunkId));
             SculptureNet.RaiseScooped(new SculptureNet.ScoopInfo
-            { point = bite, radius = radius, targets = new List<SnowSculpture> { s }, chunk = chunk, resultRadius = 0.11f });
+            { point = bite, radius = radius, shoulder = _cfg.addShoulder, targets = new List<SnowSculpture> { s }, chunk = chunk, resultRadius = 0.11f });
             Assert.AreEqual(1, _captured.Count);
             float[] expectedHole = Probe(s, bite);
 
@@ -232,6 +233,105 @@ namespace Snowfield.Net.Tests
             Assert.AreEqual("carrot", s2.Props[0].prefabId);
             remote.Apply(_captured[1]);
             Assert.AreEqual(0, s2.Props.Count, "remote should have removed it again");
+            yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator Shave_RoundTrips_With_Identical_Cut()
+        {
+            var s = _factory.CreateMound(new Vector3(70f, 0f, 70f), 0.5f);
+            Assert.IsTrue(_sync.Registry.TryGetId(s, out ulong id));
+            byte[] snapshot = SnowWorldSync.EncodeSnapshot(id, s);
+
+            Vector3 top = new Vector3(70f, 0.5f, 70f);
+            float pack = SculptFeelConfig.Pack(s.CompactionUnderSurface(top, Vector3.up));
+            var stamps = new List<SculptureNet.ShaveStamp>();
+            for (int i = 0; i < 3; i++)
+            {
+                Vector3 p = top + new Vector3(0.03f * i, 0f, 0f);
+                stamps.Add(new SculptureNet.ShaveStamp { point = p, normal = Vector3.up, prm = SculptureShave.ParamsFor(_cfg, _cfg.voxelSize, pack, false, p) });
+            }
+            float slump = _cfg.Slump(pack);
+            SculptureShave.ApplyStamps(s, 0.12f, slump, stamps, out _, out _);
+            SculptureNet.RaiseShaved(new SculptureNet.ShaveInfo { radius = 0.12f, slump = slump, stamps = stamps, targets = new List<SnowSculpture> { s } });
+            Assert.AreEqual(1, _captured.Count, "one shave event expected");
+            float[] expected = Probe(s, top - Vector3.up * 0.03f);
+            float expectedVolume = s.DensityVolume();
+
+            var remote = BecomeRemotePeer();
+            remote.ApplySnapshot(snapshot);
+            Assert.IsTrue(remote.Registry.TryGet(id, out var s2));
+            remote.Apply(_captured[0]);
+            AssertProbesEqual(expected, Probe(s2, top - Vector3.up * 0.03f));
+            Assert.AreEqual(expectedVolume, s2.DensityVolume(), expectedVolume * 0.001f, "remote removed exactly the same snow");
+            yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator Snapshot_Carries_Compaction()
+        {
+            var ball = _factory.CreateSnowball(new Vector3(75f, 0.2f, 75f), 0.2f, _cfg.compactionScooped);
+            Assert.IsTrue(_sync.Registry.TryGetId(ball.Sculpture, out ulong id));
+            byte[] snapshot = SnowWorldSync.EncodeSnapshot(id, ball.Sculpture);
+            var remote = BecomeRemotePeer();
+            remote.ApplySnapshot(snapshot);
+            Assert.IsTrue(remote.Registry.TryGet(id, out var s2));
+            Assert.AreEqual(_cfg.compactionScooped, s2.MeanCompaction(), 1f);
+            yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator Squeeze_RoundTrips()
+        {
+            var ball = _factory.CreateSnowball(new Vector3(80f, 0.2f, 80f), 0.2f, _cfg.compactionScooped);
+            Assert.IsTrue(_sync.Registry.TryGetId(ball.Sculpture, out ulong id));
+            byte[] snapshot = SnowWorldSync.EncodeSnapshot(id, ball.Sculpture);
+
+            float linear = 0.87f;
+            ball.Sculpture.Squeeze(linear, 1f);
+            ball.radius *= linear;
+            SculptureNet.RaiseSqueezed(ball, linear, 1f);
+            Assert.AreEqual(1, _captured.Count);
+            float expectedVolume = ball.Sculpture.DensityVolume();
+            float expectedRadius = ball.radius;
+
+            var remote = BecomeRemotePeer();
+            remote.ApplySnapshot(snapshot);
+            remote.Apply(_captured[0]);
+            Assert.IsTrue(remote.Registry.TryGet(id, out var s2));
+            Assert.AreEqual(expectedVolume, s2.DensityVolume(), expectedVolume * 0.001f);
+            Assert.AreEqual(expectedRadius, s2.GetComponent<Snowball>().radius, 1e-4f);
+            Assert.GreaterOrEqual(s2.MeanCompaction(), 250f);
+            yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator Detached_Island_Replays_With_Same_Id_And_Voxels()
+        {
+            var s = _factory.CreateMound(new Vector3(90f, 0f, 90f), 0.4f);
+            Vector3 floating = new Vector3(90.4f, 1.0f, 90f);
+            s.StampSphere(floating, 0.2f, 0.7f, 220f, float.NegativeInfinity);
+            Assert.IsTrue(_sync.Registry.TryGetId(s, out ulong id));
+            byte[] snapshot = SnowWorldSync.EncodeSnapshot(id, s);
+
+            var result = SculptureStructure.Check(s, int3.zero, new int3(s.Info.size));
+            Assert.AreEqual(1, result.Detached.Count);
+            var island = result.Detached[0];
+            Assert.IsTrue(_sync.Registry.TryGetId(island.Sculpture, out ulong islandId));
+            Assert.GreaterOrEqual(_captured.Count, 1, "a detach event (plus any thin crumbles)");
+            float expectedSourceVolume = s.DensityVolume();
+            float expectedIslandVolume = island.Sculpture.DensityVolume();
+            Vector3 islandPos = island.transform.position;
+
+            var remote = BecomeRemotePeer();
+            remote.ApplySnapshot(snapshot);
+            foreach (var evt in _captured) remote.Apply(evt);
+            Assert.IsTrue(remote.Registry.TryGet(id, out var s2));
+            Assert.IsTrue(remote.Registry.TryGet(islandId, out var island2), "the island ball exists under its id");
+            Assert.AreEqual(expectedSourceVolume, s2.DensityVolume(), expectedSourceVolume * 0.001f, "source lost exactly the island");
+            Assert.AreEqual(expectedIslandVolume, island2.DensityVolume(), expectedIslandVolume * 0.001f);
+            Assert.Less((islandPos - island2.transform.position).magnitude, 1e-3f);
+            Assert.AreEqual(0f, s2.SampleDensityWorld(floating), 1e-3f);
             yield return null;
         }
 

@@ -71,6 +71,7 @@ namespace Snowfield.Sculpture
         Vector3 _settleFrom;
         float _settleTargetY;
         float _settleFor = -1f;
+        bool _burstable; // only a real throw can burst; a drop or a falling island lands as itself
 
         public void SetState(State s) => Current = s;
 
@@ -119,6 +120,7 @@ namespace Snowfield.Sculpture
             _rb.collisionDetectionMode = CollisionDetectionMode.Continuous;
             _rb.linearVelocity = velocity;
             _rb.angularVelocity = spin;
+            _burstable = velocity.sqrMagnitude > 4f;
             _slowFor = 0f;
             _onGround = false;
             _airborneFor = groundGrace;
@@ -171,7 +173,28 @@ namespace Snowfield.Sculpture
             var target = col.collider.GetComponentInParent<SnowSculpture>();
             if (target == null || target == Sculpture)
             {
-                Bite(col.GetContact(0).normal);
+                var contact0 = col.GetContact(0);
+                // Powder does not survive a hard landing: it bursts into lumps. Packed snow flies true and lives.
+                var cfg = Sculpture.Config;
+                if (target == null && IsLoose && _burstable && cfg != null && _rb != null)
+                {
+                    // Pre-impact speed into the surface: the contact's relative velocity is reported before the
+                    // solver ate it, the body's own velocity after (still useful for the direction of travel).
+                    float into = Mathf.Max(Mathf.Abs(Vector3.Dot(col.relativeVelocity, contact0.normal)),
+                                           -Vector3.Dot(_rb.linearVelocity, contact0.normal));
+                    if (into >= cfg.burstSpeed && Sculpture.MeanCompaction() < cfg.burstCompaction)
+                    {
+                        var factory = SculptureFactory.Instance;
+                        if (factory != null)
+                        {
+                            Vector3 v = _rb.linearVelocity;
+                            Current = State.Resting; // no further contacts count; the object is going away
+                            factory.Burst(this, contact0.point, contact0.normal, v);
+                            return;
+                        }
+                    }
+                }
+                Bite(contact0.normal);
                 _airborneFor = 0f;
                 return;
             }

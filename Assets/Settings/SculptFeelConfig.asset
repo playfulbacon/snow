@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: SculptFeelConfig
   m_EditorClassIdentifier: Snowfield.Config::Snowfield.Config.SculptFeelConfig
   gridSize: 96
-  voxelSize: 0.04
+  voxelSize: 0.03
   addRadius: 0.25
   addRatePerTick: 10
   addShoulder: 0.6

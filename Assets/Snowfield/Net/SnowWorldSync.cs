@@ -5,6 +5,8 @@ using Snowfield.Config;
 using Snowfield.Player;
 using Snowfield.Sculpture;
 using Snowfield.Voxel;
+using Unity.Collections;
+using Unity.Mathematics;
 using UnityEngine;
 
 namespace Snowfield.Net
@@ -15,17 +17,20 @@ namespace Snowfield.Net
     ///     compact binary event and hands it to <see cref="Send"/>;
     ///   incoming — <see cref="Apply"/> decodes an event and replays it through the same factory/sculpture APIs
     ///     with <see cref="SculptureNet.Suppress"/> held, so replays never rebroadcast;
-    ///   snapshots — the save-format density blob plus pose, per sculpture, for late joiners.
+    ///   snapshots — the save-format density + compaction blobs plus pose, per sculpture, for late joiners.
     /// Per CLAUDE.md: brush strokes and structural results are events; physics flights never replay.
+    /// Structural outcomes (thin crumbles, detached islands, bursts) carry their exact voxels: peers never
+    /// re-run the structural check, so it can never disagree across the room.
     /// </summary>
     public sealed class SnowWorldSync
     {
-        public const byte Version = 2;
+        public const byte Version = 3;
 
         enum Kind : byte
         {
             Stroke = 1, Scoop = 2, GroundScoop = 3, Fuse = 4, Regrow = 5,
             Throw = 6, Rest = 7, Grab = 8, PropPlace = 9, PropRemove = 10,
+            Shave = 11, Squeeze = 12, Shed = 13, Thinned = 14, Detached = 15, Burst = 16,
         }
 
         public readonly SculptureRegistry Registry = new SculptureRegistry();
@@ -58,6 +63,12 @@ namespace Snowfield.Net
             SculptureNet.Grabbed += OnGrabbed;
             SculptureNet.PropPlaced += OnPropPlaced;
             SculptureNet.PropRemoved += OnPropRemoved;
+            SculptureNet.Shaved += OnShaved;
+            SculptureNet.Squeezed += OnSqueezed;
+            SculptureNet.Shed += OnShed;
+            SculptureNet.Thinned += OnThinned;
+            SculptureNet.Detached += OnDetached;
+            SculptureNet.Burst += OnBurst;
         }
 
         public void Detach()
@@ -75,6 +86,12 @@ namespace Snowfield.Net
             SculptureNet.Grabbed -= OnGrabbed;
             SculptureNet.PropPlaced -= OnPropPlaced;
             SculptureNet.PropRemoved -= OnPropRemoved;
+            SculptureNet.Shaved -= OnShaved;
+            SculptureNet.Squeezed -= OnSqueezed;
+            SculptureNet.Shed -= OnShed;
+            SculptureNet.Thinned -= OnThinned;
+            SculptureNet.Detached -= OnDetached;
+            SculptureNet.Burst -= OnBurst;
         }
 
         /// <summary>Deferred collider cooks for remote strokes + registry hygiene. Call every frame.</summary>
@@ -117,6 +134,15 @@ namespace Snowfield.Net
         static Vector3 ReadV3(BinaryReader r) => new Vector3(r.ReadSingle(), r.ReadSingle(), r.ReadSingle());
         static void WriteQ(BinaryWriter w, Quaternion q) { w.Write(q.x); w.Write(q.y); w.Write(q.z); w.Write(q.w); }
         static Quaternion ReadQ(BinaryReader r) => new Quaternion(r.ReadSingle(), r.ReadSingle(), r.ReadSingle(), r.ReadSingle());
+        static void WriteI3(BinaryWriter w, int3 v) { w.Write(v.x); w.Write(v.y); w.Write(v.z); }
+        static int3 ReadI3(BinaryReader r) => new int3(r.ReadInt32(), r.ReadInt32(), r.ReadInt32());
+        static void WriteBlob(BinaryWriter w, byte[] blob) { w.Write(blob.Length); w.Write(blob); }
+        static byte[] ReadBlob(BinaryReader r, int maxLen)
+        {
+            int len = r.ReadInt32();
+            if (len <= 0 || len > maxLen) throw new InvalidDataException($"bad blob length {len}");
+            return r.ReadBytes(len);
+        }
 
         void WriteIds(BinaryWriter w, IReadOnlyList<SnowSculpture> targets)
         {
@@ -147,15 +173,15 @@ namespace Snowfield.Net
             var w = NewEvent(Kind.Scoop, out var ms);
             WriteV3(w, info.point);
             w.Write(info.radius);
+            w.Write(info.shoulder);
             w.Write(info.resultRadius);
             w.Write(chunkId);
             WriteIds(w, info.targets);
             // The chunk's actual density rides along (a 48³ handful RLE-compresses to ~1-2 KB): ExtractFrom on a
             // remote reads whatever is under the kernel THERE, so a scoop racing a concurrent stroke would fork
             // the chunk per peer. The blob makes every peer's chunk byte-identical regardless of arrival order.
-            byte[] blob = GridSerializer.Encode(info.chunk.Sculpture.Grid.Density);
-            w.Write(blob.Length);
-            w.Write(blob);
+            WriteBlob(w, GridSerializer.Encode(info.chunk.Sculpture.Grid.Density));
+            WriteBlob(w, GridSerializer.Encode(info.chunk.Sculpture.Grid.Compaction));
             Dispatch(w, ms);
         }
 
@@ -250,6 +276,101 @@ namespace Snowfield.Net
             Dispatch(w, ms);
         }
 
+        void OnShaved(SculptureNet.ShaveInfo info)
+        {
+            if (Send == null || info.stamps == null || info.stamps.Count == 0) return;
+            var w = NewEvent(Kind.Shave, out var ms);
+            w.Write(info.radius);
+            w.Write(info.slump);
+            int n = Math.Min(info.stamps.Count, 64);
+            w.Write((byte)n);
+            for (int i = 0; i < n; i++)
+            {
+                var st = info.stamps[i];
+                WriteV3(w, st.point);
+                WriteV3(w, st.normal);
+                w.Write(st.prm.DepthVoxels);
+                w.Write(st.prm.SoftVoxels);
+                w.Write(st.prm.Shoulder);
+                w.Write(st.prm.NoiseAmplitude);
+                w.Write(st.prm.Seed);
+            }
+            WriteIds(w, info.targets);
+            Dispatch(w, ms);
+        }
+
+        void OnSqueezed(Snowball ball, float linearScale, float compactionBlend)
+        {
+            if (Send == null || !Registry.TryGetId(ball.Sculpture, out ulong id)) return;
+            var w = NewEvent(Kind.Squeeze, out var ms);
+            w.Write(id);
+            w.Write(linearScale);
+            w.Write(compactionBlend);
+            w.Write(ball.radius);
+            Dispatch(w, ms);
+        }
+
+        void OnShed(Snowball ball, Vector3 velocity)
+        {
+            if (Send == null || !Registry.TryGetId(ball.Sculpture, out ulong id)) return;
+            var w = NewEvent(Kind.Shed, out var ms);
+            w.Write(id);
+            WriteV3(w, ball.transform.position);
+            w.Write(ball.radius);
+            w.Write((byte)Mathf.Clamp(Mathf.RoundToInt(ball.Sculpture.MeanCompaction()), 0, 255));
+            WriteV3(w, velocity);
+            Dispatch(w, ms);
+        }
+
+        void OnThinned(SnowSculpture s, int3 regionMin, int3 regionExtent, byte[] mask)
+        {
+            if (Send == null || !Registry.TryGetId(s, out ulong id)) return;
+            var w = NewEvent(Kind.Thinned, out var ms);
+            w.Write(id);
+            WriteI3(w, regionMin);
+            WriteI3(w, regionExtent);
+            var native = new NativeArray<byte>(mask, Allocator.Temp);
+            WriteBlob(w, GridSerializer.Encode(native));
+            native.Dispose();
+            Dispatch(w, ms);
+        }
+
+        void OnDetached(SnowSculpture source, Snowball island, int3 offset)
+        {
+            if (Send == null) return;
+            if (!Registry.TryGetId(source, out ulong sourceId) || !Registry.TryGetId(island.Sculpture, out ulong islandId)) return;
+            var w = NewEvent(Kind.Detached, out var ms);
+            w.Write(sourceId);
+            w.Write(islandId);
+            WriteI3(w, offset);
+            w.Write(island.Sculpture.Info.size);
+            w.Write(island.Sculpture.Info.voxelSize);
+            WriteV3(w, island.transform.position);
+            WriteQ(w, island.transform.rotation);
+            w.Write(island.radius);
+            WriteBlob(w, GridSerializer.Encode(island.Sculpture.Grid.Density));
+            WriteBlob(w, GridSerializer.Encode(island.Sculpture.Grid.Compaction));
+            Dispatch(w, ms);
+        }
+
+        void OnBurst(Snowball ball, IReadOnlyList<Snowball> crumbs, Vector3[] velocities)
+        {
+            if (Send == null || !Registry.TryGetId(ball.Sculpture, out ulong id)) return;
+            var w = NewEvent(Kind.Burst, out var ms);
+            w.Write(id);
+            int n = Math.Min(crumbs.Count, 8);
+            w.Write((byte)n);
+            for (int i = 0; i < n; i++)
+            {
+                Registry.TryGetId(crumbs[i].Sculpture, out ulong cid);
+                w.Write(cid);
+                WriteV3(w, crumbs[i].transform.position);
+                w.Write(crumbs[i].radius);
+                WriteV3(w, i < velocities.Length ? velocities[i] : Vector3.zero);
+            }
+            Dispatch(w, ms);
+        }
+
         // ------------------------------------------------------------------ incoming
 
         /// <summary>Replay one remote event. Never rebroadcasts (Suppress held for the duration).</summary>
@@ -275,6 +396,12 @@ namespace Snowfield.Net
                     case Kind.Grab: ApplyGrab(r); break;
                     case Kind.PropPlace: ApplyPropPlace(r); break;
                     case Kind.PropRemove: ApplyPropRemove(r); break;
+                    case Kind.Shave: ApplyShave(r); break;
+                    case Kind.Squeeze: ApplySqueeze(r); break;
+                    case Kind.Shed: ApplyShed(r); break;
+                    case Kind.Thinned: ApplyThinned(r); break;
+                    case Kind.Detached: ApplyDetached(r); break;
+                    case Kind.Burst: ApplyBurst(r); break;
                     default: Debug.LogWarning($"[SnowNet] Unknown event kind {kind}"); break;
                 }
             }
@@ -337,24 +464,24 @@ namespace Snowfield.Net
             if (factory == null || cfg == null) return;
             Vector3 point = ReadV3(r);
             float radius = r.ReadSingle();
+            float shoulder = Mathf.Clamp01(r.ReadSingle());
             float resultRadius = r.ReadSingle();
             ulong chunkId = r.ReadUInt64();
             ReadTargets(r, _targetScratch);
-            int blobLen = r.ReadInt32();
-            if (blobLen <= 0 || blobLen > 4 * 1024 * 1024)
-            { Debug.LogWarning($"[SnowNet] Scoop dropped: bad blob length {blobLen}"); return; }
-            byte[] blob = r.ReadBytes(blobLen);
+            byte[] blob = ReadBlob(r, 4 * 1024 * 1024);
+            byte[] cblob = ReadBlob(r, 4 * 1024 * 1024);
 
             Registry.PendingId = chunkId;
             var chunk = factory.CreateEmptySnowball(point, radius);
             Registry.PendingId = null;
             // The chunk contents come off the wire (byte-identical on every peer); only the carve is replayed.
             GridSerializer.Decode(blob, chunk.Sculpture.Grid.Density);
-            chunk.Sculpture.Grid.MarkAllDirty();
+            GridSerializer.Decode(cblob, chunk.Sculpture.Grid.Compaction);
+            chunk.Sculpture.TouchAll();
             foreach (var s in _targetScratch)
             {
                 if (s == chunk.Sculpture) continue;
-                s.ApplyAdd(point, radius, -255f, cfg.addShoulder);
+                s.ApplyAdd(point, radius, -255f, shoulder);
                 s.Remesh();
                 s.RebuildColliders();
             }
@@ -374,7 +501,7 @@ namespace Snowfield.Net
             ulong id = r.ReadUInt64();
             float rr = cfg.scoopRadius;
             Registry.PendingId = id;
-            var ball = factory.CreateSnowball(groundPoint + Vector3.up * rr, rr);
+            var ball = factory.CreateSnowball(groundPoint + Vector3.up * rr, rr, cfg.compactionScooped);
             Registry.PendingId = null;
             ball.SetInteractable(false);
             ball.SetState(Snowball.State.Carrying);
@@ -509,6 +636,147 @@ namespace Snowfield.Net
             if (best != null) best.Remove();
         }
 
+        readonly List<SculptureNet.ShaveStamp> _stampScratch = new List<SculptureNet.ShaveStamp>();
+
+        void ApplyShave(BinaryReader r)
+        {
+            float radius = Mathf.Clamp(r.ReadSingle(), 0.005f, 4f);
+            float slump = Mathf.Clamp01(r.ReadSingle());
+            int n = Mathf.Min(r.ReadByte(), 64);
+            _stampScratch.Clear();
+            for (int i = 0; i < n; i++)
+            {
+                var st = new SculptureNet.ShaveStamp { point = ReadV3(r), normal = ReadV3(r) };
+                st.prm.DepthVoxels = Mathf.Clamp(r.ReadSingle(), 0f, 64f);
+                st.prm.SoftVoxels = Mathf.Clamp(r.ReadSingle(), 0f, 64f);
+                st.prm.Shoulder = Mathf.Clamp01(r.ReadSingle());
+                st.prm.NoiseAmplitude = Mathf.Clamp01(r.ReadSingle());
+                st.prm.Seed = r.ReadUInt32();
+                _stampScratch.Add(st);
+            }
+            ReadTargets(r, _targetScratch);
+            foreach (var s in _targetScratch)
+            {
+                SculptureShave.ApplyStamps(s, radius, slump, _stampScratch, out _, out _);
+                s.Remesh();
+                DeferColliders(s);
+            }
+        }
+
+        void ApplySqueeze(BinaryReader r)
+        {
+            ulong id = r.ReadUInt64();
+            float scale = Mathf.Clamp(r.ReadSingle(), 0.3f, 1f);
+            float blend = Mathf.Clamp01(r.ReadSingle());
+            float radius = r.ReadSingle();
+            if (!Registry.TryGet(id, out var s)) return;
+            s.Squeeze(scale, blend);
+            var ball = s.GetComponent<Snowball>();
+            if (ball != null && radius > 0f && radius < 2f) ball.radius = radius;
+            s.Remesh();
+        }
+
+        void ApplyShed(BinaryReader r)
+        {
+            var factory = Factory;
+            if (factory == null) return;
+            ulong id = r.ReadUInt64();
+            Vector3 pos = ReadV3(r);
+            float radius = Mathf.Clamp(r.ReadSingle(), 0.02f, 1.5f);
+            byte compaction = r.ReadByte();
+            Vector3 vel = ReadV3(r);
+            Registry.PendingId = id;
+            var ball = factory.CreateSnowball(pos, radius, compaction);
+            Registry.PendingId = null;
+            ball.SetState(Snowball.State.Flying);
+            RemoteBallDrive.Ensure(ball.Sculpture).BeginFlight(vel, Vector3.zero);
+        }
+
+        void ApplyThinned(BinaryReader r)
+        {
+            ulong id = r.ReadUInt64();
+            int3 min = ReadI3(r);
+            int3 ext = ReadI3(r);
+            byte[] blob = ReadBlob(r, 4 * 1024 * 1024);
+            if (!Registry.TryGet(id, out var s)) return;
+            long count = (long)ext.x * ext.y * ext.z;
+            if (math.any(ext <= 0) || math.any(min < 0) || math.any(min + ext > s.Info.size) || count > 16 * 1024 * 1024)
+            { Debug.LogWarning("[SnowNet] Thinned dropped: bad region"); return; }
+            var mask = new NativeArray<byte>((int)count, Allocator.TempJob);
+            try
+            {
+                GridSerializer.Decode(blob, mask);
+                s.ClearMasked(min, ext, mask);
+            }
+            finally { mask.Dispose(); }
+            s.Remesh();
+            DeferColliders(s);
+        }
+
+        void ApplyDetached(BinaryReader r)
+        {
+            var factory = Factory;
+            var cfg = Config;
+            if (factory == null || cfg == null) return;
+            ulong sourceId = r.ReadUInt64();
+            ulong islandId = r.ReadUInt64();
+            int3 offset = ReadI3(r);
+            int gridSize = r.ReadInt32();
+            float voxelSize = r.ReadSingle();
+            Vector3 pos = ReadV3(r);
+            Quaternion rot = ReadQ(r);
+            float radius = r.ReadSingle();
+            byte[] blob = ReadBlob(r, 32 * 1024 * 1024);
+            byte[] cblob = ReadBlob(r, 32 * 1024 * 1024);
+            int maxSize = Mathf.Max(cfg.gridSize, cfg.maxGridSize / 16 * 16);
+            if (gridSize <= 0 || gridSize % 16 != 0 || gridSize > maxSize || voxelSize <= 0f || voxelSize > 1f)
+            { Debug.LogWarning($"[SnowNet] Detached dropped: bad grid {gridSize}"); return; }
+            if (!Registry.TryGet(sourceId, out var source)) { Debug.LogWarning($"[SnowNet] Detached dropped: unknown source {sourceId:x}"); return; }
+
+            Registry.PendingId = islandId;
+            var ball = factory.CreateEmptySnowball(pos, radius, gridSize, voxelSize);
+            Registry.PendingId = null;
+            ball.transform.rotation = rot;
+            GridSerializer.Decode(blob, ball.Sculpture.Grid.Density);
+            GridSerializer.Decode(cblob, ball.Sculpture.Grid.Compaction);
+            ball.Sculpture.TouchAll();
+            ball.radius = radius;
+            source.ClearFromIsland(ball.Sculpture, offset);
+            source.Remesh();
+            DeferColliders(source);
+            ball.Sculpture.Remesh();
+            ball.SetState(Snowball.State.Flying);
+            RemoteBallDrive.Ensure(ball.Sculpture).BeginFlight(Vector3.zero, Vector3.zero);
+        }
+
+        void ApplyBurst(BinaryReader r)
+        {
+            var factory = Factory;
+            var cfg = Config;
+            if (factory == null || cfg == null) return;
+            ulong id = r.ReadUInt64();
+            int n = Mathf.Min(r.ReadByte(), 8);
+            Registry.TryGet(id, out var s);
+            for (int i = 0; i < n; i++)
+            {
+                ulong cid = r.ReadUInt64();
+                Vector3 pos = ReadV3(r);
+                float radius = Mathf.Clamp(r.ReadSingle(), 0.02f, 1.5f);
+                Vector3 vel = ReadV3(r);
+                Registry.PendingId = cid;
+                var crumb = factory.CreateSnowball(pos, radius, cfg.compactionScooped);
+                Registry.PendingId = null;
+                crumb.SetState(Snowball.State.Flying);
+                RemoteBallDrive.Ensure(crumb.Sculpture).BeginFlight(vel, Vector3.zero);
+            }
+            if (s != null)
+            {
+                RemoteBallDrive.Clear(s);
+                SculptureNet.RaiseRemoved(s);
+                UnityEngine.Object.Destroy(s.gameObject);
+            }
+        }
+
         /// <summary>Carried-pose stream (outside the event bus: unreliable, latest-wins).</summary>
         public void ApplyCarried(ulong id, Vector3 pos, Quaternion rot, float radius, bool carried)
         {
@@ -568,9 +836,8 @@ namespace Snowfield.Net
             w.Write(ball != null);
             w.Write(ball != null ? ball.radius : 0f);
             w.Write(ball != null && ball.IsLoose);
-            byte[] blob = GridSerializer.Encode(s.Grid.Density);
-            w.Write(blob.Length);
-            w.Write(blob);
+            WriteBlob(w, GridSerializer.Encode(s.Grid.Density));
+            WriteBlob(w, GridSerializer.Encode(s.Grid.Compaction));
             w.Write(s.Props.Count);
             foreach (var p in s.Props)
             {
@@ -601,21 +868,21 @@ namespace Snowfield.Net
                 bool isSnowball = r.ReadBoolean();
                 float radius = r.ReadSingle();
                 bool isLoose = r.ReadBoolean();
-                int blobLen = r.ReadInt32();
-                if (gridSize <= 0 || gridSize % 16 != 0 || gridSize > 512
-                    || blobLen <= 0 || blobLen > 32 * 1024 * 1024)
-                { Debug.LogWarning($"[SnowNet] Snapshot with bad grid size {gridSize} / blob {blobLen}; dropped"); return; }
-                byte[] blob = r.ReadBytes(blobLen);
+                if (gridSize <= 0 || gridSize % 16 != 0 || gridSize > 512 || voxelSize <= 0f || voxelSize > 1f)
+                { Debug.LogWarning($"[SnowNet] Snapshot with bad grid size {gridSize}; dropped"); return; }
+                byte[] blob = ReadBlob(r, 32 * 1024 * 1024);
+                byte[] cblob = ReadBlob(r, 32 * 1024 * 1024);
 
                 if (Registry.TryGet(id, out var existing))
                     UnityEngine.Object.DestroyImmediate(existing.gameObject); // re-sync: replace
 
                 Registry.PendingId = id;
-                var s = factory.CreateEmpty(gridSize, gridOffset, pos, rot);
+                var s = factory.CreateEmpty(gridSize, gridOffset, pos, rot, voxelSize);
                 Registry.PendingId = null;
                 try
                 {
                     GridSerializer.Decode(blob, s.Grid.Density);
+                    GridSerializer.Decode(cblob, s.Grid.Compaction);
                 }
                 catch
                 {
@@ -624,7 +891,7 @@ namespace Snowfield.Net
                     Registry.Sweep();
                     throw;
                 }
-                s.Grid.MarkAllDirty();
+                s.TouchAll();
 
                 if (isSnowball)
                 {
@@ -672,11 +939,17 @@ namespace Snowfield.Net
                 h = h * 31 + c.snowballGridSize;
                 h = h * 31 + c.maxGridSize;
                 h = h * 31 + c.regrowMarginVoxels;
+                h = h * 31 + c.smoothKernelRadius;
+                h = h * 31 + c.compactionRolled;
+                h = h * 31 + c.compactionScooped;
+                h = h * 31 + c.compactionWeld;
                 h = h * 31 + BitConverter.SingleToInt32Bits(c.voxelSize);
                 h = h * 31 + BitConverter.SingleToInt32Bits(c.addRatePerTick);
                 h = h * 31 + BitConverter.SingleToInt32Bits(c.addShoulder);
                 h = h * 31 + BitConverter.SingleToInt32Bits(c.smoothStrength);
                 h = h * 31 + BitConverter.SingleToInt32Bits(c.smoothShoulder);
+                h = h * 31 + BitConverter.SingleToInt32Bits(c.patCompactionPerTick);
+                h = h * 31 + BitConverter.SingleToInt32Bits(c.packShrinkFraction);
                 h = h * 31 + BitConverter.SingleToInt32Bits(c.scoopRadius);
                 h = h * 31 + BitConverter.SingleToInt32Bits(c.ticksPerSecond);
                 return h;
