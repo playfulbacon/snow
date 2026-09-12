@@ -43,7 +43,7 @@ namespace Snowfield.Voxel
                 Density[idx] = v;
                 c = BrushMath.MixCompaction(old, c, v - old, sc);
             }
-            if (weld) c = (byte)math.max(c, (byte)math.clamp(WeldCompaction, 0f, 255f));
+            if (weld) c = (byte)math.max((int)c, (int)math.clamp(WeldCompaction, 0f, 255f));
             Compaction[idx] = c;
         }
     }
