@@ -184,12 +184,12 @@ namespace Snowfield.Sculpture
                                            -Vector3.Dot(_rb.linearVelocity, contact0.normal));
                     if (into >= cfg.burstSpeed && Sculpture.MeanCompaction() < cfg.burstCompaction)
                     {
-                        var factory = SculptureFactory.Instance;
-                        if (factory != null)
+                        var burster = SculptureFactory.Instance;
+                        if (burster != null)
                         {
                             Vector3 v = _rb.linearVelocity;
                             Current = State.Resting; // no further contacts count; the object is going away
-                            factory.Burst(this, contact0.point, contact0.normal, v);
+                            burster.Burst(this, contact0.point, contact0.normal, v);
                             return;
                         }
                     }
