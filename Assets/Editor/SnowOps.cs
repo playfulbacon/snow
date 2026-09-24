@@ -48,13 +48,25 @@ namespace SnowDays.EditorTools
             if (EditorApplication.isCompiling || EditorApplication.isUpdating) return;
             if (!Directory.Exists(OpsDir)) return;
 
-            Handle("refresh", _ => { AssetDatabase.Refresh(); WriteResult("refresh", "DONE"); });
-            Handle("restart", _ => RestartEditor());
+            Handle("refresh", _ => { if (!BusyPlaying("refresh")) { AssetDatabase.Refresh(); WriteResult("refresh", "DONE"); } });
+            Handle("restart", _ => { if (!BusyPlaying("restart")) RestartEditor(); });
             Handle("scene_setup", _ => RunSceneSetup());
             Handle("tests_editmode", f => RunTests(TestMode.EditMode, f));
             Handle("tests_playmode", f => RunTests(TestMode.PlayMode, f));
             Handle("play_smoke", RunPlaySmoke);
             Handle("build", RunBuild);
+        }
+
+        /// <summary>
+        /// Refuse anything that recompiles or commandeers the editor while someone is playing. A domain reload
+        /// under a live session shreds it — adding one NetworkVariable mid-session was enough to leave the
+        /// running game reading past the end of every delta it received.
+        /// </summary>
+        static bool BusyPlaying(string op)
+        {
+            if (!EditorApplication.isPlaying) return false;
+            WriteResult(op, "SKIPPED: editor is in play mode — not recompiling or taking it over underneath you");
+            return true;
         }
 
         static void Handle(string op, Action<string> action)
@@ -108,6 +120,7 @@ namespace SnowDays.EditorTools
 
         static void RunTests(TestMode mode, string assemblyFilter)
         {
+            if (BusyPlaying(mode == TestMode.EditMode ? "tests_editmode" : "tests_playmode")) return;
             if (_testsRunning)
             {
                 WriteResult(mode == TestMode.EditMode ? "tests_editmode" : "tests_playmode", "SKIPPED: a test run is already active");

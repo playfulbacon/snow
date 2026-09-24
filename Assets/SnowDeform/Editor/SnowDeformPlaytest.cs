@@ -163,7 +163,7 @@ namespace SnowDays.EditorTools
         {
             // Daylight override (play-mode only, never saved): the scene is
             // night+fog, so captures force a daytime sun and flat cool
-            // ambient to show the banded lighting and sun-gated sparkle.
+            // ambient to show footprints and the lighting transition.
             Light sun = null;
             foreach (var l in Object.FindObjectsByType<Light>(FindObjectsSortMode.None))
                 if (l.type == LightType.Directional && (sun == null || l.intensity > sun.intensity)) sun = l;
@@ -189,7 +189,7 @@ namespace SnowDays.EditorTools
                     var mesh = rend.GetComponent<MeshFilter>().sharedMesh;
                     Debug.Log($"[SnowDeformPlaytest] renderer enabled={rend.enabled} pos={rend.transform.position} " +
                         $"boundsCenter={rend.bounds.center} verts={(mesh != null ? mesh.vertexCount : -1)} " +
-                        $"shader={rend.sharedMaterial.shader.name}");
+                        $"shader={rend.sharedMaterial.shader.name} terrainNormals={rend.sharedMaterial.GetFloat("_SnowTerrainNormalCount")}");
                 }
                 else
                 {
@@ -215,11 +215,47 @@ namespace SnowDays.EditorTools
             cam.transform.LookAt(s_Player.position - s_Player.forward * 1.5f + Vector3.up * 0.1f);
             CaptureTo(cam, ClosePath);
 
-            // Straight down: shows the snow shell disc (or its absence)
-            // against the bare terrain beyond its 36m extent.
-            cam.transform.position = s_Player.position + Vector3.up * 50f;
+            // Include the entire shell perimeter, then render the same view
+            // with the shell hidden as a terrain lighting reference.
+            cam.transform.position = s_Player.position + Vector3.up * 85f;
             cam.transform.rotation = Quaternion.LookRotation(Vector3.down, s_Player.forward);
+            cam.orthographic = true;
+            cam.orthographicSize = 45f;
             CaptureTo(cam, TopPath);
+            var surface = snow != null ? snow.GetComponentInChildren<MeshRenderer>() : null;
+            if (surface != null)
+            {
+                var originalShadows = surface.shadowCastingMode;
+                surface.shadowCastingMode = ShadowCastingMode.Off;
+                CaptureTo(cam, "Temp/snowdeform_no_shell_shadows.png");
+                surface.shadowCastingMode = originalShadows;
+                surface.enabled = false;
+                try { CaptureTo(cam, "Temp/snowdeform_terrain_reference.png"); }
+                finally { surface.enabled = true; }
+
+                // A colored point light straddles the coverage boundary so
+                // distance attenuation and additional-light bands are checked.
+                if (sun != null) sun.intensity = 0.05f;
+                RenderSettings.ambientLight = new Color(0.10f, 0.13f, 0.18f);
+                var pointObject = new GameObject("Snow lighting test");
+                var point = pointObject.AddComponent<Light>();
+                point.type = LightType.Point;
+                point.color = new Color(1f, 0.45f, 0.15f);
+                point.intensity = 35f;
+                point.range = 35f;
+                point.transform.position = s_Player.position + Vector3.right * 34f + Vector3.up * 6f;
+                try
+                {
+                    CaptureTo(cam, "Temp/snowdeform_point_boundary.png");
+                    surface.enabled = false;
+                    CaptureTo(cam, "Temp/snowdeform_point_reference.png");
+                }
+                finally
+                {
+                    surface.enabled = true;
+                    Object.DestroyImmediate(pointObject);
+                }
+            }
         }
 
         // Reads back the center of the trample RT and counts texels with any

@@ -18,13 +18,28 @@ namespace Snowfield.Net
         static readonly int MoveXHash = Animator.StringToHash("MoveX");
         static readonly int MoveYHash = Animator.StringToHash("MoveY");
         static readonly int SpeedHash = Animator.StringToHash("Speed");
+        static readonly int LocomotionSpeedHash = Animator.StringToHash("LocomotionSpeed");
         static readonly int GroundedHash = Animator.StringToHash("IsGrounded");
+
+        /// <summary>
+        /// The animator parameters mirrored onto remote avatars, kept in step with FirstPersonPlayer.controller
+        /// by a test. A parameter that drives the legs and is missing here does not just look wrong — it breaks
+        /// anything reading the animated pose. LocomotionSpeed is the cautionary tale: without it a remote's
+        /// legs cycled at the authored clip rate while its body travelled at the real speed, so the planted
+        /// foot slid ~1.5 m/s and SnowFootprints never saw a footfall to stamp.
+        /// </summary>
+        public static readonly string[] SyncedParameters =
+            { "MoveX", "MoveY", "Speed", "LocomotionSpeed", "IsGrounded" };
 
         readonly NetworkVariable<float> _moveX = new NetworkVariable<float>(0f,
             NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
         readonly NetworkVariable<float> _moveY = new NetworkVariable<float>(0f,
             NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
         readonly NetworkVariable<float> _speed = new NetworkVariable<float>(0f,
+            NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
+        // Default 1 matches the controller's own default, so an avatar that has not heard from its owner yet
+        // still animates at the authored rate instead of freezing.
+        readonly NetworkVariable<float> _locomotionSpeed = new NetworkVariable<float>(1f,
             NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
         readonly NetworkVariable<bool> _grounded = new NetworkVariable<bool>(true,
             NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
@@ -93,6 +108,7 @@ namespace Snowfield.Net
             SetIfChanged(_moveX, anim.GetFloat(MoveXHash));
             SetIfChanged(_moveY, anim.GetFloat(MoveYHash));
             SetIfChanged(_speed, anim.GetFloat(SpeedHash));
+            SetIfChanged(_locomotionSpeed, anim.GetFloat(LocomotionSpeedHash));
             if (_grounded.Value != anim.GetBool(GroundedHash)) _grounded.Value = anim.GetBool(GroundedHash);
         }
 
@@ -142,6 +158,7 @@ namespace Snowfield.Net
             _animator.SetFloat(MoveXHash, _moveX.Value);
             _animator.SetFloat(MoveYHash, _moveY.Value);
             _animator.SetFloat(SpeedHash, _speed.Value);
+            _animator.SetFloat(LocomotionSpeedHash, _locomotionSpeed.Value);
             _animator.SetBool(GroundedHash, _grounded.Value);
         }
     }

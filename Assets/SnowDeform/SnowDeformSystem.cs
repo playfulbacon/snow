@@ -81,7 +81,23 @@ namespace SnowDays
         private static readonly int ShadowTintId = Shader.PropertyToID("_SnowShadowTint");
         private static readonly int LightBandsId = Shader.PropertyToID("_SnowLightBands");
         private static readonly int BaseMapId = Shader.PropertyToID("_SnowBaseMap");
-        private static readonly int TexTilingId = Shader.PropertyToID("_SnowTexTiling");
+        private static readonly int BaseMapSTId = Shader.PropertyToID("_SnowBaseMap_ST");
+        private static readonly int DiffuseRemapId = Shader.PropertyToID("_SnowDiffuseRemap");
+        private const int MaxTerrainNormalMaps = 8;
+        private static readonly int TerrainNormalCountId = Shader.PropertyToID("_SnowTerrainNormalCount");
+        private static readonly int TerrainNormalRectsId = Shader.PropertyToID("_SnowTerrainNormalRects");
+        private static readonly int TerrainNormalSTId = Shader.PropertyToID("_SnowTerrainNormalST");
+        private static readonly int[] TerrainNormalIds =
+        {
+            Shader.PropertyToID("_SnowTerrainNormal0"),
+            Shader.PropertyToID("_SnowTerrainNormal1"),
+            Shader.PropertyToID("_SnowTerrainNormal2"),
+            Shader.PropertyToID("_SnowTerrainNormal3"),
+            Shader.PropertyToID("_SnowTerrainNormal4"),
+            Shader.PropertyToID("_SnowTerrainNormal5"),
+            Shader.PropertyToID("_SnowTerrainNormal6"),
+            Shader.PropertyToID("_SnowTerrainNormal7"),
+        };
 
         private struct StampRequest
         {
@@ -146,6 +162,12 @@ namespace SnowDays
 
         private TerrainTile[] m_Tiles;
         private int m_LastTile;
+        private int m_MaterialTile = -1;
+        private readonly Dictionary<Terrain, MaterialPropertyBlock> m_OriginalTerrainProperties =
+            new Dictionary<Terrain, MaterialPropertyBlock>();
+        private MaterialPropertyBlock m_TerrainLookProperties;
+        private readonly Vector4[] m_TerrainNormalRects = new Vector4[MaxTerrainNormalMaps];
+        private readonly Vector4[] m_TerrainNormalST = new Vector4[MaxTerrainNormalMaps];
 
         private float HeightTexel => m_WindowSize / m_HeightResolution;
         private float TrampleTexel => m_WindowSize / m_TrampleResolution;
@@ -306,12 +328,14 @@ namespace SnowDays
         {
             if (mode != LoadSceneMode.Additive) m_Target = null;
             CacheTerrains();
+            ApplySnowTexture();
             InvalidateWindow();
         }
 
         private void OnDisable()
         {
             SceneManager.sceneLoaded -= OnSceneLoaded;
+            RestoreTerrainLook();
             if (Instance == this) Instance = null;
             if (m_MeshTransform != null) Destroy(m_MeshTransform.gameObject);
             Destroy(m_SurfaceMat);
@@ -333,6 +357,8 @@ namespace SnowDays
             if (!ResolveTarget()) return;
 
             Vector3 targetPos = m_Target.position;
+            if (FindClosestTerrain(new Vector2(targetPos.x, targetPos.z)) != m_MaterialTile)
+                ApplySnowTexture();
             bool scrolled = UpdateWindow(targetPos);
 
             // No snow until the height field holds real terrain data - a
@@ -564,8 +590,10 @@ namespace SnowDays
 
         private void CacheTerrains()
         {
+            RestoreTerrainLook();
             Terrain[] terrains = Terrain.activeTerrains;
             m_LastTile = 0;
+            m_MaterialTile = -1;
             m_Tiles = new TerrainTile[terrains.Length];
             for (int i = 0; i < terrains.Length; i++)
             {
@@ -580,6 +608,46 @@ namespace SnowDays
             }
             if (m_Tiles.Length == 0)
                 Debug.LogWarning("[SnowDeform] No active terrains; snow will lie at y=0.");
+            BindTerrainNormals();
+            ApplyTerrainLook();
+        }
+
+        // Reuse Unity's native normals so the terrain and shell have the same
+        // undisturbed slope lighting. The shader adds footprint deformation.
+        private void BindTerrainNormals()
+        {
+            if (m_SurfaceMat == null) return;
+            System.Array.Clear(m_TerrainNormalRects, 0, m_TerrainNormalRects.Length);
+            System.Array.Clear(m_TerrainNormalST, 0, m_TerrainNormalST.Length);
+            int count = 0;
+            if (m_Tiles != null)
+            {
+                if (m_Tiles.Length > MaxTerrainNormalMaps)
+                    Debug.LogWarning($"[SnowDeform] {m_Tiles.Length} terrain tiles exceed the {MaxTerrainNormalMaps} native normal map slots; additional tiles use the nearest bound normals.");
+                foreach (TerrainTile tile in m_Tiles)
+                {
+                    if (count == MaxTerrainNormalMaps) break;
+                    if (tile.terrain == null || tile.rect.width <= 0f || tile.rect.height <= 0f) continue;
+                    Texture normalMap = tile.terrain.normalmapTexture;
+                    if (normalMap == null || normalMap.width <= 0 || normalMap.height <= 0) continue;
+
+                    float scaleX = (normalMap.width - 1f) / (normalMap.width * tile.rect.width);
+                    float scaleZ = (normalMap.height - 1f) / (normalMap.height * tile.rect.height);
+                    m_TerrainNormalRects[count] = new Vector4(tile.rect.xMin, tile.rect.yMin,
+                        tile.rect.xMax, tile.rect.yMax);
+                    m_TerrainNormalST[count] = new Vector4(scaleX, scaleZ,
+                        0.5f / normalMap.width - tile.rect.xMin * scaleX,
+                        0.5f / normalMap.height - tile.rect.yMin * scaleZ);
+                    m_SurfaceMat.SetTexture(TerrainNormalIds[count], normalMap);
+                    count++;
+                }
+            }
+
+            for (int i = count; i < MaxTerrainNormalMaps; i++)
+                m_SurfaceMat.SetTexture(TerrainNormalIds[i], null);
+            m_SurfaceMat.SetVectorArray(TerrainNormalRectsId, m_TerrainNormalRects);
+            m_SurfaceMat.SetVectorArray(TerrainNormalSTId, m_TerrainNormalST);
+            m_SurfaceMat.SetFloat(TerrainNormalCountId, count);
         }
 
         private float SampleTerrainHeight(float x, float z)
@@ -734,40 +802,82 @@ namespace SnowDays
             return mesh;
         }
 
-        // Binds the tiling snow diffuse: the serialized override if set, else
-        // the diffuse of the terrain's own snow-named layer (matching its
-        // tile size), else the first painted layer. No layer -> flat color.
+        private int FindClosestTerrain(Vector2 position)
+        {
+            int closest = -1;
+            float closestDistance = float.PositiveInfinity;
+            if (m_Tiles == null) return closest;
+            for (int i = 0; i < m_Tiles.Length; i++)
+            {
+                if (m_Tiles[i].terrain == null) continue;
+                Rect rect = m_Tiles[i].rect;
+                Vector2 nearest = new Vector2(Mathf.Clamp(position.x, rect.xMin, rect.xMax),
+                    Mathf.Clamp(position.y, rect.yMin, rect.yMax));
+                float distance = (position - nearest).sqrMagnitude;
+                if (distance >= closestDistance) continue;
+                closest = i;
+                closestDistance = distance;
+            }
+            return closest;
+        }
+
+        private static TerrainLayer FindSnowLayer(Terrain terrain)
+        {
+            if (terrain == null || terrain.terrainData == null) return null;
+            TerrainLayer best = null;
+            foreach (TerrainLayer layer in terrain.terrainData.terrainLayers)
+            {
+                if (layer == null || layer.diffuseTexture == null) continue;
+                if (best == null) best = layer;
+                if (layer.name.IndexOf("snow", System.StringComparison.OrdinalIgnoreCase) >= 0)
+                    return layer;
+            }
+            return best;
+        }
+
+        // Match the terrain below the player, including its UV origin and
+        // surface settings. Empty neighboring tiles fall back to the nearest
+        // tile with a usable layer. An explicit texture keeps its world tiling.
         private void ApplySnowTexture()
         {
-            Texture2D tex = m_SnowTexture;
-            float tile = m_SnowTextureTile;
-            if (tex == null && m_Tiles != null)
+            Vector3 target = m_Target != null ? m_Target.position : transform.position;
+            Vector2 position = new Vector2(target.x, target.z);
+            m_MaterialTile = FindClosestTerrain(position);
+            Terrain bestTerrain = m_MaterialTile >= 0 ? m_Tiles[m_MaterialTile].terrain : null;
+            TerrainLayer best = FindSnowLayer(bestTerrain);
+            if (best == null && m_Tiles != null)
             {
-                TerrainLayer best = null;
-                foreach (var t in m_Tiles)
+                float closestDistance = float.PositiveInfinity;
+                foreach (TerrainTile tile in m_Tiles)
                 {
-                    TerrainLayer[] layers = t.terrain.terrainData.terrainLayers;
-                    if (layers == null) continue;
-                    foreach (var layer in layers)
-                    {
-                        if (layer == null || layer.diffuseTexture == null) continue;
-                        if (best == null) best = layer;
-                        if (layer.name.ToLowerInvariant().Contains("snow")) { best = layer; break; }
-                    }
-                    if (best != null && best.name.ToLowerInvariant().Contains("snow")) break;
-                }
-                if (best != null)
-                {
-                    tex = best.diffuseTexture;
-                    tile = Mathf.Max(best.tileSize.x, 0.01f);
-                    Debug.Log($"[SnowDeform] snow texture from terrain layer '{best.name}': {tex.name} (tile {tile}m)");
+                    TerrainLayer layer = FindSnowLayer(tile.terrain);
+                    if (layer == null) continue;
+                    Vector2 nearest = new Vector2(Mathf.Clamp(position.x, tile.rect.xMin, tile.rect.xMax),
+                        Mathf.Clamp(position.y, tile.rect.yMin, tile.rect.yMax));
+                    float distance = (position - nearest).sqrMagnitude;
+                    if (distance >= closestDistance) continue;
+                    closestDistance = distance;
+                    bestTerrain = tile.terrain;
+                    best = layer;
                 }
             }
-            if (tex != null)
+
+            Texture2D tex = m_SnowTexture != null ? m_SnowTexture : best != null ? best.diffuseTexture : null;
+            Vector2 tileSize = Vector2.one * Mathf.Max(m_SnowTextureTile, 0.01f);
+            Vector2 offset = Vector2.zero;
+            if (m_SnowTexture == null && best != null)
             {
-                m_SurfaceMat.SetTexture(BaseMapId, tex);
-                m_SurfaceMat.SetFloat(TexTilingId, tile);
+                tileSize = best.tileSize;
+                Vector3 origin = bestTerrain.transform.position;
+                offset = best.tileOffset - new Vector2(origin.x, origin.z);
             }
+            Vector2 scale = new Vector2(1f / Mathf.Max(tileSize.x, 0.01f),
+                1f / Mathf.Max(tileSize.y, 0.01f));
+
+            m_SurfaceMat.SetTexture(BaseMapId, tex != null ? tex : Texture2D.whiteTexture);
+            m_SurfaceMat.SetVector(BaseMapSTId, new Vector4(scale.x, scale.y,
+                offset.x * scale.x, offset.y * scale.y));
+            m_SurfaceMat.SetVector(DiffuseRemapId, best != null ? best.diffuseRemapMax : Vector4.one);
         }
 
         private void ApplyLook()
@@ -777,11 +887,64 @@ namespace SnowDays
             m_SurfaceMat.SetFloat(TrenchAOId, m_TrenchDarkening);
             m_SurfaceMat.SetColor(ShadowTintId, m_ShadowTint);
             m_SurfaceMat.SetFloat(LightBandsId, m_LightBands);
+            ApplyTerrainLook();
+        }
+
+        // Terrain gets the same look as the deformable shell without editing
+        // its shared material asset. Preserve pre-existing per-terrain values.
+        private void ApplyTerrainLook()
+        {
+            if (m_Tiles == null) return;
+            if (m_TerrainLookProperties == null)
+                m_TerrainLookProperties = new MaterialPropertyBlock();
+
+            foreach (TerrainTile tile in m_Tiles)
+            {
+                Terrain terrain = tile.terrain;
+                if (terrain == null) continue;
+                Material material = terrain.materialTemplate;
+                if (material == null || material.shader == null || material.shader.name != "SnowDays/TerrainSnow")
+                {
+                    if (m_OriginalTerrainProperties.TryGetValue(terrain, out MaterialPropertyBlock original))
+                    {
+                        terrain.SetSplatMaterialPropertyBlock(original);
+                        m_OriginalTerrainProperties.Remove(terrain);
+                    }
+                    continue;
+                }
+
+                if (!m_OriginalTerrainProperties.ContainsKey(terrain))
+                {
+                    var original = new MaterialPropertyBlock();
+                    terrain.GetSplatMaterialPropertyBlock(original);
+                    m_OriginalTerrainProperties.Add(terrain, original);
+                }
+
+                terrain.GetSplatMaterialPropertyBlock(m_TerrainLookProperties);
+                m_TerrainLookProperties.SetColor(SnowAlbedoId, m_Albedo);
+                m_TerrainLookProperties.SetColor(ShadowTintId, m_ShadowTint);
+                m_TerrainLookProperties.SetFloat(LightBandsId, m_LightBands);
+                terrain.SetSplatMaterialPropertyBlock(m_TerrainLookProperties);
+            }
+        }
+
+        private void RestoreTerrainLook()
+        {
+            foreach (KeyValuePair<Terrain, MaterialPropertyBlock> entry in m_OriginalTerrainProperties)
+            {
+                if (entry.Key != null)
+                    entry.Key.SetSplatMaterialPropertyBlock(entry.Value);
+            }
+            m_OriginalTerrainProperties.Clear();
         }
 
         private void OnValidate()
         {
-            if (m_SurfaceMat != null) ApplyLook();
+            if (m_SurfaceMat != null)
+            {
+                ApplyLook();
+                ApplySnowTexture();
+            }
             if (m_MeshRenderer != null)
                 m_MeshRenderer.shadowCastingMode = m_CastShadows ? ShadowCastingMode.On : ShadowCastingMode.Off;
         }
