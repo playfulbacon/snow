@@ -110,6 +110,57 @@ namespace Snowfield.Voxel.Tests
             Assert.AreEqual(255, _grid.Density[Idx(16, 19, 27)], "noise only shrinks the disc: nothing outside the brush is touched");
         }
 
+        /// <summary>
+        /// A stroke locks one plane and sweeps it. Anything standing above that plane has to come off, however tall
+        /// it is - that is the difference between carving a flat and peeling a shell that follows the bumps.
+        /// </summary>
+        [Test]
+        public void Shave_LockedPlane_TakesOffAStandingBump()
+        {
+            FillBox(new int3(0, 0, 0), new int3(31, 19, 31), 255, 255);   // ground: solid below y = 20
+            FillBox(new int3(14, 20, 14), new int3(18, 26, 18), 255, 255); // a bump seven voxels proud of it
+            ShaveDisc(new float3(16, 19.5f, 16), 6f, Packed());
+            Assert.AreEqual(0, _grid.Density[Idx(16, 26, 16)], "the top of the bump is above the plane, so it goes");
+            Assert.AreEqual(0, _grid.Density[Idx(16, 22, 16)], "and so is everything under it, down to the plane");
+            Assert.AreEqual(0, _grid.Density[Idx(16, 19, 16)], "the cut reaches its depth below the plane");
+            Assert.AreEqual(255, _grid.Density[Idx(16, 16, 16)], "below the depth and its ramp: untouched");
+            Assert.AreEqual(255, _grid.Density[Idx(16, 19, 26)], "outside the disc laterally: untouched");
+        }
+
+        /// <summary>
+        /// The cut clamps to the plane instead of subtracting from what it finds, so a second identical pass is a
+        /// no-op. Without this the tool can never settle on a surface: holding it on one spot keeps digging.
+        /// </summary>
+        [Test]
+        public void Shave_SamePlaneTwice_SecondPassRemovesNothing()
+        {
+            FillBox(new int3(0, 0, 0), new int3(31, 19, 31), 255, 255);
+            FillBox(new int3(14, 20, 14), new int3(18, 24, 18), 255, 255);
+            float before = Mass();
+            ShaveDisc(new float3(16, 19.5f, 16), 6f, Packed());
+            float once = Mass();
+            Assert.Less(once, before, "the first pass cuts");
+            ShaveDisc(new float3(16, 19.5f, 16), 6f, Packed());
+            Assert.AreEqual(once, Mass(), 0.001f, "the second pass has nothing left above the plane to take");
+        }
+
+        static ShaveParams Packed()
+            => new ShaveParams { DepthVoxels = 1.5f, SoftVoxels = 0.75f, Shoulder = 0.85f, NoiseAmplitude = 0f, Seed = 1 };
+
+        /// <summary>One stamp on a +Y plane, with the region sized the way SnowSculpture.ApplyShave sizes it.</summary>
+        void ShaveDisc(float3 c, float radiusVoxels, ShaveParams prm)
+        {
+            float rise = math.max(radiusVoxels, prm.DepthVoxels + prm.SoftVoxels);
+            float reach = math.sqrt(radiusVoxels * radiusVoxels + rise * rise) + 1f;
+            Assert.IsTrue(_grid.SphereAabb(c, reach, out var min, out var max));
+            int3 ext = max - min;
+            new ShaveJob
+            {
+                Density = _grid.Density, Compaction = _grid.Compaction, Info = _grid.Info, AabbMin = min, AabbExtent = ext,
+                CenterVoxel = c, NormalVoxel = new float3(0, 1, 0), RadiusVoxels = radiusVoxels, Params = prm,
+            }.Schedule(ext.x * ext.y * ext.z, 64).Complete();
+        }
+
         [Test]
         public void Rescale_ShrinksVolume_AndPacks()
         {

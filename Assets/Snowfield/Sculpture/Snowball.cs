@@ -16,6 +16,8 @@ namespace Snowfield.Sculpture
         public float radius = 0.15f;
         [Range(0f, 1f)] public float stampShoulder = 0.75f;
         [Range(0f, 1f)] public float fuseSink = 0.45f;
+        [Tooltip("Splat into a fixed sculpture on contact. Off for debris (shavings, burst crumbs, broken-off islands) so it piles up instead of welding back onto whatever it lands on.")]
+        public bool fusesOnLanding = true;
 
         [Header("Flight")]
         [Tooltip("Packed snow (kg/m3), used for the flight mass. A ball with a real weight shoves what it hits instead of pinging off it.")]
@@ -171,7 +173,13 @@ namespace Snowfield.Sculpture
         {
             if (!IsFlying) return;
             var target = col.collider.GetComponentInParent<SnowSculpture>();
-            if (target == null || target == Sculpture)
+            // Only a fixed sculpture takes a splat. A loose ball is just something to land on: fusing into one
+            // promotes it to a full grid, and a pile of shavings landing on each other did that once per lump
+            // (thousands of 96³ → 112³ regrows in one stroke) and stalled the editor.
+            var targetBall = target != null ? target.GetComponent<Snowball>() : null;
+            bool splat = target != null && target != Sculpture && !target.Consumed && fusesOnLanding
+                         && (targetBall == null || !targetBall.IsLoose);
+            if (!splat)
             {
                 var contact0 = col.GetContact(0);
                 // Powder does not survive a hard landing: it bursts into lumps. Packed snow flies true and lives.
@@ -201,6 +209,7 @@ namespace Snowfield.Sculpture
             // Splat: sink a little into the surface, then fuse into the target (promoting it if it is a loose ball).
             var contact = col.GetContact(0);
             transform.position = contact.point + contact.normal * (radius * (1f - fuseSink));
+            Current = State.Resting; // no further contacts count this step; the ball is being consumed
             var factory = SculptureFactory.Instance;
             if (factory != null) factory.Fuse(target, this);
             else Destroy(gameObject);

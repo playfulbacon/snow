@@ -263,7 +263,6 @@ namespace Snowfield.Voxel
             int size = Info.size;
             int n = Info.VoxelCount;
             Islands.Clear();
-            for (int i = 0; i < n; i++) Label[i] = 0;
 
             // Twig support as a mask (only the voxels near a segment, so this stays cheap on big grids).
             var support = new NativeArray<byte>(SegmentCount > 0 ? n : 1, Allocator.Temp, NativeArrayOptions.ClearMemory);
@@ -293,17 +292,23 @@ namespace Snowfield.Voxel
                 if (floorY == int.MaxValue) { support.Dispose(); return; } // nothing solid at all
             }
 
-            var stack = new NativeArray<int>(n, Allocator.Temp);
+            var stack = new NativeArray<int>(n, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
             int top = 0;
 
-            // Seeds.
-            for (int i = 0; i < n; i++)
+            // Clearing the labels and planting the ground seeds in one sweep, with the coordinates walked rather
+            // than divided out of the index. Both are 885k-element passes at production grid size, and this job now
+            // runs several times a second during a stroke instead of once when you let go of the button.
+            float fallbackLine = floorY == int.MaxValue ? 0f : floorY;
+            int idx = 0;
+            for (int z = 0; z < size; z++)
+            for (int y = 0; y < size; y++)
+            for (int x = 0; x < size; x++, idx++)
             {
-                if (Density[i] < Threshold) continue;
-                int x = i % size, y = (i / size) % size, z = i / (size * size);
+                Label[idx] = 0;
+                if (Density[idx] < Threshold) continue;
                 float line = useGround ? GroundY[x + z * size] : floorY;
-                if (float.IsNaN(line)) line = floorY == int.MaxValue ? 0f : floorY;
-                if (y <= line + SeedDepthVoxels) { Label[i] = 1; stack[top++] = i; }
+                if (float.IsNaN(line)) line = fallbackLine;
+                if (y <= line + SeedDepthVoxels) { Label[idx] = 1; stack[top++] = idx; }
             }
             Flood(ref stack, ref top, 1, support, hasSupport);
 
@@ -360,7 +365,8 @@ namespace Snowfield.Voxel
             while (top > 0)
             {
                 int i = stack[--top];
-                int3 p = new int3(i % size, (i / size) % size, i / (size * size));
+                int t = i / size;
+                int3 p = new int3(i - t * size, t % size, t / size);
                 for (int a = 0; a < 6; a++)
                 {
                     int3 q = p + Axis(a);

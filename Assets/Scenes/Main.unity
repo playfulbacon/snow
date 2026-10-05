@@ -35384,7 +35384,7 @@ MonoBehaviour:
   chargeTime: 1.2
   groundMask:
     serializedVersion: 2
-    m_Bits: 4294967291
+    m_Bits: 51
 --- !u!4 &397011566
 Transform:
   m_ObjectHideFlags: 0
@@ -35416,15 +35416,18 @@ MonoBehaviour:
   viewCamera: {fileID: 457004960}
   sculptMask:
     serializedVersion: 2
-    m_Bits: 4294967291
-  maxReach: 1.2
+    m_Bits: 51
+  maxReach: 2.5
   reachOrigin: {fileID: 485065691}
   cursor: {fileID: 9948961}
   hands: {fileID: 485065693}
   throwTapThreshold: 0.2
   rollEngageDistance: 2.2
+  shaveColliderRefresh: 0.2
+  structurePassInterval: 0.15
   cursorAddColor: {r: 0.4, g: 0.7, b: 1, a: 0.25}
   cursorCarveColor: {r: 1, g: 0.35, b: 0.3, a: 0.3}
+  cursorShaveColor: {r: 1, g: 0.85, b: 0.3, a: 0.3}
   radiusScale: 1
 --- !u!1001 &397034863
 PrefabInstance:
@@ -186267,10 +186270,11 @@ MonoBehaviour:
     m_VerticalOverflow: 1
     m_LineSpacing: 1
   m_Text: "LMB scoop snow into your hands (sculpture: a chunk \xB7 ground: a handful)
-    \xB7 carrying: LMB lets go, hold to throw \xB7 Shift+LMB smooth \xB7 a carried
-    ball rolls while your cursor is near the ground \xB7 Tab accessories   \xB7  
-    WASD move \xB7 Shift run \xB7 Space jump \xB7 Q crouch \xB7 E tiptoe \xB7 Esc
-    cursor \xB7 Shift+N multiplayer"
+    \xB7 carrying: LMB lets go, hold to throw \xB7 Shift+LMB pat \xB7 RMB drag shave
+    (Shift: score) \xB7 ball in hand: hold RMB squeeze, packed: hold RMB carve it
+    \xB7 a carried ball rolls while your cursor is near the ground \xB7 Tab accessories  
+    \xB7   WASD move \xB7 Shift run \xB7 Space jump \xB7 Q crouch \xB7 E tiptoe \xB7
+    Esc cursor \xB7 Shift+N multiplayer"
 --- !u!222 &1967271538
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -193238,6 +193242,18 @@ MonoBehaviour:
     - action: 12
       icon: {fileID: 0}
       label: 'Drop (hold: throw)'
+    - action: 13
+      icon: {fileID: 0}
+      label: 'Shave (Shift: score)'
+    - action: 14
+      icon: {fileID: 0}
+      label: Score
+    - action: 15
+      icon: {fileID: 0}
+      label: Squeeze (hold)
+    - action: 16
+      icon: {fileID: 0}
+      label: Carve in hand (hold)
   status:
     margin: {x: 14, y: 12}
     fontSize: 16

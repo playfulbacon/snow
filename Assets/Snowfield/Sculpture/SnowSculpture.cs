@@ -105,6 +105,14 @@ namespace Snowfield.Sculpture
 
         bool _collidersEnabled = true;
 
+        /// <summary>
+        /// True once the factory has absorbed this grid into another (promote, regrow, fuse, burst) and queued its
+        /// destruction. Destroy is deferred to the end of the frame, so without this a second contact in the same
+        /// physics step would fuse into a grid that is already gone and duplicate its snow.
+        /// </summary>
+        public bool Consumed { get; private set; }
+        public void MarkConsumed() => Consumed = true;
+
         void OnDestroy() => Teardown();
 
         void Teardown()
@@ -142,6 +150,40 @@ namespace Snowfield.Sculpture
 
         /// <summary>Trilinear compaction (0-255) at a world position; 0 outside the grid or in air.</summary>
         public float SampleCompactionWorld(float3 world) => DensitySampler.Trilinear(Grid.Compaction, Info, WorldToVoxel(world));
+
+        /// <summary>
+        /// The surface normal the snow itself has at a world point: central differences on the density field, the
+        /// same quantity the mesher shades with (<see cref="Voxel.MeshChunkJob"/>). A MeshCollider raycast hands
+        /// back the triangle normal instead, which at 3 cm voxels swings by tens of degrees between neighbouring
+        /// marching-cubes facets — useless for anything that has to stay put. Falls back to <paramref name="fallback"/>
+        /// deep inside the snow or out in the air, where the gradient vanishes.
+        /// </summary>
+        public float3 GradientNormalWorld(float3 world, float3 fallback)
+        {
+            float h = Info.voxelSize;
+            float gx = SampleDensityWorld(world + new float3(h, 0, 0)) - SampleDensityWorld(world - new float3(h, 0, 0));
+            float gy = SampleDensityWorld(world + new float3(0, h, 0)) - SampleDensityWorld(world - new float3(0, h, 0));
+            float gz = SampleDensityWorld(world + new float3(0, 0, h)) - SampleDensityWorld(world - new float3(0, 0, h));
+            var g = new float3(-gx, -gy, -gz); // density falls outward, so the outward normal is the negated gradient
+            return math.lengthsq(g) > 1e-6f ? math.normalize(g) : math.normalizesafe(fallback, new float3(0, 1, 0));
+        }
+
+        /// <summary>
+        /// Per-XZ-column ground height in voxel-y, cached for <see cref="SculptureStructure"/>. Rebuilding it costs
+        /// one delegate call per column (9216 on a 96³ grid) on the main thread, which is far too much to pay at the
+        /// rate the structural rules now run; the ground under a sculpture does not move, so the table only has to be
+        /// rebuilt when the sculpture is placed or its grid is replaced. Null until first filled.
+        /// </summary>
+        [System.NonSerialized] public float[] GroundYCache;
+        [System.NonSerialized] public Matrix4x4 GroundYCacheTrs;
+        [System.NonSerialized] public Vector3 GroundYCacheOrigin;
+        [System.NonSerialized] public int GroundYCacheSize;
+
+        /// <summary>True when <see cref="GroundYCache"/> was built for this sculpture's current pose and grid.</summary>
+        public bool GroundYCacheValid =>
+            GroundYCache != null && GroundYCacheSize == Info.size
+            && GroundYCacheTrs == transform.localToWorldMatrix
+            && GroundYCacheOrigin == (Vector3)VoxelToWorld(float3.zero);
 
         /// <summary>
         /// Compaction of the snow just under a surface point (0-255): the value the tools key their feel off.
@@ -397,27 +439,38 @@ namespace Snowfield.Sculpture
         /// Returns the density removed, in cubic metres, so the caller can shed it as crumbs (conservation).
         /// Also returns the voxel AABB it touched for the structural pass.
         /// </summary>
-        public float ApplyShave(float3 worldPoint, float3 worldNormal, float radiusMetres, in ShaveParams p, out int3 aabbMin, out int3 aabbMax)
+        public float ApplyShave(float3 worldPoint, float3 worldNormal, float radiusMetres, in ShaveParams p, out int3 aabbMin, out int3 aabbMax, bool measure = true)
         {
             aabbMin = aabbMax = int3.zero;
             float3 c = WorldToVoxel(worldPoint);
             float3 n = WorldToVoxelDir(worldNormal);
             float r = MetresToVoxels(radiusMetres);
-            float reach = math.max(r, p.DepthVoxels + p.SoftVoxels) + 1f;
+            // The plane is locked for the stroke, so snow can stand a long way *above* it and still has to come off —
+            // the region has to reach a brush radius up the normal, not just the cut depth down it. The corner of that
+            // disc is sqrt(r² + rise²) from the centre; the job's own half-space test throws away the rest of the sphere.
+            float rise = math.max(r, p.DepthVoxels + p.SoftVoxels);
+            float reach = math.sqrt(r * r + rise * rise) + 1f;
             if (!Grid.SphereAabb(c, reach, out var min, out var max)) return 0f;
             int3 ext = max - min;
             int count = ext.x * ext.y * ext.z;
-            var mass = new NativeArray<float>(2, Allocator.TempJob);
-            var before = new RegionMassJob { Density = Grid.Density, Info = Info, AabbMin = min, AabbExtent = ext, Result = mass }.Schedule();
-            var shave = new ShaveJob
+            var job = new ShaveJob
             {
                 Density = Grid.Density, Compaction = Grid.Compaction, Info = Info, AabbMin = min, AabbExtent = ext,
                 CenterVoxel = c, NormalVoxel = n, RadiusVoxels = r, Params = p,
-            }.Schedule(count, 64, before);
-            var after = new NativeArray<float>(1, Allocator.TempJob);
-            new RegionMassJob { Density = Grid.Density, Info = Info, AabbMin = min, AabbExtent = ext, Result = after }.Schedule(shave).Complete();
-            float removedVoxels = math.max(0f, mass[0] - after[0]);
-            mass.Dispose(); after.Dispose();
+            };
+            float removedVoxels = 0f;
+            if (measure)
+            {
+                // Two single-threaded sweeps of the whole region; only worth it when someone actually wants the mass.
+                var mass = new NativeArray<float>(2, Allocator.TempJob);
+                var before = new RegionMassJob { Density = Grid.Density, Info = Info, AabbMin = min, AabbExtent = ext, Result = mass }.Schedule();
+                var shave = job.Schedule(count, 64, before);
+                var after = new NativeArray<float>(1, Allocator.TempJob);
+                new RegionMassJob { Density = Grid.Density, Info = Info, AabbMin = min, AabbExtent = ext, Result = after }.Schedule(shave).Complete();
+                removedVoxels = math.max(0f, mass[0] - after[0]);
+                mass.Dispose(); after.Dispose();
+            }
+            else job.Schedule(count, 64).Complete();
             Touch(min, max);
             aabbMin = min; aabbMax = max;
             float vs = Info.voxelSize;

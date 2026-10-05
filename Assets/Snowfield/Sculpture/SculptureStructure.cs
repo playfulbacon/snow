@@ -93,13 +93,25 @@ namespace Snowfield.Sculpture
             var groundY = new NativeArray<float>(GroundHeight != null ? size * size : 1, Allocator.TempJob);
             if (GroundHeight != null)
             {
-                for (int z = 0; z < size; z++)
-                for (int x = 0; x < size; x++)
+                // One delegate call per column — 9216 of them on a 96³ grid, on the main thread. The ground under a
+                // sculpture does not move, so this is built once per pose and reused; without the cache the rules
+                // could not run at anything like the rate a stroke needs them to.
+                if (!s.GroundYCacheValid)
                 {
-                    Vector3 w = s.VoxelToWorld(new float3(x + 0.5f, 0f, z + 0.5f));
-                    float gy = GroundHeight(w);
-                    groundY[x + z * size] = float.IsNaN(gy) ? float.NaN : s.WorldToVoxel(new float3(w.x, gy, w.z)).y;
+                    var built = new float[size * size];
+                    for (int z = 0; z < size; z++)
+                    for (int x = 0; x < size; x++)
+                    {
+                        Vector3 w = s.VoxelToWorld(new float3(x + 0.5f, 0f, z + 0.5f));
+                        float gy = GroundHeight(w);
+                        built[x + z * size] = float.IsNaN(gy) ? float.NaN : s.WorldToVoxel(new float3(w.x, gy, w.z)).y;
+                    }
+                    s.GroundYCache = built;
+                    s.GroundYCacheSize = size;
+                    s.GroundYCacheTrs = s.transform.localToWorldMatrix;
+                    s.GroundYCacheOrigin = (Vector3)s.VoxelToWorld(float3.zero);
                 }
+                groundY.CopyFrom(s.GroundYCache);
             }
 
             var segments = s.SupportSegments(Allocator.TempJob, out int segCount);
@@ -153,10 +165,15 @@ namespace Snowfield.Sculpture
                 ball.radius = SnowballRadius(volume);
                 ball.Sculpture.Remesh();
                 SculptureNet.RaiseDetached(s, ball, offset);
+                ball.fusesOnLanding = false; // a broken-off piece lands as a loose ball; it does not weld itself back on
                 ball.Launch(Vector3.zero); // gravity takes it; Land() raises the authoritative rest for peers
                 detached.Add(ball);
             }
-            if (islands.Length > 0) s.TouchAll();
+            // Touch only what the islands occupied. TouchAll re-dirties all 216 chunks of a 96³ grid, so the next
+            // remesh rebuilds the whole sculpture in one frame — a hitch that arrives exactly when a piece breaks
+            // off and reads as the entire sculpture changing at once, whatever actually moved.
+            for (int k = 0; k < islands.Length; k++)
+                s.Touch(islands[k].Min, islands[k].Max + 1);
 
             groundY.Dispose(); segments.Dispose(); label.Dispose(); islands.Dispose();
             return crumbs;

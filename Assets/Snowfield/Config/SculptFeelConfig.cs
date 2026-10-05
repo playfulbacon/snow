@@ -29,8 +29,8 @@ namespace Snowfield.Config
         [Range(0f, 1f)] public float smoothShoulder = 0.5f;
         [Tooltip("Blur kernel half-width in voxels (1 = 3³, 2 = 5³). Wider = beads merge in fewer strokes.")]
         [Range(1, 3)] public int smoothKernelRadius = 2;
-        [Tooltip("Compaction gained per pat tick at the brush core (0-255). Moderate: the fallback for firming loose fill in place.")]
-        public float patCompactionPerTick = 1.5f;
+        [Tooltip("Compaction gained per pat tick at the brush core (0-255). At 60 ticks/s this firms powder to packed in a second or two, which is what makes crisp carving something you can go and earn.")]
+        public float patCompactionPerTick = 2.5f;
 
         [Header("Compaction (set by how snow arrives — never a mode)")]
         [Tooltip("Compaction of snow a rolling ball picks up. Rolling IS packing.")]
@@ -39,8 +39,10 @@ namespace Snowfield.Config
         [Range(0, 255)] public int compactionScooped = 40;
         [Tooltip("The contact shell of a fuse is raised to at least this.")]
         [Range(0, 255)] public int compactionWeld = 180;
-        [Tooltip("Compaction assumed for saves/snapshots that predate the channel, and for the starter mound.")]
+        [Tooltip("Compaction assumed for saves/snapshots that predate the channel. Kept high so sculptures made before the channel existed still carve the way they did when they were made.")]
         [Range(0, 255)] public int compactionLegacy = 160;
+        [Tooltip("Compaction of snow that simply fell — the starter mound. Low on purpose: fresh snow is powder, and the whole compaction range is only legible if ordinary snow starts at the bottom of it.")]
+        [Range(0, 255)] public int compactionFresh = 60;
         [Tooltip("Mean compaction at or above which a held ball counts as packed: RMB carves it instead of squeezing it.")]
         [Range(0, 255)] public int packedThreshold = 200;
         [Tooltip("Volume lost per full compaction span gained (0 → 255). ~1/3: packing = same snow, smaller. The one multiplier shared by pat and squeeze.")]
@@ -61,9 +63,19 @@ namespace Snowfield.Config
         [Range(0f, 0.6f)] public float shaveNoiseFluffy = 0.3f;
         [Tooltip("After a fluffy cut, one relaxation pass at this strength rounds the cut edges off (slump).")]
         [Range(0f, 1f)] public float slumpStrength = 0.5f;
+        [Tooltip("Packing at or above which nothing slumps. The slump is a blur, so it also pushes snow back into the cut — on firm snow that quietly undid the stroke.")]
+        [Range(0f, 1f)] public float slumpPackCeiling = 0.35f;
+        [Tooltip("Slump radius as a fraction of the brush. Under 1 so the relaxation stays inside the cut instead of dragging the surrounding wall in after it.")]
+        [Range(0.2f, 1.5f)] public float slumpRadiusFraction = 0.6f;
+        [Tooltip("Hard cap on cut depth as a multiple of the stamp radius. Stops score on powder (fluffy × score multipliers) asking for a deep puncture down a narrow groove.")]
+        [Range(0.25f, 4f)] public float shaveDepthRadiusCap = 1.5f;
+        [Tooltip("How far a shave stroke may sweep from where it started, in brush radii. The cut plane is locked at mouse-down, so without this the plane could be swung out to the horizon.")]
+        [Range(1f, 20f)] public float shaveMaxSweep = 6f;
         [Tooltip("A new stamp lands every this-many brush radii of cursor travel along the surface.")]
         [Range(0.1f, 1f)] public float shaveStampSpacing = 0.35f;
-        [Tooltip("Shaved-off snow sheds as loose lumps at your feet once this much has come off (m³). 0.0005 ≈ a 5 cm ball.")]
+        [Tooltip("Shaved-off snow drops as loose lumps at your feet. Off (default): shavings simply vanish. Conservation says they should pile up, but a carving pass spits out a litter of balls that get in the way and read as bugs.")]
+        public bool shedShavings = false;
+        [Tooltip("Shaved-off snow sheds as loose lumps at your feet once this much has come off (m³). 0.0005 ≈ a 5 cm ball. Only used when shedShavings is on.")]
         public float shedVolume = 0.0005f;
         [Tooltip("Fluffy snow over-sheds: lumps this many times bigger and crumblier.")]
         public float shedFluffyMultiplier = 2.5f;
@@ -191,7 +203,9 @@ namespace Snowfield.Config
 
         public float ShaveShoulder(float pack) => Mathf.Lerp(shaveShoulderFluffy, shaveShoulderPacked, pack);
         public float ShaveNoise(float pack) => shaveNoiseFluffy * (1f - pack);
-        public float Slump(float pack) => slumpStrength * (1f - pack);
+        /// <summary>Slump strength: full on powder, gone by <see cref="slumpPackCeiling"/>. Firm snow holds the edge it was given.</summary>
+        public float Slump(float pack)
+            => slumpPackCeiling <= 0f ? 0f : slumpStrength * Mathf.Clamp01((slumpPackCeiling - pack) / slumpPackCeiling);
         public float ShedVolume(float pack) => shedVolume * Mathf.Lerp(shedFluffyMultiplier, 1f, pack);
 
         /// <summary>The bite falloff: small bites in packed snow terminate crisply; everything else is the soft add shoulder.</summary>

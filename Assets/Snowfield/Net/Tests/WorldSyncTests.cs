@@ -249,7 +249,7 @@ namespace Snowfield.Net.Tests
             for (int i = 0; i < 3; i++)
             {
                 Vector3 p = top + new Vector3(0.03f * i, 0f, 0f);
-                stamps.Add(new SculptureNet.ShaveStamp { point = p, normal = Vector3.up, prm = SculptureShave.ParamsFor(_cfg, _cfg.voxelSize, pack, false, p) });
+                stamps.Add(new SculptureNet.ShaveStamp { point = p, normal = Vector3.up, prm = SculptureShave.ParamsFor(_cfg, _cfg.voxelSize, 0.12f, pack, false, p) });
             }
             float slump = _cfg.Slump(pack);
             SculptureShave.ApplyStamps(s, 0.12f, slump, stamps, out _, out _);

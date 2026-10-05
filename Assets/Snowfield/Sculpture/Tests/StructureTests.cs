@@ -82,8 +82,8 @@ namespace Snowfield.Sculpture.Tests
             while (surfaceY > 0f && s.SampleDensityWorld(new Vector3(5f, surfaceY, 5f)) < 128f) surfaceY -= 0.005f;
             Vector3 top = new Vector3(5f, surfaceY, 5f);
             float packBefore = s.CompactionUnderSurface(top, Vector3.up);
-            Assert.AreEqual(_cfg.compactionLegacy, packBefore, 2f);
-            var prm = SculptureShave.ParamsFor(_cfg, _cfg.voxelSize, 1f, false, top);
+            Assert.AreEqual(_cfg.compactionFresh, packBefore, 2f, "a fresh mound is powder, not settled snow");
+            var prm = SculptureShave.ParamsFor(_cfg, _cfg.voxelSize, 0.15f, 1f, false, top);
             float removed = s.ApplyShave(top, Vector3.up, 0.15f, prm, out var min, out var max);
             s.Remesh();
             yield return null;

@@ -43,8 +43,10 @@ namespace Snowfield.Player
         public float throwTapThreshold = 0.2f;
         [Tooltip("A carried ball rolls on the ground only while the cursor points within this distance of you; otherwise it is held overhead.")]
         public float rollEngageDistance = 2.2f;
-        [Tooltip("While shaving, colliders re-cook this often (s) so a long drag keeps finding the receding surface.")]
-        public float shaveColliderRefresh = 0.5f;
+        [Tooltip("While shaving, colliders re-cook this often (s) so you can walk on and re-aim at what you just carved. The cut itself no longer waits on this — the plane is locked at mouse-down.")]
+        public float shaveColliderRefresh = 0.2f;
+        [Tooltip("How often (s) the structural rules run during a stroke. This is how soon a piece you cut free actually falls, so it wants to be fast enough that the break belongs to the cut.")]
+        public float structurePassInterval = 0.15f;
         [Header("Brush cursor colours")]
         [Tooltip("Cursor while smoothing (Shift held).")]
         public Color cursorAddColor = new Color(0.4f, 0.7f, 1f, 0.25f);
@@ -65,6 +67,10 @@ namespace Snowfield.Player
         /// <summary>Hit point/normal of whatever the centre ray struck (sculpture, ball, ground...).</summary>
         public float3 BrushPoint { get; private set; }
         public float3 BrushNormal { get; private set; }
+        /// <summary>The centre ray itself, valid whether or not it hit anything. A locked shave plane is aimed with this, not with a hit.</summary>
+        public Ray AimRay { get; private set; }
+        /// <summary>Where reach is measured from this frame (shoulder height, not the camera).</summary>
+        public Vector3 AimOrigin { get; private set; }
         /// <summary>Aiming at sculpture snow (not a prop).</summary>
         public bool HasHit { get; private set; }
         /// <summary>Aiming at the ground within reach.</summary>
@@ -101,9 +107,20 @@ namespace Snowfield.Player
 
         // ---- shave stroke state ----
         Vector3 _lastStampPoint;
-        Vector3 _lastStampNormal;
         bool _hasLastStamp;
         float _colliderRefresh;
+        float _structureAccum;
+        /// <summary>
+        /// The cut plane, locked at mouse-down and held for the whole stroke. This is what makes shave a carving
+        /// tool rather than a peeler: re-deriving the plane from the surface under the cursor every stamp means
+        /// removing a constant-thickness shell that follows the bumps it is meant to take off. One plane per
+        /// stroke makes the operator "remove everything above this", so a sweep levels and a second pass over
+        /// levelled snow correctly does nothing.
+        /// </summary>
+        Vector3 _cutOrigin, _cutNormal;
+        ShaveParams _cutParams;
+        float _cutPack, _cutSlump;
+        bool _hasCutPlane;
         readonly List<SculptureNet.ShaveStamp> _stamps = new List<SculptureNet.ShaveStamp>();
         readonly Dictionary<SnowSculpture, (int3 min, int3 max)> _strokeRegions = new Dictionary<SnowSculpture, (int3, int3)>();
         /// <summary>Snow shaved off but not yet shed at the feet (m³), and its packing (mass-weighted).</summary>
@@ -186,8 +203,8 @@ namespace Snowfield.Player
                 }
                 if (IsShaveOp(CurrentOp))
                 {
-                    // A shave plane follows the collider surface; without a mid-stroke cook a long drag would
-                    // keep landing on the pre-cut surface and stop biting. On release Flush cooks anyway.
+                    // Re-cook so you can walk on and re-aim at what you just carved. The stroke's own cut no longer
+                    // depends on this — its plane was locked at mouse-down.
                     _colliderRefresh += Time.deltaTime;
                     if (_colliderRefresh >= shaveColliderRefresh)
                     {
@@ -195,6 +212,15 @@ namespace Snowfield.Player
                         foreach (var t in _dirtyTargets)
                             if (!(t is Component c && c == null)) t.RebuildColliders();
                     }
+                }
+                // Breakage has to land while you are still cutting, on its own clock. Riding the collider timer meant
+                // any stroke shorter than one cook got no pass at all and dropped everything the instant you let go.
+                // The accumulator deliberately survives stroke start, so a quick tap still breaks promptly.
+                _structureAccum += Time.deltaTime;
+                if (_structureAccum >= structurePassInterval)
+                {
+                    _structureAccum = 0f;
+                    RunStructurePasses();
                 }
             }
         }
@@ -396,6 +422,8 @@ namespace Snowfield.Player
             AimedPack = 0f;
             var ray = viewCamera.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
             Vector3 origin = reachOrigin != null ? reachOrigin.position + Vector3.up : ray.origin;
+            AimRay = ray;
+            AimOrigin = origin;
             float rayLength = maxReach + Vector3.Distance(ray.origin, origin);
 
             if (!Physics.Raycast(ray, out var hit, rayLength, sculptMask, QueryTriggerInteraction.Collide)) return;
@@ -678,7 +706,9 @@ namespace Snowfield.Player
                 cursor.gameObject.SetActive(show);
                 if (show)
                 {
-                    cursor.position = BrushPoint;
+                    // Mid-shave the cursor rides the locked plane, not the surface: that is where the cut actually
+                    // lands, and watching it slide along a flat while the snow falls away is the whole read.
+                    cursor.position = _hasCutPlane && AimOnCutPlane(out var onPlane) ? onPlane : (Vector3)BrushPoint;
                     cursor.localScale = Vector3.one * (rmb && !lmb && shift ? radius * config.scoreRadiusFraction : radius) * 2f;
                     SetCursorColor(rmb && !lmb ? cursorShaveColor : shift ? cursorAddColor : cursorCarveColor);
                 }
@@ -694,6 +724,8 @@ namespace Snowfield.Player
                     _hasLastStamp = false;
                     _colliderRefresh = 0f;
                     _strokeRegions.Clear();
+                    _hasCutPlane = false;
+                    if (IsShaveOp(op)) LockCutPlane(target, radius, shift);
                 }
                 if (IsShaveOp(op)) { ShaveTick(op, target, radius, shift); return; }
 
@@ -734,66 +766,106 @@ namespace Snowfield.Player
             }
         }
 
+        /// <summary>The stamp footprint: a score is a fraction of the brush, floored at a couple of voxels.</summary>
+        float StampRadius(float radius, bool score)
+            => score ? Mathf.Max(radius * config.scoreRadiusFraction, config.voxelSize * 2f) : radius;
+
         /// <summary>
-        /// Shave/score is stamped along the drag path, not per tick: a stamp lands every shaveStampSpacing radii
-        /// of cursor travel over the surface, so a fast drag does not gap and a still cursor takes one layer.
-        /// Params derive from the packing under the cursor (crisp and thin on packed snow, deep, ragged and
-        /// slumping on powder) and are sent verbatim so peers replay the identical cut.
+        /// Fix the plane this stroke cuts to, once, at mouse-down: where it sits, which way it faces, how deep it
+        /// goes and how the snow there behaves. Orientation comes from the density gradient rather than the
+        /// collider's triangle normal — the latter swings by tens of degrees between neighbouring marching-cubes
+        /// facets, so a plane built on it would tilt differently for every stamp and could never cut a flat face.
+        /// </summary>
+        void LockCutPlane(IBrushTarget target, float radius, bool score)
+        {
+            var s = target as SnowSculpture;
+            _cutOrigin = BrushPoint;
+            _cutNormal = s != null
+                ? (Vector3)s.GradientNormalWorld(BrushPoint, BrushNormal)
+                : (Vector3)math.normalizesafe(BrushNormal, new float3(0, 1, 0));
+            _cutPack = AimedPack;
+            _cutSlump = config.Slump(_cutPack);
+            _cutParams = SculptureShave.ParamsFor(config, s != null ? s.Info.voxelSize : config.voxelSize,
+                                                  StampRadius(radius, score), _cutPack, score, BrushPoint);
+            _hasCutPlane = true;
+        }
+
+        /// <summary>
+        /// Where the aim ray meets the locked cut plane. This, not a fresh raycast, is what the stroke follows: the
+        /// colliders it would have to hit are only re-cooked a few times a second, so aiming at them made repeated
+        /// stamps land on an already-removed surface and take nothing.
+        /// </summary>
+        bool AimOnCutPlane(out Vector3 point)
+        {
+            point = _cutOrigin;
+            var ray = AimRay;
+            float denom = Vector3.Dot(ray.direction, _cutNormal);
+            if (Mathf.Abs(denom) < 0.15f) return false;   // grazing the plane: the intersection runs off to infinity
+            float t = Vector3.Dot(_cutOrigin - ray.origin, _cutNormal) / denom;
+            if (t <= 0f) return false;                    // the plane is behind you
+            Vector3 p = ray.origin + ray.direction * t;
+            if (Vector3.Distance(p, AimOrigin) > maxReach) return false;
+            // The plane is infinite, the stroke is not — otherwise the cursor could drag the cut out to the horizon.
+            if (Vector3.Distance(p, _cutOrigin) > config.shaveMaxSweep * CurrentRadius()) return false;
+            point = p;
+            return true;
+        }
+
+        /// <summary>
+        /// Shave/score is stamped along the drag path, not per tick: a stamp lands every shaveStampSpacing radii of
+        /// cursor travel across the locked plane, so a fast drag does not gap and a still cursor takes one layer and
+        /// stops. Every stamp shares the stroke's plane and params, so the whole drag is one cut and peers replay it
+        /// verbatim.
         /// </summary>
         void ShaveTick(BrushOp op, IBrushTarget aimed, float radius, bool score)
         {
-            float stampRadius = score
-                ? Mathf.Max(radius * config.scoreRadiusFraction, config.voxelSize * 2f)
-                : radius;
-            Vector3 point = BrushPoint, normal = BrushNormal;
+            if (!_hasCutPlane) return;
+            float stampRadius = StampRadius(radius, score);
+            if (!AimOnCutPlane(out Vector3 point)) return;
+
             _stamps.Clear();
             if (!_hasLastStamp)
             {
-                _stamps.Add(new SculptureNet.ShaveStamp { point = point, normal = normal });
+                _stamps.Add(new SculptureNet.ShaveStamp { point = point, normal = _cutNormal, prm = _cutParams });
             }
             else
             {
                 float spacing = Mathf.Max(config.shaveStampSpacing * stampRadius, config.voxelSize * 0.5f);
                 Vector3 travel = point - _lastStampPoint;
                 int k = Mathf.Min(8, Mathf.FloorToInt(travel.magnitude / spacing));
+                if (k == 0) return; // not far enough yet
                 for (int i = 1; i <= k; i++)
                 {
                     float t = i / (float)k;
                     _stamps.Add(new SculptureNet.ShaveStamp
                     {
                         point = Vector3.Lerp(_lastStampPoint, point, t),
-                        normal = Vector3.Slerp(_lastStampNormal, normal, t).normalized,
+                        normal = _cutNormal,
+                        prm = _cutParams,
                     });
                 }
-                if (k == 0) return; // not far enough yet
             }
-            _lastStampPoint = point; _lastStampNormal = normal; _hasLastStamp = true;
+            _lastStampPoint = point; _hasLastStamp = true;
 
-            float pack = AimedPack;
-            float slump = config.Slump(pack);
-            for (int i = 0; i < _stamps.Count; i++)
-            {
-                var st = _stamps[i];
-                st.prm = SculptureShave.ParamsFor(config, Target != null ? Target.Info.voxelSize : config.voxelSize, pack, score, st.point);
-                _stamps[i] = st;
-            }
-
+            // Measuring the removed mass costs two single-threaded sweeps of the region per stamp, and the only
+            // consumer is the shed pile — which is off unless you ask for it.
+            bool measure = config.shedShavings;
             GatherStrokeTargets(aimed, stampRadius);
             float removed = 0f;
             foreach (var t in _strokeTargets)
             {
                 if (!(t is SnowSculpture s) || s == null) continue;
                 _dirtyTargets.Add(s);
-                removed += SculptureShave.ApplyStamps(s, stampRadius, slump, _stamps, out int3 min, out int3 max);
+                removed += SculptureShave.ApplyStamps(s, stampRadius, _cutSlump, _stamps, out int3 min, out int3 max, measure);
                 if (math.all(max > min)) GrowRegion(s, min, max);
             }
             CollectNetTargets(null);
             if (_netTargets.Count > 0)
                 SculptureNet.RaiseShaved(new SculptureNet.ShaveInfo
-                { radius = stampRadius, slump = slump, stamps = _stamps, targets = _netTargets });
-            SnowAudio.Play(SnowAudio.Kind.Shave, point, pack, score ? 0.6f : 1f);
+                { radius = stampRadius, slump = _cutSlump, stamps = _stamps, targets = _netTargets });
+            SnowAudio.Play(SnowAudio.Kind.Shave, point, _cutPack, score ? 0.6f : 1f);
 
-            if (removed > 0f) AddCrumbs(removed, pack);
+            if (removed > 0f) AddCrumbs(removed, _cutPack);
         }
 
         void GrowRegion(SnowSculpture s, int3 min, int3 max)
@@ -808,6 +880,9 @@ namespace Snowfield.Player
 
         void AddCrumbs(float volume, float pack)
         {
+            // Shedding is opt-in: a carving pass otherwise litters the ground with little balls you then have to
+            // walk through. The snow is simply gone instead — conservation loses, legibility wins.
+            if (config == null || !config.shedShavings) return;
             _crumbs += volume;
             _crumbPackMass += volume * pack;
             float lump = config.ShedVolume(pack);
@@ -825,20 +900,34 @@ namespace Snowfield.Player
 
             float r = SculptureStructure.SnowballRadius(volume);
             var body = Body;
-            Vector3 lateral = body.right * Random.Range(-0.3f, 0.3f);
+            Vector3 lateral = body.right * UnityEngine.Random.Range(-0.3f, 0.3f);
             Vector3 foot = body.position + body.forward * (0.35f + r) + lateral;
             var ground = SnowGround.Instance;
             float groundY = ground != null && ground.IsCreated ? ground.SampleHeight(foot) : body.position.y;
             Vector3 pos = new Vector3(foot.x, groundY + r + 0.25f, foot.z);
-            Vector3 vel = body.forward * Random.Range(0.2f, 0.6f) + lateral * 0.5f;
+            Vector3 vel = body.forward * UnityEngine.Random.Range(0.2f, 0.6f) + lateral * 0.5f;
 
             var lump = factory.CreateSnowball(pos, r, config.compactionScooped);
+            lump.fusesOnLanding = false; // shavings pile at your feet; they never weld back onto the piece or each other
             lump.Launch(vel, Vector3.zero, Roller.OwnColliders());
             SculptureNet.RaiseShed(lump, vel);
             SnowAudio.Play(SnowAudio.Kind.Crumble, pos, 0f, 0.5f);
         }
 
         // ---------- structure ----------
+
+        /// <summary>
+        /// Apply the structural rules to everything edited since the last pass, and forget those regions. Called on a
+        /// timer during a shave as well as at the end of the stroke, so a cut that frees a piece drops it there and
+        /// then — the feedback belongs to the cut that caused it, not to letting go of the button.
+        /// </summary>
+        void RunStructurePasses()
+        {
+            if (_strokeRegions.Count == 0) return;
+            foreach (var kv in _strokeRegions)
+                if (kv.Key != null) CheckStructure(kv.Key, kv.Value.min, kv.Value.max);
+            _strokeRegions.Clear();
+        }
 
         /// <summary>After a removal on a fixed sculpture: thin bits crumble into the shed pile, islands drop as balls.</summary>
         void CheckStructure(SnowSculpture s, int3 regionMin, int3 regionMax)
@@ -908,13 +997,9 @@ namespace Snowfield.Player
             _dirtyTargets.Clear();
             _remeshAccumulator = 0f;
             _hasLastStamp = false;
+            _hasCutPlane = false;
 
-            if (_strokeRegions.Count > 0)
-            {
-                foreach (var kv in _strokeRegions)
-                    if (kv.Key != null) CheckStructure(kv.Key, kv.Value.min, kv.Value.max);
-                _strokeRegions.Clear();
-            }
+            RunStructurePasses(); // the tail of the stroke; mid-stroke passes already handled the rest
             // Leftover shavings worth a lump go now rather than riding to the next stroke.
             float lump = config != null ? config.ShedVolume(_crumbs > 0f ? _crumbPackMass / _crumbs : 0f) : 0f;
             if (lump > 0f && _crumbs >= lump * 0.3f) ShedLump(_crumbs);

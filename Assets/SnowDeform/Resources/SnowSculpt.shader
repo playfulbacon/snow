@@ -17,8 +17,13 @@ Shader "SnowDays/SnowSculpt"
         // Multiplies the ambient probe so shadowed snow reads cold.
         _SnowShadowTint("Shadow Tint", Color) = (0.72, 0.82, 1.0, 1)
         _SnowLightBands("Light Bands", Range(2, 6)) = 3
-        // Packed snow reads denser and bluer: albedo is multiplied by this at full compaction.
-        _SnowPackedTint("Packed Tint", Color) = (0.86, 0.90, 1.0, 1)
+        // Packed snow reads denser and bluer: albedo is multiplied by this at full compaction. Matched to the
+        // ground shell's trench tint, because trampled snow is the reference the eye already has for "this snow
+        // has been pressed" - and a subtler tint than that does not survive the posterized grade.
+        _SnowPackedTint("Packed Tint", Color) = (0.72, 0.78, 0.90, 1)
+        // ...and darkens, the same way a footprint does. Tint alone moves near-white snow by less than one
+        // quantization step of the 5-bit output; the occlusion term is what actually makes packing legible.
+        _SnowPackedAO("Packed Occlusion", Range(0, 1)) = 0.35
     }
 
     SubShader
@@ -38,6 +43,7 @@ Shader "SnowDays/SnowSculpt"
         half4 _SnowAlbedo;
         half4 _SnowShadowTint;
         half4 _SnowPackedTint;
+        half _SnowPackedAO;
         half _SnowLightBands;
         float _SnowTexTiling;
         CBUFFER_END
@@ -118,7 +124,8 @@ Shader "SnowDays/SnowSculpt"
                 half3 albedo = SnowTexTriplanar(positionWS, normalWS, _SnowTexTiling) * _SnowAlbedo.rgb;
                 // Packed snow: the same texture, slightly denser and bluer. This is how the material teaches itself.
                 albedo *= lerp(half3(1, 1, 1), _SnowPackedTint.rgb, input.packing);
-                half3 color = SnowShade(inputData, albedo, 1.0, _SnowShadowTint.rgb, _SnowLightBands);
+                half occlusion = 1.0 - input.packing * _SnowPackedAO;
+                half3 color = SnowShade(inputData, albedo, occlusion, _SnowShadowTint.rgb, _SnowLightBands);
 
                 color = MixFog(color, input.fogFactor);
                 return half4(color, 1);

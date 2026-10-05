@@ -952,6 +952,9 @@ namespace Snowfield.Net
                 h = h * 31 + BitConverter.SingleToInt32Bits(c.packShrinkFraction);
                 h = h * 31 + BitConverter.SingleToInt32Bits(c.scoopRadius);
                 h = h * 31 + BitConverter.SingleToInt32Bits(c.ticksPerSecond);
+                // The shave params ride the wire, but the slump strength and radius are re-derived per peer.
+                h = h * 31 + BitConverter.SingleToInt32Bits(c.slumpPackCeiling);
+                h = h * 31 + BitConverter.SingleToInt32Bits(c.slumpRadiusFraction);
                 return h;
             }
         }

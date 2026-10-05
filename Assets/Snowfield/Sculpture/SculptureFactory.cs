@@ -61,7 +61,7 @@ namespace Snowfield.Sculpture
         public SnowSculpture CreateMound(Vector3 groundPoint, float radius)
         {
             var s = CreateAt(groundPoint);
-            s.StampSphere(groundPoint, radius, 0.7f, config.compactionLegacy, clipBelowWorldY: groundPoint.y - config.voxelSize);
+            s.StampSphere(groundPoint, radius, 0.7f, config.compactionFresh, clipBelowWorldY: groundPoint.y - config.voxelSize);
             s.Remesh();
             s.RebuildColliders();
             return s;
@@ -122,6 +122,7 @@ namespace Snowfield.Sculpture
                 big.Remesh();
                 big.RebuildColliders();
                 SculptureNet.RaiseReplaced(ball.Sculpture, big);
+                ball.Fix(); ball.Sculpture.MarkConsumed(); // a second landing on it this step must not promote it again
                 Destroy(ball.gameObject);
                 return big;
             }
@@ -176,6 +177,7 @@ namespace Snowfield.Sculpture
                 big.RebuildColliders();
                 Debug.Log($"[Snowfield] Regrew sculpture {s.Info.size}³ → {sizeVox}³");
                 SculptureNet.RaiseReplaced(s, big);
+                s.MarkConsumed();
                 Destroy(s.gameObject);
             }
             finally { SculptureNet.PopStructural(); }
@@ -198,12 +200,16 @@ namespace Snowfield.Sculpture
         public SnowSculpture Fuse(SnowSculpture target, SnowSculpture source)
         {
             if (target == null || source == null || target == source) return target;
+            if (target.Consumed || source.Consumed) return target; // already absorbed elsewhere this frame; Destroy is pending
             SculptureNet.RaiseFuseCommitted(target, source); // before EnsureRoom: ids + source pose still readable
             SculptureNet.PushStructural();
             try
             {
                 target = EnsureRoom(target);
-                var srcBounds = source.WorldBounds;
+                // Only the snow has to fit, not the source grid: a loose ball carries a 1.44 m grid box around a
+                // 7 cm lump, and testing the box regrew the target on nearly every landing.
+                var srcBounds = source.SnowBoundsWorld();
+                srcBounds.Expand(2f * source.Info.voxelSize);
                 if (!(target.WorldBounds.Contains(srcBounds.min) && target.WorldBounds.Contains(srcBounds.max)))
                     target = Regrow(target, srcBounds);
                 target.Absorb(source);
@@ -217,6 +223,7 @@ namespace Snowfield.Sculpture
                 var targetBall = target.GetComponent<Snowball>();
                 if (targetBall != null) targetBall.Fix();
                 SculptureNet.RaiseRemoved(source);
+                source.MarkConsumed();
                 Destroy(source.gameObject);
                 return target;
             }
@@ -257,8 +264,9 @@ namespace Snowfield.Sculpture
             finally { SculptureNet.PopStructural(); }
             SculptureNet.RaiseBurst(ball, crumbs, velocities); // before Removed: the ball's id must still resolve
             SculptureNet.RaiseRemoved(ball.Sculpture);
+            ball.Sculpture.MarkConsumed();
             Destroy(ball.gameObject);
-            for (int i = 0; i < n; i++) crumbs[i].Launch(velocities[i]);
+            for (int i = 0; i < n; i++) { crumbs[i].fusesOnLanding = false; crumbs[i].Launch(velocities[i]); } // debris piles, it does not weld
             return crumbs;
         }
     }

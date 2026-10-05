@@ -20,10 +20,12 @@ namespace Snowfield.Voxel
     }
 
     /// <summary>
-    /// Surface-relative removal: a shallow disc oriented by the surface normal at the hit point, brush-radius
-    /// wide and <see cref="Params"/>.DepthVoxels deep. Everything above the cut plane inside the disc is removed
-    /// outright, so repeated passes take the local high spots first and the surface converges on the stroke
-    /// path rather than the tool shape. Bite decides where material isn't; this decides what the surface is like.
+    /// Surface-relative removal: a shallow disc oriented by the cut plane's normal, brush-radius wide and
+    /// <see cref="Params"/>.DepthVoxels deep. Everything above the plane inside the disc is clamped down to it, so
+    /// the local high spots go first and the surface converges on the stroke rather than the tool shape. The
+    /// caller owns the plane and must hold it still for the length of a stroke — re-deriving it from whatever
+    /// surface is left turns this into a shell peeler that follows the very bumps it is meant to take off.
+    /// Bite decides where material isn't; this decides what the surface is like.
     /// </summary>
     [BurstCompile]
     public struct ShaveJob : IJobParallelFor
@@ -52,10 +54,14 @@ namespace Snowfield.Voxel
             float wl = BrushMath.Falloff(lateral / math.max(r, 0.5f), Params.Shoulder);
             if (wl <= 0f) return;
             float wd = h >= floor ? 1f : math.smoothstep(floor - Params.SoftVoxels, floor, h);
-            float remove = 255f * wl * wd;
-            if (remove <= 0f) return;
+            // Clamp down to the plane rather than subtracting from what is there. Subtracting makes the pass depend
+            // on how much snow it finds, so running it twice keeps eating — the tool could never settle on a
+            // surface. As a min it is idempotent: once the snow is at or under the cut, further passes do nothing,
+            // which is what lets repeated strokes converge on a flat instead of digging a hole.
+            float ceiling = 255f * (1f - wl * wd);
             int idx = Info.Index(p);
-            float v = math.max(0f, Density[idx] - remove);
+            if (Density[idx] <= ceiling) return;
+            float v = ceiling;
             Density[idx] = (byte)math.round(v);
             if (v < 0.5f) { Density[idx] = 0; Compaction[idx] = 0; }
         }
