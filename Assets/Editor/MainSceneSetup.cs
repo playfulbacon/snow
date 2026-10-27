@@ -1,3 +1,4 @@
+using System.IO;
 using Snowfield.Config;
 using Snowfield.Player;
 using Snowfield.Sculpture;
@@ -14,6 +15,8 @@ namespace SnowDays.EditorTools
     /// Layout follows the sandbox convention — one responsibility per GameObject:
     ///   Player (SnowDays.PlayerController +HandRig) › SculptTool (+AccessoryPlacer +SnowballRoller) · CarryAnchor · PalmAnchor
     ///   root: Sculptures (SculptureFactory) · SaveLoad (SaveLoadManager) · BrushCursor (inactive) · HUD (ToolHud)
+    /// Those four roots and the player come from prefabs under Assets/Prefabs and Assets/Player, created on the
+    /// first run from whatever the scene already had, so every scene stands the same kit.
     /// SnowDeformSystem / SnowfallSystem / SnowDeformGroundAdapter need no scene objects (runtime bootstraps).
     /// All references are assigned directly (SerializedProperty drops custom ScriptableObject refs in batchmode).
     /// </summary>
@@ -24,6 +27,9 @@ namespace SnowDays.EditorTools
         const string SnowMatPath = "Assets/Settings/Snow.mat";
         const string SculptShaderPath = "Assets/SnowDeform/Resources/SnowSculpt.shader";
         const string CursorMatPath = "Assets/Settings/BrushCursor.mat";
+        const string KitPrefabFolder = "Assets/Prefabs";
+        const string GamePrefabPath = KitPrefabFolder + "/Game.prefab";
+        const string GameRootName = "Game";
         const string ReticlePath = "Assets/reticle-2.png";
         const string LeftClickPath = "Assets/left-click.png";
         const string RightClickPath = "Assets/right-click.png";
@@ -33,22 +39,45 @@ namespace SnowDays.EditorTools
         {
             var scene = EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
 
+            // Main is a night scene, so the HUD's default dark status text vanishes against it.
+            if (!EnsureKit(scene, networking: true, statusText: new Color(0.85f, 0.88f, 0.95f)))
+            {
+                if (Application.isBatchMode) EditorApplication.Exit(1);
+                return;
+            }
+
+            EditorSceneManager.MarkSceneDirty(scene);
+            EditorSceneManager.SaveScene(scene);
+            Debug.Log("[MainSceneSetup] Sculpting kit ensured in Main scene.");
+            if (Application.isBatchMode) EditorApplication.Exit(0);
+        }
+
+        /// <summary>
+        /// Wire the sculpting kit around a player that is already in the open scene. Shared by the Main scene and
+        /// the Snow Gym rather than copied into each: a test bench wired differently from the real scene is worse
+        /// than no test bench, because it lies. Callers own opening and saving the scene. False = a required asset
+        /// is missing and nothing was changed.
+        /// </summary>
+        internal static bool EnsureKit(UnityEngine.SceneManagement.Scene scene,
+                                       bool networking, Color? statusText)
+        {
             var config = AssetDatabase.LoadAssetAtPath<SculptFeelConfig>(ConfigPath);
             var snowMat = AssetDatabase.LoadAssetAtPath<Material>(SnowMatPath);
             if (config == null || snowMat == null)
             {
                 Debug.LogError($"[MainSceneSetup] Missing {ConfigPath} or {SnowMatPath}; aborting.");
-                if (Application.isBatchMode) EditorApplication.Exit(1);
-                return;
+                return false;
             }
-
-            var player = Object.FindAnyObjectByType<PlayerController>();
+            Transform game = EnsureGame(scene);
+            var player = game.GetComponentInChildren<PlayerController>(true)
+                      ?? Object.FindAnyObjectByType<PlayerController>();
             if (player == null)
             {
-                Debug.LogError("[MainSceneSetup] No SnowDays.PlayerController in the scene; aborting.");
-                if (Application.isBatchMode) EditorApplication.Exit(1);
-                return;
+                Debug.LogError("[MainSceneSetup] No SnowDays.PlayerController in the scene and none in "
+                               + GamePrefabPath + "; aborting.");
+                return false;
             }
+            if (player.transform.parent != game) player.transform.SetParent(game, true);
             var viewCamera = player.GetComponentInChildren<Camera>(true);
 
             SyncSnowMaterial(snowMat);
@@ -60,24 +89,23 @@ namespace SnowDays.EditorTools
             int sculptMask = ~(1 << ignoreRaycast);
 
             // --- Sculptures container + factory ---
-            var sculpturesGo = GameObject.Find("Sculptures") ?? new GameObject("Sculptures");
+            var sculpturesGo = EnsureUnder(scene, game, "Sculptures", () => new GameObject("Sculptures"));
             var factory = sculpturesGo.GetComponent<SculptureFactory>() ?? sculpturesGo.AddComponent<SculptureFactory>();
             factory.config = config;
             factory.snowMaterial = snowMat;
             factory.container = sculpturesGo.transform;
 
             // --- Save/load ---
-            var saveGo = GameObject.Find("SaveLoad") ?? new GameObject("SaveLoad");
+            var saveGo = EnsureUnder(scene, game, "SaveLoad", () => new GameObject("SaveLoad"));
             if (saveGo.GetComponent<SaveLoadManager>() == null) saveGo.AddComponent<SaveLoadManager>();
 
             // --- Brush cursor (inactive sphere, searched with GetComponentsInChildren(true)) ---
-            var cursorGo = FindInactiveRoot(scene, "BrushCursor");
-            if (cursorGo == null)
+            var cursorGo = EnsureUnder(scene, game, "BrushCursor", () =>
             {
-                cursorGo = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-                cursorGo.name = "BrushCursor";
-                Object.DestroyImmediate(cursorGo.GetComponent<Collider>());
-            }
+                var go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                Object.DestroyImmediate(go.GetComponent<Collider>());
+                return go;
+            });
             var cursorMr = cursorGo.GetComponent<MeshRenderer>();
             var cursorMat = AssetDatabase.LoadAssetAtPath<Material>(CursorMatPath);
             if (cursorMat != null) cursorMr.sharedMaterial = cursorMat;
@@ -125,23 +153,32 @@ namespace SnowDays.EditorTools
             tool.hands = rig;
 
             // --- HUD ---
-            var hudGo = GameObject.Find("HUD") ?? new GameObject("HUD", typeof(RectTransform));
+            var hudGo = EnsureUnder(scene, game, "HUD", () => new GameObject("HUD", typeof(RectTransform)));
             var hud = hudGo.GetComponent<ToolHud>() ?? hudGo.AddComponent<ToolHud>();
             hud.tool = tool;
             hud.placer = placer;
             hud.cursor.defaultIcon = AssetDatabase.LoadAssetAtPath<Sprite>(ReticlePath);
             hud.cursor.primaryInputIcon = AssetDatabase.LoadAssetAtPath<Sprite>(LeftClickPath);
             hud.cursor.secondaryInputIcon = AssetDatabase.LoadAssetAtPath<Sprite>(RightClickPath);
-            hud.colors.statusText = new Color(0.85f, 0.88f, 0.95f); // Main is a night scene; the default dark text vanishes
+            if (statusText.HasValue) hud.colors.statusText = statusText.Value;
+
+            // --- join code, corner of the screen while a session is up ---
+            EnsureJoinCode(scene, game);
+
+            // --- planar shave preview ---
+            tool.planeCut = EnsurePlaneCut(game);
+
+            // Everything is wired, and because it all hangs off one root those references are internal to the
+            // prefab and will actually serialise. Promote before the HUD builds its tree: ToolHud.Build wipes the
+            // canvas's children with DestroyImmediate and Unity forbids destroying a child that belongs to a
+            // prefab, so the asset must hold the Canvas and the tuned fields and nothing underneath.
+            PromoteGame(game.gameObject);
             hud.RebuildNow();
 
             // --- Multiplayer: NetworkManager root + avatar/channel prefabs ---
-            NetSceneSetup.Ensure();
+            if (networking) NetSceneSetup.Ensure();
 
-            EditorSceneManager.MarkSceneDirty(scene);
-            EditorSceneManager.SaveScene(scene);
-            Debug.Log("[MainSceneSetup] Sculpting kit ensured in Main scene.");
-            if (Application.isBatchMode) EditorApplication.Exit(0);
+            return true;
         }
 
         /// <summary>
@@ -202,6 +239,139 @@ namespace SnowDays.EditorTools
             }
             anchor.gameObject.layer = layer; // created after the subtree layer pass
             return anchor;
+        }
+
+        /// <summary>
+        /// The one root a scene needs: Assets/Prefabs/Game.prefab, holding everything required to play — the
+        /// player, the sculpture factory, save/load, the brush cursor and the HUD. One prefab rather than one per
+        /// component: a scene wants "put the game in it", not a shopping list of single-component objects. The
+        /// payoff is not just tidiness — every reference between these (HUD to tool, tool to cursor, roller to the
+        /// carry anchors) is internal to a single asset, so the wiring is stored rather than rebuilt per scene.
+        /// Found in the open scene, else instantiated from the prefab, else created empty for the caller to fill,
+        /// which is how the prefab first comes into existence out of whatever the scene already had.
+        /// </summary>
+        static Transform EnsureGame(UnityEngine.SceneManagement.Scene scene)
+        {
+            var existing = FindInactiveRoot(scene, GameRootName);
+            if (existing != null) return existing.transform;
+
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(GamePrefabPath);
+            if (prefab != null)
+            {
+                var instance = (GameObject)PrefabUtility.InstantiatePrefab(prefab, scene);
+                instance.name = GameRootName;
+                return instance.transform;
+            }
+            return new GameObject(GameRootName).transform;
+        }
+
+        /// <summary>
+        /// A child of the Game root, adopting a stray scene root of the same name if there is one. That adoption
+        /// is what migrates the old layout, where these were scene roots: the HUD above all carries layout and
+        /// colours set by hand, so it has to move into the prefab rather than be rebuilt from defaults beside it.
+        /// Reparented keeping world position, so nothing moves.
+        /// </summary>
+        static GameObject EnsureUnder(UnityEngine.SceneManagement.Scene scene, Transform game, string name,
+                                      System.Func<GameObject> build)
+        {
+            var child = game.Find(name);
+            if (child != null) return child.gameObject;
+
+            var stray = FindInactiveRoot(scene, name);
+            var go = stray != null ? stray : build();
+            go.name = name;
+            go.transform.SetParent(game, true);
+            return go;
+        }
+
+        /// <summary>Write the Game prefab the first time, and make this scene's root an instance of it.</summary>
+        static void PromoteGame(GameObject game)
+        {
+            if (AssetDatabase.LoadAssetAtPath<GameObject>(GamePrefabPath) != null) return;
+            if (!Directory.Exists(KitPrefabFolder))
+            {
+                Directory.CreateDirectory(KitPrefabFolder);
+                AssetDatabase.Refresh();
+            }
+            PrefabUtility.SaveAsPrefabAssetAndConnect(game, GamePrefabPath, InteractionMode.AutomatedAction,
+                                                      out bool ok);
+            Debug.Log(ok
+                ? "[MainSceneSetup] Created " + GamePrefabPath + "; a scene needs only this prefab to be playable."
+                : "[MainSceneSetup] Could not write " + GamePrefabPath + "; the kit stays scene-local.");
+        }
+
+        /// <summary>
+        /// The session's join code, on its own canvas rather than as a line in the HUD — ToolHud regenerates its
+        /// whole canvas, so nothing placed in there by hand survives. Created once and then left alone, so its
+        /// position and styling can be changed in the inspector.
+        /// </summary>
+        /// <summary>
+        /// The planar-shave overlay: a line and a wash over the doomed half, on their own canvas so they can be
+        /// restyled without ToolHud regenerating them away. Created once and then left alone.
+        /// </summary>
+        static Snowfield.Player.PlaneCutPreview EnsurePlaneCut(Transform game)
+        {
+            var existing = game.Find("PlaneCut");
+            if (existing != null) return existing.GetComponent<Snowfield.Player.PlaneCutPreview>();
+
+            var go = new GameObject("PlaneCut", typeof(RectTransform), typeof(Canvas),
+                                    typeof(UnityEngine.UI.CanvasScaler));
+            go.transform.SetParent(game, false);
+            var canvas = go.GetComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            canvas.sortingOrder = -1; // under the HUD: this is a hint, not a readout
+
+            var preview = go.AddComponent<Snowfield.Player.PlaneCutPreview>();
+            preview.doomed = Rect(go.transform, "Doomed", new Color(1f, 0.25f, 0.2f, 0.22f));
+            preview.line = Rect(go.transform, "Line", new Color(1f, 0.95f, 0.9f, 0.9f));
+            preview.line.sizeDelta = new Vector2(2000f, 3f);
+            go.SetActive(true);
+            preview.Hide();
+            return preview;
+        }
+
+        static RectTransform Rect(Transform parent, string name, Color color)
+        {
+            var go = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(UnityEngine.UI.Image));
+            go.transform.SetParent(parent, false);
+            var rt = go.GetComponent<RectTransform>();
+            rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.anchoredPosition = Vector2.zero;
+            var img = go.GetComponent<UnityEngine.UI.Image>();
+            img.color = color;
+            img.raycastTarget = false;
+            return rt;
+        }
+
+        static void EnsureJoinCode(UnityEngine.SceneManagement.Scene scene, Transform game)
+        {
+            if (game.Find("JoinCode") != null) return;
+
+            var go = new GameObject("JoinCode", typeof(RectTransform), typeof(Canvas),
+                                    typeof(UnityEngine.UI.CanvasScaler));
+            go.transform.SetParent(game, false);
+            var canvas = go.GetComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            var scaler = go.GetComponent<UnityEngine.UI.CanvasScaler>();
+            scaler.uiScaleMode = UnityEngine.UI.CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(1920f, 1080f);
+
+            var textGo = new GameObject("Label", typeof(RectTransform), typeof(CanvasRenderer), typeof(UnityEngine.UI.Text));
+            textGo.transform.SetParent(go.transform, false);
+            var rt = textGo.GetComponent<RectTransform>();
+            rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0f, 1f); // top-left
+            rt.anchoredPosition = new Vector2(24f, -24f);
+            rt.sizeDelta = new Vector2(520f, 48f);
+            var text = textGo.GetComponent<UnityEngine.UI.Text>();
+            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.fontSize = 32;
+            text.color = new Color(0.85f, 0.88f, 0.95f);
+            text.alignment = TextAnchor.UpperLeft;
+            text.raycastTarget = false;
+
+            var label = go.AddComponent<Snowfield.Net.JoinCodeLabel>();
+            label.label = text;
+            textGo.SetActive(false); // nothing to show until there is a session
         }
 
         static GameObject FindInactiveRoot(UnityEngine.SceneManagement.Scene scene, string name)

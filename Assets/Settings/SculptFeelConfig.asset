@@ -25,7 +25,11 @@ MonoBehaviour:
   snowballStartRadius: 0.15
   snowballMaxRadius: 0.6
   snowballGrowthPerMetre: 0.05
+  scoopRadius: 0.12
+  scoopDivotDepth: 0.04
   snowballGridSize: 48
+  maxGridSize: 192
+  regrowMarginVoxels: 4
   terrainFieldSize: 40
   terrainCellSize: 0.05
   terrainChunkCells: 200
@@ -39,3 +43,26 @@ MonoBehaviour:
   footstepSpacing: 0.45
   rollTrenchDepthFraction: 0.25
   terrainPathDepthCap: 0.12
+  maxReach: 2.5
+  rollEngageDistance: 2.5
+  throwTapThreshold: 0.2
+  handTwoHandedRadius: 0.22
+  handMaxStretch: 3.5
+  handSpringStiffness: 260
+  handSpringDamping: 22
+  handHoverWeight: 0.3
+  handFollowThrough: 0.18
+  handPatAmplitude: 0.05
+  handPatRate: 5
+  snowfallRecoverHours: 2
+  snowfallTickSeconds: 2
+  letItSnowPerSecond: 0.05
+  drapeSegmentLength: 0.05
+  drapeSmoothPasses: 2
+  drapeSurfaceOffset: 0.01
+  drapeMaxParticles: 400
+  drapeTipFollow: 18
+  drapeJiggleAmplitude: 0.035
+  drapeJiggleFrequency: 4.5
+  drapeJiggleDecay: 1.1
+  drapeBumpRadius: 0.45

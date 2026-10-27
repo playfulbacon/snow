@@ -263,11 +263,16 @@ namespace SnowDays.EditorTools
             Transform pivot = playerRoot.transform.Find("CameraPivot");
             if (pivot == null)
             {
+                // Only ever placed at birth. height * 0.9 is a guess that suits normal proportions and is wrong
+                // for this character: the capsule is 2.10 m but it is mostly head, so the eye line was tuned by
+                // eye down to 1.08. Re-running this used to shove the camera back to 1.89 — above the
+                // character's own scalp — and silently undo that. Same rule as MainSceneSetup's anchors: create
+                // if missing, never move what someone has already placed.
                 pivot = new GameObject("CameraPivot").transform;
                 pivot.SetParent(playerRoot.transform, false);
+                pivot.localPosition = new Vector3(0f, height * 0.9f, 0f);
+                pivot.localRotation = Quaternion.identity;
             }
-            pivot.localPosition = new Vector3(0f, height * 0.9f, 0f);
-            pivot.localRotation = Quaternion.identity;
 
             Transform camTransform = pivot.Find("PlayerCamera");
             if (camTransform == null)

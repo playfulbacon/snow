@@ -12,6 +12,7 @@ namespace SnowDays.EditorTools
     /// polls the project-root NetOps/ folder for request files and executes them, writing a .result file each time:
     ///   scene_setup.request      → MainSceneSetup.Run() (skipped if the open scene has unsaved changes)
     ///   refresh.request          → AssetDatabase.Refresh()
+    ///   invoke.request           → call any public static parameterless editor method; content = Full.Type.Method
     ///   tests_editmode.request   → run EditMode tests; file content = optional ';'-separated assembly filter
     ///   tests_playmode.request   → run PlayMode tests; same filter rule
     ///   play_smoke.request       → enter play mode in the open scene for N seconds (file content, default 25)
@@ -51,6 +52,7 @@ namespace SnowDays.EditorTools
             Handle("refresh", _ => { AssetDatabase.Refresh(); WriteResult("refresh", "DONE"); });
             Handle("restart", _ => RestartEditor());
             Handle("scene_setup", _ => RunSceneSetup());
+            Handle("invoke", RunInvoke);
             Handle("tests_editmode", f => RunTests(TestMode.EditMode, f));
             Handle("tests_playmode", f => RunTests(TestMode.PlayMode, f));
             Handle("play_smoke", RunPlaySmoke);
@@ -67,6 +69,47 @@ namespace SnowDays.EditorTools
             Debug.Log($"[SnowOps] {op} requested");
             try { action(content); }
             catch (Exception e) { WriteResult(op, "EXCEPTION: " + e); }
+        }
+
+        /// <summary>
+        /// Call any public static, parameterless editor method by name: the file content is a full type name, a
+        /// dot, and the method — e.g. "SnowDays.EditorTools.StartSceneSetup.Run". The fixed op list above meant a
+        /// new editor tool could only be run by hand from the menu, which defeats the point of having a bridge at
+        /// all while the editor holds the project lock.
+        /// </summary>
+        static void RunInvoke(string target)
+        {
+            if (EditorApplication.isPlaying)
+            {
+                WriteResult("invoke", "SKIPPED: editor is in play mode");
+                return;
+            }
+            int dot = target.LastIndexOf('.');
+            if (dot <= 0)
+            {
+                WriteResult("invoke", "BAD REQUEST: expected Full.Type.Name.Method, got " + target);
+                return;
+            }
+            string typeName = target.Substring(0, dot);
+            string methodName = target.Substring(dot + 1);
+
+            Type type = null;
+            foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                type = asm.GetType(typeName);
+                if (type != null) break;
+            }
+            if (type == null) { WriteResult("invoke", "NO SUCH TYPE: " + typeName); return; }
+
+            var method = type.GetMethod(methodName,
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+            if (method == null || method.GetParameters().Length != 0)
+            {
+                WriteResult("invoke", $"NO SUCH PARAMETERLESS STATIC METHOD: {typeName}.{methodName}");
+                return;
+            }
+            method.Invoke(null, null);
+            WriteResult("invoke", "DONE: " + target);
         }
 
         static void WriteResult(string op, string text)

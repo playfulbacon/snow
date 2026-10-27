@@ -75,6 +75,14 @@ namespace Snowfield.Config
         [Tooltip("Footprints and trenches cannot pack the snow deeper than this (m). Carving can.")]
         public float terrainPathDepthCap = 0.12f;
 
+        [Header("Reach")]
+        [Tooltip("How far from the shoulder you can act on snow (m). This is the single limit on everything the reticle does: scoop, bite, pat, place, and whether the ground under the cursor registers at all. Measured from a metre above the player's feet, so the ground you can aim at is only sqrt(maxReach² - 1) away horizontally — at 1.2 that is 66 cm, which means looking almost straight down. Raising it also lets you sculpt from further off than the arms can stretch (see handMaxStretch).")]
+        public float maxReach = 2.2f;
+        [Tooltip("A carried ball rolls on the ground only while the cursor points within this distance of you (m, horizontal); further away it is held. Capped in practice by maxReach — above that it stops doing anything.")]
+        public float rollEngageDistance = 3.5f;
+        [Tooltip("Holding LMB longer than this (s) starts a throw charge; a shorter tap places or drops what you are carrying.")]
+        public float throwTapThreshold = 0.2f;
+
         [Header("Hands")]
         [Tooltip("Snow at least this big (radius, m) takes both hands; anything smaller sits in one palm.")]
         public float handTwoHandedRadius = 0.22f;

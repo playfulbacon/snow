@@ -43,6 +43,9 @@ namespace Snowfield.Net
         static string s_Status = Offline;
         const string Offline = "offline";
 
+        /// <summary>The code other players type to join this session. Empty while offline.</summary>
+        public static string JoinCode { get; private set; } = "";
+
         ISession _session;
         bool _connecting;
         float _retryAt = -1f;
@@ -52,6 +55,16 @@ namespace Snowfield.Net
         async void Start()
         {
             Status = Offline; // also clears any HUD line left by a previous play session
+            JoinCode = "";
+
+            // The Start menu cannot connect by itself: the NetworkManager lives in this scene, so it leaves its
+            // choice here and we act on it once the game scene is actually loaded.
+            var requested = NetLaunch.Requested;
+            string code = NetLaunch.Code;
+            NetLaunch.Clear();
+            if (requested == NetLaunch.Mode.Host) { await HostAsync(); return; }
+            if (requested == NetLaunch.Mode.Join) { await JoinWithCodeAsync(code); return; }
+
             if (!autoConnect && !AutoConnectRequested()) return;
             await ConnectAsync();
         }
@@ -102,6 +115,7 @@ namespace Snowfield.Net
             _retryAt = -1f;
             _attempts = 0;
             Status = Offline;
+            JoinCode = "";
             Debug.Log("[SnowNet] Leaving the shared field");
             try { await VoiceChat.LeaveAsync(); }
             catch (Exception e) { Debug.LogWarning($"[SnowNet] Voice leave failed: {e.Message}"); }
@@ -127,23 +141,8 @@ namespace Snowfield.Net
             _connecting = true;
             _attempts++;
             RegisterPrefabs(NetworkManager.Singleton);
-            try
+            if (!await SignInAsync())
             {
-                Status = "signing in";
-                if (UnityServices.State != ServicesInitializationState.Initialized)
-                {
-                    var options = new InitializationOptions();
-                    string profile = ProfileOverride();
-                    if (!string.IsNullOrEmpty(profile)) options.SetProfile(profile);
-                    await UnityServices.InitializeAsync(options);
-                }
-                if (!AuthenticationService.Instance.IsSignedIn)
-                    await AuthenticationService.Instance.SignInAnonymouslyAsync();
-            }
-            catch (Exception e)
-            {
-                Status = "offline (services unavailable)";
-                Debug.LogWarning($"[SnowNet] Unity Services init/sign-in failed — retrying. {e.Message}");
                 _connecting = false;
                 ScheduleRetry();
                 return;
@@ -164,15 +163,7 @@ namespace Snowfield.Net
                 };
                 _session = await MultiplayerService.Instance.MatchmakeSessionAsync(quickJoin, sessionOptions);
                 _attempts = 0;
-                Status = Describe(_session);
-                Debug.Log($"[SnowNet] {(_session.IsHost ? "Hosting" : "Joined")} session {_session.Id} " +
-                          $"({_session.PlayerCount}/{_session.MaxPlayers}, code {_session.Code})");
-                WireSession(_session);
-
-                // The world-sync channel is a dynamic spawn (scene management is off, so no in-scene NetworkObjects).
-                var nm = NetworkManager.Singleton;
-                if (nm != null && nm.IsServer && SnowNetChannel.Instance == null && channelPrefab != null)
-                    NetworkObject.InstantiateAndSpawn(channelPrefab, nm);
+                AfterSession();
             }
             catch (Exception e)
             {
@@ -187,15 +178,115 @@ namespace Snowfield.Net
             {
                 _connecting = false;
             }
+            // Voice is joined by AfterSession, along with everything else that follows a session opening.
+        }
+
+        /// <summary>
+        /// Open a session of your own and keep its code. Private, so nobody is matchmade into a field you meant
+        /// for the people you gave the code to — that is the whole difference between this and ConnectAsync.
+        /// </summary>
+        // CreateSessionAsync hands back a Task<IHostSession>. IHostSession is an ISession, but Task<T> is
+        // invariant, so the await-and-return is what actually converts it.
+        public async Task HostAsync() => await OpenAsync("hosting",
+            async options => (ISession)await MultiplayerService.Instance.CreateSessionAsync(options));
+
+        /// <summary>Join the session with this code. A wrong code just leaves you offline in your own field.</summary>
+        public async Task JoinWithCodeAsync(string code)
+        {
+            code = (code ?? "").Trim();
+            if (code.Length == 0) { Status = "offline (no code)"; return; }
+            await OpenAsync($"joining {code}", _ => MultiplayerService.Instance.JoinSessionByCodeAsync(code));
+        }
+
+        /// <summary>
+        /// The shared shape of going online deliberately: sign in, open a session one particular way, settle it.
+        /// Unlike ConnectAsync this never retries — the player asked for one specific field, so quietly dropping
+        /// them into a different one would be worse than telling them it did not work.
+        /// </summary>
+        async Task OpenAsync(string what, Func<SessionOptions, Task<ISession>> open)
+        {
+            if (_connecting || _session != null) return;
+            if (NetworkManager.Singleton == null)
+            {
+                Debug.LogWarning("[SnowNet] No NetworkManager in scene — staying offline. Run Snowfield ▸ Ensure Main Scene Sculpting.");
+                Status = "offline (no NetworkManager)";
+                return;
+            }
+            _connecting = true;
+            RegisterPrefabs(NetworkManager.Singleton);
+            if (!await SignInAsync()) { _connecting = false; return; }
 
             try
             {
-                await VoiceChat.JoinAsync(_session.Id);
+                Status = what;
+                var options = new SessionOptions
+                {
+                    Name = sessionName,
+                    MaxPlayers = Mathf.Clamp(maxPlayers, 2, 32),
+                    IsPrivate = true,
+                }.WithRelayNetwork();
+                _session = await open(options);
+                _attempts = 0;
+                AfterSession();
             }
             catch (Exception e)
             {
-                Debug.LogWarning($"[SnowNet] Voice chat unavailable: {e.Message}");
+                Status = "offline (could not " + what + ")";
+                Debug.LogWarning($"[SnowNet] {what} failed — playing offline. {e}");
+                _session = null;
             }
+            finally
+            {
+                _connecting = false;
+            }
+        }
+
+        /// <summary>Services init + anonymous sign-in. False means we are staying offline.</summary>
+        async Task<bool> SignInAsync()
+        {
+            try
+            {
+                Status = "signing in";
+                if (UnityServices.State != ServicesInitializationState.Initialized)
+                {
+                    var options = new InitializationOptions();
+                    string profile = ProfileOverride();
+                    if (!string.IsNullOrEmpty(profile)) options.SetProfile(profile);
+                    await UnityServices.InitializeAsync(options);
+                }
+                if (!AuthenticationService.Instance.IsSignedIn)
+                    await AuthenticationService.Instance.SignInAnonymouslyAsync();
+                return true;
+            }
+            catch (Exception e)
+            {
+                Status = "offline (services unavailable)";
+                Debug.LogWarning($"[SnowNet] Unity Services init/sign-in failed. {e.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>Everything that follows a session opening, however it was opened.</summary>
+        void AfterSession()
+        {
+            JoinCode = _session.Code ?? "";
+            Status = Describe(_session);
+            Debug.Log($"[SnowNet] {(_session.IsHost ? "Hosting" : "Joined")} session {_session.Id} " +
+                      $"({_session.PlayerCount}/{_session.MaxPlayers}, code {_session.Code})");
+            WireSession(_session);
+
+            // The world-sync channel is a dynamic spawn (scene management is off, so no in-scene NetworkObjects).
+            var nm = NetworkManager.Singleton;
+            if (nm != null && nm.IsServer && SnowNetChannel.Instance == null && channelPrefab != null)
+                NetworkObject.InstantiateAndSpawn(channelPrefab, nm);
+
+            _ = JoinVoiceAsync();
+        }
+
+        async Task JoinVoiceAsync()
+        {
+            try { await VoiceChat.JoinAsync(_session.Id); }
+            catch (Exception e) { Debug.LogWarning($"[SnowNet] Voice chat unavailable: {e.Message}"); }
         }
 
         void WireSession(ISession session)
@@ -226,6 +317,7 @@ namespace Snowfield.Net
             if (_session == null) return;
             Debug.Log($"[SnowNet] Session over ({why}); looking for a new one in {rejoinDelay:0}s");
             _session = null;
+            JoinCode = "";
             Status = "reconnecting";
             _ = VoiceChat.LeaveAsync();
             ScheduleRetry();

@@ -25,18 +25,17 @@ namespace Snowfield.Player
         public SculptFeelConfig config;
         public Camera viewCamera;
         public LayerMask sculptMask = ~0;
-        [Tooltip("How far from the character the brush can reach (the ray itself starts at the camera).")]
-        public float maxReach = 4f;
         [Tooltip("Reach is measured from here. Defaults to the player root this tool sits under, else the camera.")]
         public Transform reachOrigin;
         [Tooltip("Visual brush cursor; scaled to brush diameter.")]
         public Transform cursor;
+        [Tooltip("Screen overlay for the planar shave. Null just means no preview.")]
+        public PlaneCutPreview planeCut;
         [Tooltip("Stretchy arm IK. The hands follow whatever snow is in play; null just means no arms.")]
         public HandRig hands;
-        [Tooltip("Holding LMB longer than this starts a throw charge; a shorter tap places/drops the carried object.")]
-        public float throwTapThreshold = 0.2f;
-        [Tooltip("A carried ball rolls on the ground only while the cursor points within this distance of you; otherwise it is held overhead.")]
-        public float rollEngageDistance = 2.2f;
+        // maxReach, rollEngageDistance and throwTapThreshold live in SculptFeelConfig: they are feel numbers, and
+        // on the component they could only be tuned in play mode and then lost on exit. Only the scene wiring
+        // (camera, mask, reach origin, cursor, hands) belongs here.
         [Header("Brush cursor colours")]
         [Tooltip("Cursor while smoothing (Shift held).")]
         public Color cursorAddColor = new Color(0.4f, 0.7f, 1f, 0.25f);
@@ -77,6 +76,13 @@ namespace Snowfield.Player
 
         /// <summary>Radius multiplier on top of config, driven by scroll. Session-only.</summary>
         public float radiusScale = 1f;
+        [Tooltip("Degrees the planar-shave line turns per scroll notch.")]
+        public float cutAngleStep = 7.5f;
+
+        /// <summary>Planar shave: the on-screen angle of the cut line, degrees from screen-right.</summary>
+        float _cutAngle;
+        /// <summary>True while Shift is lining up a cut on a sculpture, so LMB chops instead of scooping.</summary>
+        public bool AimingCut { get; private set; }
 
         AccessoryPlacer _placer;
         bool _lockedLastFrame;
@@ -136,7 +142,7 @@ namespace Snowfield.Player
                 _placer.HidePreview();
                 HideBrushCursor();
             }
-            HandleScroll(mouse);
+            HandleScroll(mouse, kb != null && kb.leftShiftKey.isPressed);
             Aim();
 
             if (Mode == ToolMode.Accessory) UpdateAccessory(mouse, kb);
@@ -328,13 +334,15 @@ namespace Snowfield.Player
 
         // ---------- input ----------
 
-        void HandleScroll(Mouse mouse)
+        void HandleScroll(Mouse mouse, bool shift)
         {
             if (mouse == null) return;
             float scroll = mouse.scroll.ReadValue().y;
             if (math.abs(scroll) <= 0.01f) return;
             int dir = scroll > 0 ? 1 : -1;
-            if (Mode == ToolMode.Accessory)
+            if (shift && Mode == ToolMode.Hand)
+                _cutAngle = Mathf.Repeat(_cutAngle + dir * cutAngleStep, 360f);
+            else if (Mode == ToolMode.Accessory)
                 _placer.Step(-dir); // scroll down = next, matches reading order
             else
                 radiusScale = math.clamp(radiusScale * (dir > 0 ? 1.15f : 1f / 1.15f), 0.25f, 4f);
@@ -353,10 +361,10 @@ namespace Snowfield.Player
             AimedColliderPath = "";
             var ray = viewCamera.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
             Vector3 origin = reachOrigin != null ? reachOrigin.position + Vector3.up : ray.origin;
-            float rayLength = maxReach + Vector3.Distance(ray.origin, origin);
+            float rayLength = config.maxReach + Vector3.Distance(ray.origin, origin);
 
             if (!Physics.Raycast(ray, out var hit, rayLength, sculptMask, QueryTriggerInteraction.Collide)) return;
-            if (Vector3.Distance(hit.point, origin) > maxReach) return;
+            if (Vector3.Distance(hit.point, origin) > config.maxReach) return;
 
             BrushPoint = hit.point;
             BrushNormal = hit.normal;
@@ -393,6 +401,17 @@ namespace Snowfield.Player
             bool shift = kb != null && kb.leftShiftKey.isPressed;
             _placer.HidePreview();
 
+            // Planar shave. Only while actually aiming at a sculpture: Shift is also the run key, and a preview
+            // that flashed up every time you sprinted across the field would be unreadable noise.
+            AimingCut = shift && !Roller.IsCarrying && HasHit && Target != null;
+            if (AimingCut)
+            {
+                if (planeCut != null) planeCut.Show(_cutAngle);
+                if (lmbDown) CommitPlaneCut();
+                return; // Shift owns the click while a cut is lined up
+            }
+            if (planeCut != null) planeCut.Hide();
+
             // --- carrying: LMB tap lets go where the snow is, hold charges a throw; Shift+LMB still smooths ---
             if (Roller.IsCarrying)
             {
@@ -404,9 +423,9 @@ namespace Snowfield.Player
                 bool letGo = !sculptingHold;
                 if (letGo && lmbDown) _lmbDownTime = Time.time;
                 bool charging = letGo && lmb && _lmbDownTime >= 0f && Roller.IsCarryingBall
-                                && Time.time - _lmbDownTime > throwTapThreshold;
+                                && Time.time - _lmbDownTime > config.throwTapThreshold;
                 ThrowCharge = charging
-                    ? Mathf.Min(1f, (Time.time - _lmbDownTime - throwTapThreshold) / Mathf.Max(0.05f, Roller.chargeTime))
+                    ? Mathf.Min(1f, (Time.time - _lmbDownTime - config.throwTapThreshold) / Mathf.Max(0.05f, Roller.chargeTime))
                     : 0f;
 
                 bool sculpting = sculptingHold && lmb; // brushing keeps the snow in hand
@@ -414,7 +433,7 @@ namespace Snowfield.Player
                 if (HasGroundHit && reachOrigin != null)
                 {
                     Vector3 d = GroundPoint - reachOrigin.position; d.y = 0f;
-                    cursorNear = d.magnitude <= rollEngageDistance;
+                    cursorNear = d.magnitude <= config.rollEngageDistance;
                 }
                 Vector3? preview = (charging || sculpting) ? null
                                  : onSnow ? Roller.AttachCentre(BrushPoint, BrushNormal) : (Vector3?)null;
@@ -426,11 +445,11 @@ namespace Snowfield.Player
                     float held = Time.time - _lmbDownTime;
                     _lmbDownTime = -1f;
                     ThrowCharge = 0f;
-                    if (Roller.IsCarryingBall && held > throwTapThreshold)
+                    if (Roller.IsCarryingBall && held > config.throwTapThreshold)
                     {
                         var cam = viewCamera.transform;
                         Roller.Throw(cam.position, cam.forward,
-                            Mathf.Min(1f, (held - throwTapThreshold) / Mathf.Max(0.05f, Roller.chargeTime)));
+                            Mathf.Min(1f, (held - config.throwTapThreshold) / Mathf.Max(0.05f, Roller.chargeTime)));
                         // The ball is gone next frame; the arm follows through past where it let go.
                         if (hands != null)
                             hands.Pulse(HandRig.Side.Right, cam.position + cam.forward * 1.1f,
@@ -517,7 +536,8 @@ namespace Snowfield.Player
         {
             bool lmb = mouse != null && mouse.leftButton.isPressed;
 
-            BrushOp op = lmb && shift ? BrushOp.Smooth : BrushOp.None;
+            bool rmb = mouse != null && mouse.rightButton.isPressed;
+            BrushOp op = rmb ? BrushOp.Smooth : BrushOp.None;
             CurrentOp = op;
 
             IBrushTarget target = Target;
@@ -577,6 +597,30 @@ namespace Snowfield.Player
         }
 
         public float CurrentRadius() => config.addRadius * radiusScale;
+
+        /// <summary>
+        /// Chop the aimed sculpture along the previewed plane. The plane is spanned by the camera's forward
+        /// direction and the on-screen line, which is why the preview can be drawn as a line at all — see
+        /// PlaneCutPreview. Everything on the far side of it is removed and simply gone; this is a cut, not a
+        /// scoop, so nothing is handed back to the player.
+        /// </summary>
+        void CommitPlaneCut()
+        {
+            var s = Target;
+            if (s == null) return;
+
+            Transform cam = viewCamera != null ? viewCamera.transform : transform;
+            float a = _cutAngle * Mathf.Deg2Rad;
+            Vector3 lineDir = cam.right * Mathf.Cos(a) + cam.up * Mathf.Sin(a);
+            Vector3 normal = Vector3.Cross(cam.forward, lineDir).normalized; // points into the doomed half
+            if (normal.sqrMagnitude < 1e-6f) return;
+
+            float removed = s.ApplyPlaneCut(BrushPoint, normal);
+            if (removed <= 0f) return;
+
+            s.Remesh();
+            s.RebuildColliders();
+        }
 
         public void ApplyTick(IBrushTarget t, BrushOp op, float3 point, float radius)
         {

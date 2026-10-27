@@ -12,6 +12,7 @@
         "Unity.Services.Authentication",
         "Unity.Services.Vivox",
         "Unity.InputSystem",
+        "UnityEngine.UI",
         "Unity.Mathematics",
         "Unity.Collections"
     ],
