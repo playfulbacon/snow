@@ -13,17 +13,22 @@ namespace Snowfield.Sculpture
         static readonly List<Vector3> Norms = new List<Vector3>();
         static readonly List<int> Tris = new List<int>();
 
-        /// <summary>Rebuild <paramref name="mesh"/> from a world-space path. Surfaces orient a ribbon's flat side.</summary>
-        public static void Build(Mesh mesh, IReadOnlyList<Vector3> pathWorld, Transform frame, DrapeStyle style,
-                                 IReadOnlyList<SnowSculpture> surfaces)
+        /// <summary>
+        /// Rebuild <paramref name="mesh"/> from a world-space path. <paramref name="upWorld"/> is the surface normal
+        /// each point was laid against (from <see cref="DrapeCurve"/>) and orients a ribbon's flat side; pass null
+        /// and the band falls back to world up.
+        /// </summary>
+        public static void Build(Mesh mesh, IReadOnlyList<Vector3> pathWorld, IReadOnlyList<Vector3> upWorld,
+                                 Transform frame, DrapeStyle style)
         {
             Verts.Clear(); Norms.Clear(); Tris.Clear();
             if (mesh == null) return;
             if (pathWorld == null || pathWorld.Count < 2 || frame == null) { mesh.Clear(); return; }
+            if (upWorld != null && upWorld.Count != pathWorld.Count) upWorld = null;
 
             if (style.Shape == DrapeStyle.Form.Ribbon)
             {
-                AppendRibbon(pathWorld, frame, style, surfaces);
+                AppendRibbon(pathWorld, upWorld, frame, style);
                 if (style.FringeLength > 0f && style.FringeCount > 0) AppendFringe(pathWorld, frame, style);
             }
             else
@@ -87,19 +92,20 @@ namespace Snowfield.Sculpture
 
         // ---------- ribbon ----------
 
-        static void AppendRibbon(IReadOnlyList<Vector3> path, Transform frame, DrapeStyle style,
-                                 IReadOnlyList<SnowSculpture> surfaces)
+        static void AppendRibbon(IReadOnlyList<Vector3> path, IReadOnlyList<Vector3> upWorld, Transform frame,
+                                 DrapeStyle style)
         {
             float half = Mathf.Max(0.002f, style.Radius);
             int start = Verts.Count;
-            Vector3 prevUp = Vector3.up;
+            Vector3 prevUp = upWorld != null && upWorld.Count > 0 ? upWorld[0] : Vector3.up;
 
             for (int i = 0; i < path.Count; i++)
             {
                 Vector3 t = Tangent(path, i);
                 // Carry the previous facing as the fallback, and never let it flip: a band whose up vector alternates
                 // between neighbouring points folds itself into a bow tie.
-                Vector3 up = DrapeCurve.SurfaceUp(surfaces, path[i], prevUp);
+                Vector3 up = upWorld != null ? upWorld[i] : prevUp;
+                if (up.sqrMagnitude < 1e-6f) up = prevUp;
                 if (Vector3.Dot(up, prevUp) < 0f) up = -up;
                 prevUp = up;
                 Vector3 side = Vector3.Cross(t, up);

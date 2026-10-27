@@ -24,6 +24,7 @@ namespace Snowfield.Sculpture
 
         readonly List<Vector3> _points = new List<Vector3>();      // sculpture-local: the whole persisted state
         readonly List<Vector3> _path = new List<Vector3>();        // the resting strand, world space
+        readonly List<Vector3> _normals = new List<Vector3>();     // the surface each point lies against, world space
         readonly List<Vector3> _render = new List<Vector3>();      // _path plus the current jiggle
         readonly List<Vector3> _swingDirs = new List<Vector3>();
         readonly List<DrapeAnchor> _markers = new List<DrapeAnchor>();
@@ -38,6 +39,8 @@ namespace Snowfield.Sculpture
         Transform _strand;
         Vector3? _tipWorld;
         bool _hasTip;
+        Vector3 _scannedAt;    // where the live end was when _surfaces was last gathered
+        bool _hasScan;
         float _swing;          // 1 = just knocked, 0 = at rest
         float _swingPhase;
         Bounds _reach;         // world bounds of the strand, for cheap bump tests
@@ -101,6 +104,9 @@ namespace Snowfield.Sculpture
             if (Frozen) return;
             _tipWorld = world;
             _hasTip = world.HasValue;
+            // Drag the live end onto the snowman next door and the strand has to be able to see it. Re-scanning
+            // every frame means a FindObjects per frame, so only once the end has actually gone somewhere.
+            if (_hasTip && (!_hasScan || Vector3.Distance(_scannedAt, world.Value) > 0.3f)) RefreshSurfaces();
         }
 
         /// <summary>Re-lay the strand for this frame. Deterministic from the points, so it cannot drift or shake.</summary>
@@ -221,7 +227,7 @@ namespace Snowfield.Sculpture
                 foreach (var p in _points) _anchorScratch.Add(Sculpture.transform.TransformPoint(p));
             if (_hasTip && _tipWorld.HasValue) _anchorScratch.Add(_tipWorld.Value);
 
-            DrapeCurve.Build(_anchorScratch, _style, _config, _surfaces, _path);
+            DrapeCurve.Build(_anchorScratch, _style, _config, _surfaces, _path, _normals);
             RefreshSwingBasis();
             _render.Clear();
             _render.AddRange(_path);
@@ -231,15 +237,20 @@ namespace Snowfield.Sculpture
 
         void UploadMesh()
         {
-            DrapeMesh.Build(_mesh, _render, _strand, _style, _surfaces);
+            DrapeMesh.Build(_mesh, _render, _normals, _strand, _style);
             RebuildBulbs();
         }
 
-        /// <summary>A fixed sway direction per point — sideways to the strand, leaning differently along it.</summary>
+        /// <summary>
+        /// A fixed sway direction per point — sideways to the strand, across the surface it is lying on, leaning
+        /// differently along the strand. Swinging across the snow rather than through it is the whole point of
+        /// keeping the normals around.
+        /// </summary>
         void RefreshSwingBasis()
         {
             _swingDirs.Clear();
             _reach = new Bounds(_path.Count > 0 ? _path[0] : transform.position, Vector3.zero);
+            bool haveNormals = _normals.Count == _path.Count;
             for (int i = 0; i < _path.Count; i++)
             {
                 _reach.Encapsulate(_path[i]);
@@ -247,11 +258,12 @@ namespace Snowfield.Sculpture
                                 : i == _path.Count - 1 ? _path[i] - _path[i - 1]
                                 : _path[i + 1] - _path[i - 1];
                 if (tangent.sqrMagnitude < 1e-8f) tangent = Vector3.forward;
-                Vector3 side = Vector3.Cross(tangent.normalized, Vector3.up);
+                Vector3 up = haveNormals && _normals[i].sqrMagnitude > 1e-6f ? _normals[i] : Vector3.up;
+                Vector3 side = Vector3.Cross(tangent.normalized, up);
                 if (side.sqrMagnitude < 1e-6f) side = Vector3.right;
                 // lean each point's sway a little differently so the swing reads as loose, not rigid
                 float lean = Mathf.Sin(i * 1.7f) * 0.35f;
-                _swingDirs.Add((side.normalized + Vector3.up * lean).normalized);
+                _swingDirs.Add((side.normalized + up * lean).normalized);
             }
         }
 
@@ -283,18 +295,23 @@ namespace Snowfield.Sculpture
             }
         }
 
-        /// <summary>Which sculptures the strand can rest on: the owner plus anything its points reach into.</summary>
+        /// <summary>
+        /// Which sculptures the strand can rest on: the owner, plus anything its points or its live end reach into.
+        /// </summary>
         void RefreshSurfaces()
         {
             _surfaces.Clear();
             if (Sculpture != null) _surfaces.Add(Sculpture);
-            if (_points.Count == 0 || Sculpture == null) return;
+            if (Sculpture == null) return;
+            if (_hasTip && _tipWorld.HasValue) { _scannedAt = _tipWorld.Value; _hasScan = true; }
+            if (_points.Count == 0) return;
 
             var all = FindObjectsByType<SnowSculpture>(FindObjectsSortMode.None);
             foreach (var s in all)
             {
                 if (s == null || s == Sculpture || _surfaces.Contains(s)) continue;
                 var b = s.WorldBounds;
+                if (_hasTip && _tipWorld.HasValue && b.Contains(_tipWorld.Value)) { _surfaces.Add(s); continue; }
                 foreach (var p in _points)
                 {
                     if (!b.Contains(Sculpture.transform.TransformPoint(p))) continue;

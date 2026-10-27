@@ -116,8 +116,10 @@ namespace Snowfield.Config
         [Header("Draped accessories")]
         [Tooltip("Spacing between strand points (m). Smaller = a smoother curve and more geometry.")]
         public float drapeSegmentLength = 0.05f;
-        [Tooltip("Smoothing passes after the strand is laid on the snow - takes the corners out of the curve.")]
-        [Range(0, 8)] public int drapeSmoothPasses = 2;
+        [Tooltip("Passes of pull-straight-then-lay-back-down after the strand first lands on the snow. This is what tightens it onto the shape; more passes wrap closer and cost more.")]
+        [Range(0, 12)] public int drapeRelaxPasses = 5;
+        [Tooltip("How far a slack strand slides downhill per relax pass, as a fraction of the segment length. 0 = it takes the shortest path over the shape.")]
+        [Range(0f, 1f)] public float drapeSagPull = 0.35f;
         [Tooltip("How far a strand rests off the snow surface (m), on top of its own thickness.")]
         public float drapeSurfaceOffset = 0.01f;
         [Tooltip("Hard cap on points in one strand, so a very long chain cannot stall the frame.")]

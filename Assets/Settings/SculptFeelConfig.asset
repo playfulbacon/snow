@@ -43,6 +43,7 @@ MonoBehaviour:
   footstepSpacing: 0.45
   rollTrenchDepthFraction: 0.25
   terrainPathDepthCap: 0.12
+  sliceLength: 0.5
   maxReach: 2.5
   rollEngageDistance: 2.5
   throwTapThreshold: 0.2
@@ -58,7 +59,8 @@ MonoBehaviour:
   snowfallTickSeconds: 2
   letItSnowPerSecond: 0.05
   drapeSegmentLength: 0.05
-  drapeSmoothPasses: 2
+  drapeRelaxPasses: 5
+  drapeSagPull: 0.35
   drapeSurfaceOffset: 0.01
   drapeMaxParticles: 400
   drapeTipFollow: 18
