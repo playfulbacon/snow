@@ -20,6 +20,9 @@ namespace SnowDays.EditorTools
             "Assets/SnowDeform/Resources/SnowSculpt.shader",
             "Assets/SnowDeform/Resources/SnowStamp.shader",
             "Assets/SnowDeform/Resources/SnowMaintenance.shader",
+            "Assets/SnowDeform/Resources/TerrainSnow.shader",
+            "Assets/SnowDeform/Resources/TerrainSnowAdd.shader",
+            "Assets/SnowDeform/Resources/TerrainSnowBase.shader",
         };
 
         static SnowDeformVerify()

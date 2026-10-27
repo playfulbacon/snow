@@ -9,13 +9,12 @@ Shader "SnowDays/SnowSurface"
     Properties
     {
         _SnowBaseMap("Snow Texture", 2D) = "white" {}
-        _SnowTexTiling("Snow Texture Tile Size (m)", Float) = 32
         _SnowAlbedo("Snow Albedo", Color) = (0.93, 0.95, 0.99, 1)
+        [HideInInspector] _SnowDiffuseRemap("Terrain Diffuse Remap", Vector) = (1, 1, 1, 1)
+        _SnowShadowTint("Shadow Tint", Color) = (0.72, 0.82, 1, 1)
+        _SnowLightBands("Light Bands", Range(2, 6)) = 3
         _SnowTrenchAlbedo("Trench Albedo", Color) = (0.72, 0.78, 0.90, 1)
         _SnowTrenchAO("Trench Darkening", Range(0, 1)) = 0.45
-        // Multiplies the ambient probe so shadowed snow reads cold.
-        _SnowShadowTint("Shadow Tint", Color) = (0.72, 0.82, 1.0, 1)
-        _SnowLightBands("Light Bands", Range(2, 6)) = 3
     }
 
     SubShader
@@ -46,13 +45,29 @@ Shader "SnowDays/SnowSurface"
         // z = skirt depth (m), w = unused
         float4 _SnowTexels;
 
+        // Same diffuse, tiling, and UV origin as the terrain's snow layer.
+        TEXTURE2D(_SnowBaseMap);
+        SAMPLER(sampler_SnowBaseMap);
+        TEXTURE2D(_SnowTerrainNormal0);
+        TEXTURE2D(_SnowTerrainNormal1);
+        TEXTURE2D(_SnowTerrainNormal2);
+        TEXTURE2D(_SnowTerrainNormal3);
+        TEXTURE2D(_SnowTerrainNormal4);
+        TEXTURE2D(_SnowTerrainNormal5);
+        TEXTURE2D(_SnowTerrainNormal6);
+        TEXTURE2D(_SnowTerrainNormal7);
+
         CBUFFER_START(UnityPerMaterial)
         half4 _SnowAlbedo;
         half4 _SnowTrenchAlbedo;
+        half4 _SnowDiffuseRemap;
         half4 _SnowShadowTint;
         half _SnowLightBands;
         half _SnowTrenchAO;
-        float _SnowTexTiling;
+        float4 _SnowBaseMap_ST;
+        float4 _SnowTerrainNormalRects[8];
+        float4 _SnowTerrainNormalST[8];
+        float _SnowTerrainNormalCount;
         CBUFFER_END
 
         float2 SnowUV(float2 worldXZ)
@@ -73,6 +88,15 @@ Shader "SnowDays/SnowSurface"
         float SnowFadeAt(float2 worldXZ)
         {
             return 1.0 - smoothstep(_SnowFade.x, _SnowFade.y, distance(worldXZ, _SnowFade.zw));
+        }
+
+        // Fade coverage as well as displacement. Otherwise the lowered shell
+        // still ends in an opaque square, exposing small normal/height
+        // differences at the edge. Depth and visible coverage stay identical.
+        void SnowClip(float2 worldXZ, float2 pixelPosition)
+        {
+            float coverage = SnowFadeAt(worldXZ);
+            clip(coverage - max(0.0001, InterleavedGradientNoise(pixelPosition, 0)));
         }
 
         // Raised ridge of pushed-aside snow around prints: driven by the
@@ -106,28 +130,63 @@ Shader "SnowDays/SnowSurface"
             return float3(worldPos.x, y, worldPos.z);
         }
 
-        // Per-pixel normal from central differences of the surface fields.
-        // Ground uses the height texel, trampling a slightly wider kernel so
-        // print walls light softly instead of aliasing.
-        float3 SnowNormal(float2 worldXZ, float fade)
+        float3 SampleTerrainNormal(int tile, float2 uv)
         {
-            float eh = _SnowTexels.y;
-            float et = _SnowTexels.x * 1.5;
-            float gx = (SnowGround(worldXZ + float2(eh, 0)) - SnowGround(worldXZ - float2(eh, 0))) / (2.0 * eh);
-            float gz = (SnowGround(worldXZ + float2(0, eh)) - SnowGround(worldXZ - float2(0, eh))) / (2.0 * eh);
-            float tx = (SnowTrample(worldXZ + float2(et, 0)) - SnowTrample(worldXZ - float2(et, 0))) / (2.0 * et);
-            float tz = (SnowTrample(worldXZ + float2(0, et)) - SnowTrample(worldXZ - float2(0, et))) / (2.0 * et);
-            float k = -_SnowShape.x * _SnowShape.y * fade;
-            return normalize(float3(-(gx + k * tx), 1.0, -(gz + k * tz)));
+            float3 packedNormal;
+            switch (tile)
+            {
+                case 0: packedNormal = SAMPLE_TEXTURE2D_LOD(_SnowTerrainNormal0, sampler_linear_clamp, uv, 0).rgb; break;
+                case 1: packedNormal = SAMPLE_TEXTURE2D_LOD(_SnowTerrainNormal1, sampler_linear_clamp, uv, 0).rgb; break;
+                case 2: packedNormal = SAMPLE_TEXTURE2D_LOD(_SnowTerrainNormal2, sampler_linear_clamp, uv, 0).rgb; break;
+                case 3: packedNormal = SAMPLE_TEXTURE2D_LOD(_SnowTerrainNormal3, sampler_linear_clamp, uv, 0).rgb; break;
+                case 4: packedNormal = SAMPLE_TEXTURE2D_LOD(_SnowTerrainNormal4, sampler_linear_clamp, uv, 0).rgb; break;
+                case 5: packedNormal = SAMPLE_TEXTURE2D_LOD(_SnowTerrainNormal5, sampler_linear_clamp, uv, 0).rgb; break;
+                case 6: packedNormal = SAMPLE_TEXTURE2D_LOD(_SnowTerrainNormal6, sampler_linear_clamp, uv, 0).rgb; break;
+                default: packedNormal = SAMPLE_TEXTURE2D_LOD(_SnowTerrainNormal7, sampler_linear_clamp, uv, 0).rgb; break;
+            }
+            return normalize(packedNormal * 2.0 - 1.0);
         }
 
-        // Ground-slope-only normal, cheap enough for shadow bias.
+        // Use Unity's own terrain normal field. Differentiating the resampled
+        // height window makes small cell slopes jump between lighting bands.
+        // Per-pixel tile selection also keeps the basis aligned at tile seams.
         float3 SnowGroundNormal(float2 worldXZ)
         {
+            if (_SnowTerrainNormalCount > 0)
+            {
+                int closestTile = 0;
+                float closestDistance = 1e20;
+                [unroll] for (int tile = 0; tile < 8; tile++)
+                {
+                    if (tile >= _SnowTerrainNormalCount) break;
+                    float4 rect = _SnowTerrainNormalRects[tile];
+                    float2 delta = max(max(rect.xy - worldXZ, worldXZ - rect.zw), 0);
+                    float distanceSquared = dot(delta, delta);
+                    if (distanceSquared < closestDistance)
+                    {
+                        closestTile = tile;
+                        closestDistance = distanceSquared;
+                    }
+                }
+                float4 st = _SnowTerrainNormalST[closestTile];
+                return SampleTerrainNormal(closestTile, worldXZ * st.xy + st.zw);
+            }
+
             float eh = _SnowTexels.y;
             float gx = (SnowGround(worldXZ + float2(eh, 0)) - SnowGround(worldXZ - float2(eh, 0))) / (2.0 * eh);
             float gz = (SnowGround(worldXZ + float2(0, eh)) - SnowGround(worldXZ - float2(0, eh))) / (2.0 * eh);
             return normalize(float3(-gx, 1.0, -gz));
+        }
+
+        // Add the print's slope to the same base normal used by the terrain.
+        float3 SnowNormal(float2 worldXZ, float fade)
+        {
+            float3 groundNormal = SnowGroundNormal(worldXZ);
+            float et = _SnowTexels.x * 1.5;
+            float tx = (SnowTrample(worldXZ + float2(et, 0)) - SnowTrample(worldXZ - float2(et, 0))) / (2.0 * et);
+            float tz = (SnowTrample(worldXZ + float2(0, et)) - SnowTrample(worldXZ - float2(0, et))) / (2.0 * et);
+            float k = -_SnowShape.x * _SnowShape.y * fade * groundNormal.y;
+            return normalize(groundNormal - float3(k * tx, 0, k * tz));
         }
 
         ENDHLSL
@@ -150,12 +209,12 @@ Shader "SnowDays/SnowSurface"
             #pragma multi_compile_fragment _ _ADDITIONAL_LIGHT_SHADOWS
             #pragma multi_compile_fragment _ _SHADOWS_SOFT _SHADOWS_SOFT_LOW _SHADOWS_SOFT_MEDIUM _SHADOWS_SOFT_HIGH
             #pragma multi_compile_fragment _ _SCREEN_SPACE_OCCLUSION
+            #pragma multi_compile_fragment _ _LIGHT_COOKIES
+            #pragma multi_compile _ _LIGHT_LAYERS
             #pragma multi_compile _ _CLUSTER_LIGHT_LOOP
             #pragma multi_compile_fog
 
-            // Snow albedo + banded lighting shared with SnowSculpt, so the ground
-            // and the sculptures standing on it are the same material.
-            #include "SnowLook.hlsl"
+            #include "SnowLighting.hlsl"
 
             struct Attributes
             {
@@ -166,7 +225,8 @@ Shader "SnowDays/SnowSurface"
             {
                 float4 positionCS : SV_POSITION;
                 float3 positionWS : TEXCOORD0;
-                float3 vertexData : TEXCOORD1; // x = trample, y = fade, z = fogFactor
+                half fogFactor : TEXCOORD1;
+                half3 vertexLighting : TEXCOORD2;
             };
 
             Varyings SnowVertex(Attributes input)
@@ -176,18 +236,22 @@ Shader "SnowDays/SnowSurface"
                 float3 positionWS = SnowDisplace(input.positionOS, trample, fade);
                 output.positionWS = positionWS;
                 output.positionCS = TransformWorldToHClip(positionWS);
-                output.vertexData = float3(trample, fade, ComputeFogFactor(output.positionCS.z));
+                output.fogFactor = ComputeFogFactor(output.positionCS.z);
+                output.vertexLighting = VertexLighting(positionWS, SnowNormal(positionWS.xz, fade));
                 return output;
             }
 
             half4 SnowFragment(Varyings input) : SV_Target
             {
-                float trample = SnowTrample(input.positionWS.xz);
-                float fade = input.vertexData.y;
+                SnowClip(input.positionWS.xz, input.positionCS.xy);
+                float fade = SnowFadeAt(input.positionWS.xz);
+                float trample = SnowTrample(input.positionWS.xz) * fade;
                 float3 positionWS = input.positionWS;
                 float3 normalWS = SnowNormal(positionWS.xz, fade);
 
-                #if defined(MAIN_LIGHT_CALCULATE_SHADOWS) || defined(_MAIN_LIGHT_SHADOWS_SCREEN)
+                #if defined(_MAIN_LIGHT_SHADOWS_SCREEN)
+                float4 shadowCoord = ComputeScreenPos(TransformWorldToHClip(positionWS));
+                #elif defined(MAIN_LIGHT_CALCULATE_SHADOWS)
                 float4 shadowCoord = TransformWorldToShadowCoord(positionWS);
                 #else
                 float4 shadowCoord = float4(0, 0, 0, 0);
@@ -203,18 +267,19 @@ Shader "SnowDays/SnowSurface"
                 inputData.shadowCoord = shadowCoord;
                 inputData.normalizedScreenSpaceUV = GetNormalizedScreenSpaceUV(input.positionCS);
                 inputData.shadowMask = half4(1, 1, 1, 1);
+                inputData.bakedGI = SampleSH(normalWS);
+                inputData.vertexLighting = input.vertexLighting;
+                inputData.fogCoord = InitializeInputDataFog(float4(positionWS, 1), input.fogFactor);
 
-                // Flat projection here: the ground is the reference mapping
-                // that sculptures triplanar-match. Compressed snow in prints
-                // reads darker and bluer.
-                half3 texCol = SnowTexPlanar(positionWS.xz, _SnowTexTiling);
-                half3 albedo = texCol * lerp(_SnowAlbedo.rgb, _SnowTrenchAlbedo.rgb, trample);
+                // Preserve the snow's stylized palette and light bands.
+                // The terrain now calls the very same lighting function.
+                half4 tex = SAMPLE_TEXTURE2D(_SnowBaseMap, sampler_SnowBaseMap,
+                    positionWS.xz * _SnowBaseMap_ST.xy + _SnowBaseMap_ST.zw);
+                half3 albedo = tex.rgb * _SnowDiffuseRemap.rgb *
+                    lerp(_SnowAlbedo.rgb, _SnowTrenchAlbedo.rgb, trample);
                 half occlusion = 1.0 - trample * _SnowTrenchAO;
-
-                half3 color = SnowShade(inputData, albedo, occlusion, _SnowShadowTint.rgb, _SnowLightBands);
-
-                color = MixFog(color, input.vertexData.z);
-                return half4(color, 1);
+                half3 color = SnowLighting(inputData, albedo, occlusion, _SnowShadowTint.rgb, _SnowLightBands);
+                return half4(MixFog(color, inputData.fogCoord), 1);
             }
             ENDHLSL
         }
@@ -248,6 +313,7 @@ Shader "SnowDays/SnowSurface"
             struct Varyings
             {
                 float4 positionCS : SV_POSITION;
+                float2 worldXZ : TEXCOORD0;
             };
 
             Varyings SnowShadowVertex(Attributes input)
@@ -265,11 +331,16 @@ Shader "SnowDays/SnowSurface"
 
                 float4 positionCS = TransformWorldToHClip(ApplyShadowBias(positionWS, normalWS, lightDirectionWS));
                 output.positionCS = ApplyShadowClamping(positionCS);
+                output.worldXZ = positionWS.xz;
                 return output;
             }
 
             half4 SnowShadowFragment(Varyings input) : SV_Target
             {
+                // The terrain supplies shadows in the transition. Casting
+                // from the shell onto terrain exposed by its coverage fade
+                // produces an artificial dark ring around the window.
+                clip(SnowFadeAt(input.worldXZ) - 0.9999);
                 return 0;
             }
             ENDHLSL
@@ -297,18 +368,22 @@ Shader "SnowDays/SnowSurface"
             struct Varyings
             {
                 float4 positionCS : SV_POSITION;
+                float2 worldXZ : TEXCOORD0;
             };
 
             Varyings SnowDepthVertex(Attributes input)
             {
                 Varyings output;
                 float trample, fade;
-                output.positionCS = TransformWorldToHClip(SnowDisplace(input.positionOS, trample, fade));
+                float3 positionWS = SnowDisplace(input.positionOS, trample, fade);
+                output.positionCS = TransformWorldToHClip(positionWS);
+                output.worldXZ = positionWS.xz;
                 return output;
             }
 
             half SnowDepthFragment(Varyings input) : SV_Target
             {
+                SnowClip(input.worldXZ, input.positionCS.xy);
                 return input.positionCS.z;
             }
             ENDHLSL
@@ -326,6 +401,7 @@ Shader "SnowDays/SnowSurface"
             #pragma target 3.5
             #pragma vertex SnowDepthNormalsVertex
             #pragma fragment SnowDepthNormalsFragment
+            #pragma multi_compile_fragment _ _GBUFFER_NORMALS_OCT
 
             struct Attributes
             {
@@ -352,7 +428,15 @@ Shader "SnowDays/SnowSurface"
 
             half4 SnowDepthNormalsFragment(Varyings input) : SV_Target
             {
-                return half4(SnowNormal(input.positionWS.xz, input.fade), 0);
+                SnowClip(input.positionWS.xz, input.positionCS.xy);
+                float3 normalWS = SnowNormal(input.positionWS.xz, SnowFadeAt(input.positionWS.xz));
+                #if defined(_GBUFFER_NORMALS_OCT)
+                    float2 octNormalWS = PackNormalOctQuadEncode(normalWS);
+                    float2 remappedOctNormalWS = saturate(octNormalWS * 0.5 + 0.5);
+                    return half4(PackFloat2To888(remappedOctNormalWS), 0);
+                #else
+                    return half4(normalWS, 0);
+                #endif
             }
             ENDHLSL
         }
