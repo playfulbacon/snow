@@ -75,6 +75,10 @@ namespace Snowfield.Config
         [Tooltip("Footprints and trenches cannot pack the snow deeper than this (m). Carving can.")]
         public float terrainPathDepthCap = 0.12f;
 
+        [Header("Planar shave")]
+        [Tooltip("How far past the cut line the slice reaches (m). Snow beyond this is left standing, so a slice takes a slab rather than everything on one side.")]
+        public float sliceWidth = 0.6f;
+
         [Header("Reach")]
         [Tooltip("How far from the shoulder you can act on snow (m). This is the single limit on everything the reticle does: scoop, bite, pat, place, and whether the ground under the cursor registers at all. Measured from a metre above the player's feet, so the ground you can aim at is only sqrt(maxReach² - 1) away horizontally — at 1.2 that is 66 cm, which means looking almost straight down. Raising it also lets you sculpt from further off than the arms can stretch (see handMaxStretch).")]
         public float maxReach = 2.2f;

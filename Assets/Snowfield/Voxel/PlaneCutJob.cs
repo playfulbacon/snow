@@ -24,6 +24,8 @@ namespace Snowfield.Voxel
         public float3 PointVoxel;
         /// <summary>Unit plane normal in voxel space. Snow on this side is removed.</summary>
         public float3 NormalVoxel;
+        /// <summary>How far past the plane the cut reaches, in voxels. Snow beyond it is left alone.</summary>
+        public float WidthVoxels;
         /// <summary>Width of the ramp below the plane, in voxels. 1 is plenty.</summary>
         public float FeatherVoxels;
 
@@ -35,10 +37,14 @@ namespace Snowfield.Voxel
             float h = math.dot((float3)p - PointVoxel, NormalVoxel);
 
             float feather = math.max(FeatherVoxels, 0.01f);
-            if (h <= -feather) return; // clear of the cut
-            if (h >= 0f) { Density[i] = 0; return; } // past the plane
+            float w = math.max(WidthVoxels, 0f);
+            if (h <= -feather || h >= w + feather) return;       // outside the slab entirely
+            if (h >= 0f && h <= w) { Density[i] = 0; return; }   // inside it
 
-            float ceiling = 255f * (-h / feather);
+            // In one of the two feather bands: ramp back to full density away from the cut, so the surfaces
+            // land on the planes themselves instead of on whichever voxel boundary happens to be near.
+            float over = h < 0f ? -h : h - w;
+            float ceiling = 255f * (over / feather);
             if (Density[i] <= ceiling) return;
             Density[i] = (byte)math.round(ceiling);
         }

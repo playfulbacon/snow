@@ -155,11 +155,11 @@ namespace Snowfield.Sculpture
 
         /// <summary>Volume of snow in this grid, in cubic metres (density-weighted).</summary>
         /// <summary>
-        /// Chop along a world plane; snow on the normal's side is removed outright. Returns the volume taken (m³).
-        /// The whole grid is in play — a plane has no extent — so this touches every chunk and is a committed
-        /// edit, not something to run per frame.
+        /// Chop along a world plane: snow from the plane out to <paramref name="widthMetres"/> along the normal
+        /// is removed, and anything past that is left standing. The whole grid is in play — a plane has no
+        /// lateral extent — so this touches every chunk and is a committed edit, not a per-frame one.
         /// </summary>
-        public float ApplyPlaneCut(float3 worldPoint, float3 worldNormal)
+        public float ApplyPlaneCut(float3 worldPoint, float3 worldNormal, float widthMetres)
         {
             if (Grid == null || !Grid.IsCreated) return 0f;
             float before = DensityVolume();
@@ -171,6 +171,7 @@ namespace Snowfield.Sculpture
                 Density = Grid.Density, Info = Info,
                 PointVoxel = WorldToVoxel(worldPoint),
                 NormalVoxel = n,
+                WidthVoxels = math.max(widthMetres, 0f) / Info.voxelSize,
                 FeatherVoxels = 1f,
             }.Schedule(Info.VoxelCount, 256).Complete();
             Grid.MarkAllDirty();
