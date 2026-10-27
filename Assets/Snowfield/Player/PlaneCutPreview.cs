@@ -11,11 +11,10 @@ namespace Snowfield.Player
     /// — and a plane through the camera projects to a straight line through the centre of the screen. Rotating
     /// the line rotates the plane about the view axis, one to one.
     ///
-    /// The band is the one honest approximation here. The cut removes a slab of fixed world thickness, and a slab
-    /// does not project to a strip of constant width: it narrows with distance, and close to the camera it opens
-    /// up without limit. So the band is drawn at the thickness the slab has *at the point you are aiming at*,
-    /// which is the part of it you are judging. Snow much nearer or further than the cursor is cut slightly wider
-    /// or narrower than the band suggests.
+    /// The length is the one honest approximation here. The cut spans a fixed distance in the world, and a fixed
+    /// world length does not project to a fixed number of pixels — it shrinks with distance. So the segment is
+    /// drawn at the length the cut has *at the point you are aiming at*, which is the part of it you are judging.
+    /// Snow much nearer or further than the cursor is cut slightly longer or shorter than the segment suggests.
     ///
     /// Both halves are plain uGUI rects: move, recolour or replace them in the inspector without touching this.
     /// </summary>
@@ -49,32 +48,34 @@ namespace Snowfield.Player
 
         /// <summary>
         /// Point the preview at <paramref name="angleDeg"/>, measured from screen-right, turning anticlockwise,
-        /// with a doomed band <paramref name="bandPixels"/> thick lying on the normal side of the line.
+        /// as a segment <paramref name="lengthPixels"/> long. The doomed region hangs off the normal side of that
+        /// segment and runs off screen, because the cut takes everything on that side within the segment's span.
         /// </summary>
-        public void Show(float angleDeg, float bandPixels)
+        public void Show(float angleDeg, float lengthPixels)
         {
-            // Long enough to run off screen at any rotation, so the line never stops short in a corner.
+            // Far enough to leave the screen at any rotation, so the doomed side never stops short in a corner.
             float span = ToCanvas(new Vector2(Screen.width, Screen.height).magnitude);
-            float band = Mathf.Max(ToCanvas(bandPixels), 1f);
+            float length = Mathf.Max(ToCanvas(lengthPixels), 1f);
             var rot = Quaternion.Euler(0f, 0f, angleDeg);
+            float n = (angleDeg + 90f) * Mathf.Deg2Rad;
+            var normal = new Vector2(Mathf.Cos(n), Mathf.Sin(n));
 
             if (line != null)
             {
                 if (!line.gameObject.activeSelf) line.gameObject.SetActive(true);
                 line.anchoredPosition = Vector2.zero;
-                line.sizeDelta = new Vector2(span, Mathf.Max(line.sizeDelta.y, 2f));
+                line.sizeDelta = new Vector2(length, Mathf.Max(line.sizeDelta.y, 2f));
                 line.localRotation = rot;
             }
 
             if (doomed != null)
             {
                 if (!doomed.gameObject.activeSelf) doomed.gameObject.SetActive(true);
-                // Local X runs along the line, local Y across it, so the band is as long as the line and as thick
-                // as the slab; pushed half its thickness along the normal puts its near edge on the line.
-                doomed.sizeDelta = new Vector2(span, band);
+                // Local X runs along the line, local Y across it: as long as the segment, deep enough to leave
+                // the screen, and pushed half that depth along the normal so its near edge sits on the line.
+                doomed.sizeDelta = new Vector2(length, span);
                 doomed.localRotation = rot;
-                float n = (angleDeg + 90f) * Mathf.Deg2Rad;
-                doomed.anchoredPosition = new Vector2(Mathf.Cos(n), Mathf.Sin(n)) * (band * 0.5f);
+                doomed.anchoredPosition = normal * (span * 0.5f);
             }
         }
     }

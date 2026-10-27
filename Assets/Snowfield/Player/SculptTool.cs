@@ -408,7 +408,7 @@ namespace Snowfield.Player
             {
                 // The red scoop sphere is a lie while slicing — LMB cuts, it does not scoop.
                 HideBrushCursor();
-                if (planeCut != null) planeCut.Show(_cutAngle, SliceBandPixels());
+                if (planeCut != null) planeCut.Show(_cutAngle, SliceLengthPixels());
                 if (lmbDown) CommitPlaneCut();
                 return; // Shift owns the click while a cut is lined up
             }
@@ -617,7 +617,7 @@ namespace Snowfield.Player
             Vector3 normal = Vector3.Cross(cam.forward, lineDir).normalized; // points into the doomed half
             if (normal.sqrMagnitude < 1e-6f) return;
 
-            float removed = s.ApplyPlaneCut(BrushPoint, normal, config.sliceWidth);
+            float removed = s.ApplyPlaneCut(BrushPoint, normal, lineDir, config.sliceLength);
             if (removed <= 0f) return;
 
             s.Remesh();
@@ -625,18 +625,18 @@ namespace Snowfield.Player
         }
 
         /// <summary>
-        /// The slice's thickness in screen pixels, measured at the depth of the point under the cursor. The cut
-        /// is a slab of fixed world thickness and a slab does not project to a constant-width strip, so the
-        /// preview is drawn true where you are aiming rather than averaged over a depth range you cannot see.
+        /// The cut line's length in screen pixels, measured at the depth of the point under the cursor. A fixed
+        /// world length does not project to a fixed number of pixels, so the line is drawn true where you are
+        /// aiming rather than averaged over a depth range you cannot see.
         /// </summary>
-        float SliceBandPixels()
+        float SliceLengthPixels()
         {
             if (viewCamera == null || config == null) return 0f;
             Transform cam = viewCamera.transform;
             float depth = Mathf.Max(Vector3.Dot((Vector3)BrushPoint - cam.position, cam.forward), 0.05f);
             float worldHeight = 2f * depth * Mathf.Tan(viewCamera.fieldOfView * 0.5f * Mathf.Deg2Rad);
             if (worldHeight <= 0.0001f) return 0f;
-            return config.sliceWidth / worldHeight * Screen.height;
+            return config.sliceLength / worldHeight * Screen.height;
         }
 
         public void ApplyTick(IBrushTarget t, BrushOp op, float3 point, float radius)
