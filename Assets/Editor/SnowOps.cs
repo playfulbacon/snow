@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using UnityEditor;
+using UnityEditor.Compilation;
 using UnityEditor.TestTools.TestRunner.Api;
 using UnityEngine;
 
@@ -15,6 +17,7 @@ namespace SnowDays.EditorTools
     ///   invoke.request           → call any public static parameterless editor method; content = Full.Type.Method
     ///   tests_editmode.request   → run EditMode tests; file content = optional ';'-separated assembly filter
     ///   tests_playmode.request   → run PlayMode tests; same filter rule
+    ///                              (empty content = this project's own test assemblies, NOT everything; "*" = everything)
     ///   play_smoke.request       → enter play mode in the open scene for N seconds (file content, default 25)
     /// Results land in NetOps/&lt;op&gt;.result. Used by the overnight networking session; harmless to keep.
     /// </summary>
@@ -25,11 +28,19 @@ namespace SnowDays.EditorTools
         static double _nextPoll;
         static bool _testsRunning;
 
+        /// <summary>
+        /// Kept alive on purpose. A PlayMode run only starts a frame or two after Execute, and a TestRunnerApi that
+        /// nothing holds a reference to is destroyed before it gets there: the run then silently never happens, the
+        /// callbacks never fire, and the request looks like it hung. The static ctor runs again after the play-mode
+        /// domain reload, which is also how the results find their way back out.
+        /// </summary>
+        static TestRunnerApi _api;
+
         static SnowOps()
         {
             EditorApplication.update += Poll;
-            var api = ScriptableObject.CreateInstance<TestRunnerApi>();
-            api.RegisterCallbacks(new ResultWriter());
+            _api = ScriptableObject.CreateInstance<TestRunnerApi>();
+            _api.RegisterCallbacks(new ResultWriter());
         }
 
         static void Poll()
@@ -173,9 +184,38 @@ namespace SnowDays.EditorTools
             SessionState.SetString("snowops_testmode", mode.ToString());
             var filter = new Filter { testMode = mode };
             if (!string.IsNullOrEmpty(assemblyFilter))
-                filter.assemblyNames = assemblyFilter.Split(';');
-            var api = ScriptableObject.CreateInstance<TestRunnerApi>();
-            api.Execute(new ExecutionSettings(filter));
+            {
+                // "*" is the deliberate way to ask for everything, packages included.
+                if (assemblyFilter.Trim() != "*") filter.assemblyNames = assemblyFilter.Split(';');
+            }
+            else
+            {
+                var own = OwnTestAssemblies();
+                if (own.Length > 0) filter.assemblyNames = own;
+            }
+            Debug.Log("[SnowOps] " + mode + " tests: " +
+                      (filter.assemblyNames == null ? "EVERYTHING (packages included)" : string.Join(";", filter.assemblyNames)));
+            _api.Execute(new ExecutionSettings(filter));
+        }
+
+        /// <summary>
+        /// This project's own test assemblies, discovered by name so a new one is picked up for free.
+        ///
+        /// An unfiltered run is NOT "my tests". Packages/manifest.json lists com.unity.netcode.gameobjects under
+        /// "testables" — Snowfield.Net.Tests needs its in-process host+client helpers — and that also puts NGO's own
+        /// runtime suite into this project's test set: ~700 test methods, most declared three times over by
+        /// Host/Server/DAHost fixtures, each standing up a host plus clients and waiting on real connection timeouts.
+        /// Hours of someone else's tests. So empty means these, and going wider has to be asked for with "*".
+        /// </summary>
+        static string[] OwnTestAssemblies()
+        {
+            var names = new List<string>();
+            foreach (var a in CompilationPipeline.GetAssemblies(AssembliesType.Editor))
+                if (a.name.StartsWith("Snowfield.", StringComparison.Ordinal) &&
+                    a.name.EndsWith("Tests", StringComparison.Ordinal))
+                    names.Add(a.name);
+            names.Sort(StringComparer.Ordinal);
+            return names.ToArray();
         }
 
         static void RunPlaySmoke(string arg)
