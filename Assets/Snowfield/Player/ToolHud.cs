@@ -86,6 +86,9 @@ namespace Snowfield.Player
         [Serializable]
         public class StatusSettings
         {
+            [Tooltip("Show the top-left lines: the mode/aim readout, the control hints and the connection state. " +
+                     "Off by default — it is dev chrome, not part of the game's look.")]
+            public bool show = false;
             public Vector2 margin = new Vector2(14f, 12f);
             public int fontSize = 16;
             public float lineSpacing = 4f;
@@ -447,7 +450,10 @@ namespace Snowfield.Player
             _chargeFill.fillAmount = playing ? charge : 0.65f;
             _chargeFill.color = charge >= 0.999f ? c.chargeRingFull : c.chargeRingFill;
 
-            // status text
+            // status text (hidden unless status.show — see StatusSettings)
+            _statusRoot.gameObject.SetActive(status.show);
+            if (!status.show) return;
+
             string line = "";
             if (playing && tool.config != null)
             {
