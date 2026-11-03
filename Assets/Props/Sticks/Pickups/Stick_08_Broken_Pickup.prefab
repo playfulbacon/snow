@@ -1,0 +1,143 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &3559732138272004950
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 6330519154187135179}
+  - component: {fileID: 5867976454494677038}
+  - component: {fileID: 6590605817342313863}
+  m_Layer: 0
+  m_Name: Stick_08_Broken_Pickup
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &6330519154187135179
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3559732138272004950}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 3150168859066384142}
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &5867976454494677038
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3559732138272004950}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b2a6940315c2466ab7c8baa296efabf8, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Snowfield.Player::Snowfield.Player.ItemPickup
+  itemId: stick_broken
+  quantity: 1
+  worldModel: {fileID: 8380545149308741460}
+--- !u!65 &6590605817342313863
+BoxCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3559732138272004950}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 1
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Size: {x: 0.22, y: 0.18, z: 0.38693047}
+  m_Center: {x: -0.024808727, y: 0.03501374, z: 0.19346523}
+--- !u!1001 &5191595481387780380
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 6330519154187135179}
+    m_Modifications:
+    - target: {fileID: 2674934990597296246, guid: 1229c17b65d8e4a4e934819fa81815fe, type: 3}
+      propertyPath: m_Enabled
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 4342013185789783624, guid: 1229c17b65d8e4a4e934819fa81815fe, type: 3}
+      propertyPath: m_Name
+      value: Stick_08_Broken
+      objectReference: {fileID: 0}
+    - target: {fileID: 7186589927893792274, guid: 1229c17b65d8e4a4e934819fa81815fe, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7186589927893792274, guid: 1229c17b65d8e4a4e934819fa81815fe, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0.031044286
+      objectReference: {fileID: 0}
+    - target: {fileID: 7186589927893792274, guid: 1229c17b65d8e4a4e934819fa81815fe, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7186589927893792274, guid: 1229c17b65d8e4a4e934819fa81815fe, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 0.7071068
+      objectReference: {fileID: 0}
+    - target: {fileID: 7186589927893792274, guid: 1229c17b65d8e4a4e934819fa81815fe, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0.7071068
+      objectReference: {fileID: 0}
+    - target: {fileID: 7186589927893792274, guid: 1229c17b65d8e4a4e934819fa81815fe, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7186589927893792274, guid: 1229c17b65d8e4a4e934819fa81815fe, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7186589927893792274, guid: 1229c17b65d8e4a4e934819fa81815fe, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7186589927893792274, guid: 1229c17b65d8e4a4e934819fa81815fe, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7186589927893792274, guid: 1229c17b65d8e4a4e934819fa81815fe, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: 1229c17b65d8e4a4e934819fa81815fe, type: 3}
+--- !u!4 &3150168859066384142 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 7186589927893792274, guid: 1229c17b65d8e4a4e934819fa81815fe, type: 3}
+  m_PrefabInstance: {fileID: 5191595481387780380}
+  m_PrefabAsset: {fileID: 0}
+--- !u!1 &8380545149308741460 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 4342013185789783624, guid: 1229c17b65d8e4a4e934819fa81815fe, type: 3}
+  m_PrefabInstance: {fileID: 5191595481387780380}
+  m_PrefabAsset: {fileID: 0}

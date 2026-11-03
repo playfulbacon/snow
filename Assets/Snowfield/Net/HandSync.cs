@@ -19,6 +19,7 @@ namespace Snowfield.Net
     {
         public Vector3 LeftPosition, LeftAim;
         public Vector3 RightPosition, RightAim;
+        public Vector3 LeftPalmNormal, RightPalmNormal;
         public float LeftWeight, RightWeight;
 
         public bool LeftActive => LeftWeight > 0.001f;
@@ -31,6 +32,8 @@ namespace Snowfield.Net
             serializer.SerializeValue(ref LeftAim);
             serializer.SerializeValue(ref RightPosition);
             serializer.SerializeValue(ref RightAim);
+            serializer.SerializeValue(ref LeftPalmNormal);
+            serializer.SerializeValue(ref RightPalmNormal);
             serializer.SerializeValue(ref LeftWeight);
             serializer.SerializeValue(ref RightWeight);
         }
@@ -46,6 +49,7 @@ namespace Snowfield.Net
             {
                 pose.LeftPosition = body.InverseTransformPoint(left.Position);
                 pose.LeftAim = body.InverseTransformDirection(left.Aim);
+                pose.LeftPalmNormal = body.InverseTransformDirection(left.PalmNormal);
                 pose.LeftWeight = left.Weight;
             }
             var right = rig.CurrentGoal(HandRig.Side.Right);
@@ -53,6 +57,7 @@ namespace Snowfield.Net
             {
                 pose.RightPosition = body.InverseTransformPoint(right.Position);
                 pose.RightAim = body.InverseTransformDirection(right.Aim);
+                pose.RightPalmNormal = body.InverseTransformDirection(right.PalmNormal);
                 pose.RightWeight = right.Weight;
             }
             return pose;
@@ -76,6 +81,7 @@ namespace Snowfield.Net
         float _age;
 
         Vector3 _leftPos, _leftAim, _rightPos, _rightAim;
+        Vector3 _leftPalmNormal, _rightPalmNormal;
         bool _leftActive, _rightActive;
 
         public void Receive(in HandSyncPose pose)
@@ -97,14 +103,21 @@ namespace Snowfield.Net
                 _target.LeftPosition, _target.LeftAim, _target.LeftActive, k);
             Follow(ref _rightPos, ref _rightAim, ref _rightActive,
                 _target.RightPosition, _target.RightAim, _target.RightActive, k);
+            // Preserve zero as the ordinary wrist/aim mode. Easing across zero would incorrectly keep
+            // targeting the palm for a frame after the owner switched back to snow interactions.
+            _leftPalmNormal = FollowPalm(_leftPalmNormal, _target.LeftPalmNormal, k);
+            _rightPalmNormal = FollowPalm(_rightPalmNormal, _target.RightPalmNormal, k);
 
             if (_leftActive)
                 rig.Reach(HandRig.Side.Left, body.TransformPoint(_leftPos), _target.LeftWeight,
-                    body.TransformDirection(_leftAim));
+                    body.TransformDirection(_leftAim), palmNormal: body.TransformDirection(_leftPalmNormal));
             if (_rightActive)
                 rig.Reach(HandRig.Side.Right, body.TransformPoint(_rightPos), _target.RightWeight,
-                    body.TransformDirection(_rightAim));
+                    body.TransformDirection(_rightAim), palmNormal: body.TransformDirection(_rightPalmNormal));
         }
+
+        static Vector3 FollowPalm(Vector3 current, Vector3 target, float k) =>
+            current.sqrMagnitude < 1e-6f || target.sqrMagnitude < 1e-6f ? target : Vector3.Slerp(current, target, k);
 
         static void Follow(ref Vector3 pos, ref Vector3 aim, ref bool active,
             Vector3 targetPos, Vector3 targetAim, bool targetActive, float k)

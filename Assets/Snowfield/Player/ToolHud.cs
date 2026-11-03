@@ -291,8 +291,17 @@ namespace Snowfield.Player
         /// <summary>How many hint rows the strip can ever need: Tab, the menu, and the mic in a session.</summary>
         const int HintCapacity = 3;
 
+        /// <summary>
+        /// Bumped whenever the generated HUD changes shape. The checks below catch a HUD that lost an object,
+        /// but not one built by an older version of this file whose object graph happens to still line up —
+        /// a serialized scene keeps that one for ever otherwise.
+        /// </summary>
+        const int HudSchemaVersion = 2;
+        [SerializeField, HideInInspector] int _hudSchemaVersion;
+
         bool IsBuilt() =>
-            canvas != null && _accessoryBarRoot != null && _reticleRoot != null && _statusRoot != null
+            _hudSchemaVersion == HudSchemaVersion
+            && canvas != null && _accessoryBarRoot != null && _reticleRoot != null && _statusRoot != null
             && _stackRoot != null && _hintRoot != null
             && _accessories.Count == AccessoryCatalog.Entries.Count
             && _rows.Count == Mathf.Max(1, cursor.maxRows) && _hintRows.Count == HintCapacity
@@ -313,6 +322,7 @@ namespace Snowfield.Player
         void Build()
         {
             _pendingBuild = false;
+            _hudSchemaVersion = HudSchemaVersion;
             _font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
 
             if (canvas == null) canvas = GetComponent<Canvas>();
@@ -325,7 +335,14 @@ namespace Snowfield.Player
             scaler.matchWidthOrHeight = 0.5f;
 
             // Wipe previously generated children and rebuild deterministically.
-            for (int i = canvas.transform.childCount - 1; i >= 0; i--) Kill(canvas.transform.GetChild(i).gameObject);
+            for (int i = canvas.transform.childCount - 1; i >= 0; i--)
+            {
+                // Deactivated first: Destroy is deferred to the end of the frame, so a child left enabled draws
+                // once more over the HUD that replaced it.
+                var child = canvas.transform.GetChild(i).gameObject;
+                child.SetActive(false);
+                Kill(child);
+            }
             _accessories.Clear();
             _rows.Clear();
             _hintRows.Clear();
@@ -440,7 +457,6 @@ namespace Snowfield.Player
                 lr.anchoredPosition = Vector2.zero;
                 lr.sizeDelta = new Vector2(0, accessoryBar.labelHeight);
                 a.label.fontSize = accessoryBar.labelFontSize;
-                a.label.text = AccessoryCatalog.Entries[i].DisplayName;
                 var cr = (RectTransform)a.countBox.transform.parent;
                 cr.anchoredPosition = accessoryBar.countOffset;
                 cr.sizeDelta = Vector2.one * accessoryBar.countSize;
@@ -488,19 +504,43 @@ namespace Snowfield.Player
             _accessoryBarRoot.gameObject.SetActive(accVisible);
             if (accVisible)
             {
-                var thumbs = playing && placer != null ? placer.Thumbnails : null;
+                // The bar is the inventory now, not the catalog: one box per occupied slot, in slot order, and
+                // the same item can hold two slots. So the box count varies at runtime while the pool does not,
+                // and the bar has to place and size itself here rather than in the structural pass. Out of play
+                // there is no inventory, so the preview falls back to showing the catalog — which is what the
+                // bar is for in the inspector.
+                var inv = playing && placer != null ? placer.Inventory : null;
+                int shown = inv != null ? Mathf.Min(inv.SlotCount, _accessories.Count) : _accessories.Count;
+                float bs = accessoryBar.boxSize, gp = accessoryBar.gap;
+                _accessoryBarRoot.sizeDelta = new Vector2(shown > 0 ? shown * bs + (shown - 1) * gp : 0f, bs);
+
                 for (int i = 0; i < _accessories.Count; i++)
                 {
-                    bool sel = i == accIndex;
                     var a = _accessories[i];
+                    bool used = i < shown;
+                    a.root.gameObject.SetActive(used);
+                    if (!used) continue;
+
+                    a.root.anchoredPosition = new Vector2(i * (bs + gp), 0);
+
+                    var entry = inv != null ? inv.ItemAt(i)
+                              : i < AccessoryCatalog.Entries.Count ? AccessoryCatalog.Entries[i] : null;
+                    bool sel = i == accIndex;
                     a.box.color = sel ? c.selectedBg : c.boxBg;
                     a.label.color = sel ? c.selectedText : c.boxText;
-                    var tex = thumbs != null && i < thumbs.Count ? thumbs[i] : null;
+                    a.label.text = entry != null ? entry.DisplayName : "";
+
+                    var tex = entry != null && placer != null ? placer.ThumbnailFor(entry.Id) : null;
                     a.thumb.texture = tex;
                     a.thumb.color = tex != null ? Color.white : c.thumbnailPlaceholder;
+
+                    // The badge used to be hidden outright, because the supply was unlimited. It is not any
+                    // more — a slot holds a finite stack, so the number is half the point of the bar.
                     a.countBox.color = c.countBg;
                     a.count.color = c.countText;
-                    if (a.countBox != null) ((RectTransform)a.countBox.transform.parent).gameObject.SetActive(false); // unlimited supply
+                    a.count.text = inv != null ? inv.CountAt(i).ToString() : "";
+                    ((RectTransform)a.countBox.transform.parent).gameObject.SetActive(inv != null);
+
                     a.boxOutline.color = Frame(c.outline, a.box.color);
                     a.countOutline.color = Frame(c.outline, a.countBox.color);
                 }
@@ -736,6 +776,15 @@ namespace Snowfield.Player
             var entry = FindPrompt(item.Action);
             string label = entry != null && !string.IsNullOrEmpty(entry.label)
                 ? entry.label : CursorActionInfo.DefaultLabel(item.Action);
+            // The one row whose text is worth building per frame: "Pick up Pebble x3" beats "Pick up item",
+            // and the count is what the pickup will actually give you, not what is lying there.
+            if (item.Action == CursorAction.CollectItem && tool != null && tool.AimedPickup != null
+                && placer != null && placer.Inventory != null)
+            {
+                var pickup = tool.AimedPickup;
+                int amount = Mathf.Min(pickup.quantity, placer.Inventory.SpaceFor(pickup.itemId));
+                label = $"Pick up {pickup.Item?.DisplayName} ×{amount}";
+            }
             var icon = entry != null ? entry.icon : null;
 
             // A hold reads as a modifier on the input, not as words inside the label: "Hold [LMB] Throw".

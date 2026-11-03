@@ -27,6 +27,9 @@ namespace Snowfield.Player
         PickAccessory,
         OpenAccessories,
         CloseAccessories,
+        CollectItem,
+        StackFull,
+        FindItems,
         OpenMenu,
         MuteMic,
         UnmuteMic,
@@ -50,8 +53,15 @@ namespace Snowfield.Player
             CursorAction.RotateSlice => "Turn the cut",
             CursorAction.BrushRadius => "Brush size",
             CursorAction.PickAccessory => "Pick",
-            CursorAction.OpenAccessories => "Accessories",
-            CursorAction.CloseAccessories => "Close accessories",
+            // The accessory overlay is the inventory now, so the prompts call it that: the mode name on screen
+            // comes from ToolModeInfo.DisplayName and the two must not disagree.
+            CursorAction.OpenAccessories => "Inventory",
+            CursorAction.CloseAccessories => "Close inventory",
+            CursorAction.CollectItem => "Pick up item",
+            // Not actions: both say why the click is not on offer. They carry an input anyway so the row reads
+            // like the rest of the stack, and the one that would have done it is the honest one to show.
+            CursorAction.StackFull => "Inventory full",
+            CursorAction.FindItems => "Find items to collect",
             CursorAction.OpenMenu => "Menu",
             CursorAction.MuteMic => "Mute mic",
             CursorAction.UnmuteMic => "Unmute mic",

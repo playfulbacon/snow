@@ -1,0 +1,21 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: abd2465e5c0e4c6091b3dd0f792ba5d3, type: 3}
+  m_Name: Stick_01_Twig
+  m_EditorClassIdentifier: Snowfield.Sculpture::Snowfield.Sculpture.AccessoryItemDefinition
+  itemId: twig
+  displayName: Twig
+  stackLimit: 12
+  prefab: {fileID: 5936859715133708834, guid: 4f91fceac829747d7810e394b6e0df70, type: 3}
+  sink: 0.06
+  groundEulerAngles: {x: 90, y: 0, z: 0}
+  groundLift: 0.025958754

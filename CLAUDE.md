@@ -52,7 +52,7 @@ A small, seasonal multiplayer game about sculpting snow in a shared field. Live 
 - No `OnAnimatorIK`/Animation Rigging: a delta-rotation two-bone solve (`HandRig.Solve`, pure and unit-tested in `Snowfield.Player.EditTests`) needs no bone-axis knowledge and no IK Pass on the controller.
 - Held snow is **one-handed until it is worth two**: under `handTwoHandedRadius` (0.22 m) it rides in one palm at your side (`PalmAnchor`) and the other hand stays free; bigger than that and both hands hoist it overhead (`CarryAnchor`). `SnowballRoller.TwoHandedCarry` is the single answer to that question — it picks both the hold position and the hand count, so they can never disagree. A whole carried sculpture always counts as two-handed.
 - **Measure poses off the rig, not the capsule.** This character is chibi-proportioned: the capsule is 2.1 m but the shoulders sit at ~0.98 m and the eye line (`CameraPivot`, hand-tuned) at **1.08 m** — most of the height is head. Anything held much above 1.0 m is over the player's own head and off the top of their screen. `HandRigPlaytest` logs shoulder height and the viewport coordinates of held snow for exactly this reason.
-- `SculptTool.DriveHands` owns intent (hold / pat / place / ready-hover), `HandRig` owns mechanics (spring, weight blend, solve). `Reach` every frame; `Pulse` for snow that stops existing the instant you touch it (fuse, throw, drop, accessory).
+- `SculptTool.DriveHands` owns snow intent (hold / pat / scoop-ready); `HeldAccessoryView` owns accessory carry and placement intent, then follows the solved palm in LateUpdate. `HandRig` owns mechanics (spring, weight blend, solve). `Reach` every frame; `Pulse` for snow that stops existing the instant you touch it (fuse, throw, drop, accessory).
 
 ### Snowballs — faked, not simulated (built: each snowball is a small 48³ `SnowSculpture` + `Snowball`, loose until something is attached, then `SculptureFactory.Promote`s it to 96³; flight = temporary Rigidbody + sphere collider, splat = `Absorb`)
 - Rolling: a sphere prop that scales up while rolling over fresh snow, consuming a terrain decal layer (leaves the classic trail).
@@ -83,6 +83,7 @@ A small, seasonal multiplayer game about sculpting snow in a shared field. Live 
 
 ### Sticks & found objects = props, zero voxel involvement
 - Raycast to sculpture surface, socket/parent, store `{prefabId, localPos, localRot}` in the sculpture record.
+- Inventory accessories are held in front/right (`HeldAccessoryView`), following the solved palm at authored size. Palm orientation constrains fingertip aim and wrist roll while keeping item facing independent; `Grip` markers can author a position and palm rotation per prefab. Aiming never moves the hand onto snow. A click pins the chosen stack and surface point, reaches, then places/spends at contact; cancelling before contact spends nothing. There is no surface ghost or floating inventory model. Hold offset, item/palm rotation and placement/recovery timing live in `SculptFeelConfig`.
 
 ### Data model (Phase 3)
 ```

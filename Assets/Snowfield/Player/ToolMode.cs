@@ -11,7 +11,7 @@ namespace Snowfield.Player
 
     public static class ToolModeInfo
     {
-        public static string DisplayName(ToolMode m) => m == ToolMode.Accessory ? "Accessories" : "Hand";
+        public static string DisplayName(ToolMode m) => m == ToolMode.Accessory ? "Inventory" : "Hand";
 
         /// <summary>
         /// What Tab does from here. There is deliberately no prose list of the mode's controls any more: the
