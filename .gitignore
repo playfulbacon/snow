@@ -35,3 +35,6 @@ Thumbs.db
 
 # multiplayer live-editor ops runner (requests/results, transient)
 /NetOps/
+
+# accidental Windows "/dev/null" redirect target
+/dev/

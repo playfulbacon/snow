@@ -87,6 +87,7 @@
   <Project Path="Snowfield.Net.csproj" />
   <Project Path="Unity.AI.Navigation.Editor.csproj" />
   <Project Path="Snowfield.Sculpture.csproj" />
+  <Project Path="Snowfield.UI.EditTests.csproj" />
   <Project Path="Snowfield.Player.csproj" />
   <Project Path="Unity.Netcode.Editor.CodeGen.csproj" />
   <Project Path="Unity.Services.Multiplayer.Editor.Matchmaker.Authoring.Core.csproj" />
@@ -115,6 +116,7 @@
   <Project Path="Unity.Settings.Editor.csproj" />
   <Project Path="Unity.InputSystem.TestFramework.csproj" />
   <Project Path="Unity.Services.Multiplayer.Editor.csproj" />
+  <Project Path="Snowfield.UI.csproj" />
   <Project Path="Unity.Multiplayer.Tools.NetStats.CodeGen.csproj" />
   <Project Path="Unity.Multiplayer.Tools.DependencyInjection.csproj" />
   <Project Path="Unity.ShaderGraph.Utilities.csproj" />
@@ -125,6 +127,7 @@
   <Project Path="Unity.Services.Core.Analytics.csproj" />
   <Project Path="Unity.Multiplayer.Tools.MetricEvents.csproj" />
   <Project Path="Snowfield.Editor.csproj" />
+  <Project Path="Snowfield.Player.EditTests.csproj" />
   <Project Path="Unity.CollabProxy.Editor.csproj" />
   <Project Path="Unity.RenderPipeline.Universal.ShaderLibrary.csproj" />
   <Project Path="Snowfield.Player.Tests.csproj" />
@@ -144,12 +147,11 @@
   <Project Path="Unity.VisualScripting.DocCodeExamples.csproj" />
   <Project Path="Unity.Multiplayer.Tools.Adapters.Utp2.csproj" />
   <Project Path="Unity.PlasticSCM.Editor.Entities.csproj" />
-  <Project Path="Snowfield.Player.EditTests.csproj" />
   <Project Path="Unity.Rendering.LightTransport.Editor.csproj" />
   <Project Path="Unity.Services.Core.Environments.csproj" />
   <Project Path="Unity.Collections.Editor.csproj" />
+  <Project Path="Snowfield.Config.csproj" />
   <Project Path="Unity.RenderPipelines.Universal.Config.Runtime.csproj" />
   <Project Path="Unity.RenderPipelines.ShaderGraph.ShaderGraphLibrary.csproj" />
   <Project Path="Unity.RenderPipelines.Core.ShaderLibrary.csproj" />
-  <Project Path="Snowfield.Config.csproj" />
 </Solution>

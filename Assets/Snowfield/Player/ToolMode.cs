@@ -13,11 +13,12 @@ namespace Snowfield.Player
     {
         public static string DisplayName(ToolMode m) => m == ToolMode.Accessory ? "Accessories" : "Hand";
 
-        public static string Hint(ToolMode m) => m switch
-        {
-            ToolMode.Hand => "LMB scoop snow into your hands (sculpture: a chunk · ground: a handful) · carrying: LMB lets go, hold to throw · Shift+LMB smooth · a carried ball rolls while your cursor is near the ground · Tab accessories",
-            ToolMode.Accessory => "scroll pick · LMB place (on an accessory: remove it) · Tab close",
-            _ => "",
-        };
+        /// <summary>
+        /// What Tab does from here. There is deliberately no prose list of the mode's controls any more: the
+        /// controls are <see cref="SculptTool.Actions"/>, drawn as prompts, and a second hand-written copy of
+        /// them in a hint string is what went stale last time.
+        /// </summary>
+        public static CursorAction TabAction(ToolMode m) =>
+            m == ToolMode.Accessory ? CursorAction.CloseAccessories : CursorAction.OpenAccessories;
     }
 }

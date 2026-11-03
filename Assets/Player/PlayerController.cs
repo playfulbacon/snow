@@ -1,10 +1,12 @@
+using Snowfield.Config;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.Rendering;
 
 namespace SnowDays
 {
-    // First-person controller: WASD + mouse look, LeftShift run, Space jump, Q crouch, E tiptoe, Esc frees the cursor.
+    // First-person controller: WASD + mouse look, LeftShift run, Space jump, Q crouch, E tiptoe. Esc belongs to
+    // the pause menu (Snowfield.UI.PauseMenu), which frees the cursor through Snowfield.Config.GamePause.
     [RequireComponent(typeof(CharacterController))]
     public class PlayerController : MonoBehaviour
     {
@@ -161,10 +163,13 @@ namespace SnowDays
         private float StanceSpeedMultiplier => CurrentStance == Stance.Crouch ? m_CrouchSpeedMultiplier
             : CurrentStance == Stance.Tiptoe ? m_TiptoeSpeedMultiplier : 1f;
 
+        // Esc used to free the cursor here. It opens the pause menu now, and the menu frees it — so the only
+        // gesture left is the relock. It has to be suppressed while paused or the first click on a menu button
+        // would snatch the mouse back into mouse-look, with the button never pressed.
         private static void HandleCursor(Keyboard keyboard, Mouse mouse)
         {
-            if (keyboard.escapeKey.wasPressedThisFrame) SetCursorLocked(false);
-            else if (Cursor.lockState != CursorLockMode.Locked && mouse.leftButton.wasPressedThisFrame) SetCursorLocked(true);
+            if (GamePause.IsPaused) return;
+            if (Cursor.lockState != CursorLockMode.Locked && mouse.leftButton.wasPressedThisFrame) SetCursorLocked(true);
         }
 
         private static void SetCursorLocked(bool locked)
@@ -173,11 +178,14 @@ namespace SnowDays
             Cursor.visible = !locked;
         }
 
+        // The serialized sensitivity stays the authored feel of this character; the player's setting is a
+        // multiplier on it, so tuning the inspector value still means something after someone has used the menu.
         private void Look(Mouse mouse)
         {
-            Vector2 delta = mouse.delta.ReadValue() * m_LookSensitivity;
+            Vector2 delta = mouse.delta.ReadValue() * m_LookSensitivity * GameSettings.LookSensitivity;
             transform.Rotate(0f, delta.x, 0f);
-            m_Pitch = Mathf.Clamp(m_Pitch - delta.y, -m_PitchLimit, m_PitchLimit);
+            float pitchDelta = GameSettings.InvertLookY ? delta.y : -delta.y;
+            m_Pitch = Mathf.Clamp(m_Pitch + pitchDelta, -m_PitchLimit, m_PitchLimit);
             if (m_CameraPivot != null) m_CameraPivot.localRotation = Quaternion.Euler(m_Pitch, 0f, 0f);
         }
 

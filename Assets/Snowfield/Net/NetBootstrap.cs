@@ -38,10 +38,22 @@ namespace Snowfield.Net
         public static string Status
         {
             get => s_Status;
-            private set { s_Status = value; Snowfield.Player.NetStatus.Line = value == Offline ? "" : "net: " + value; }
+            private set
+            {
+                s_Status = value;
+                Snowfield.Player.NetStatus.Line = value == Offline ? "" : "net: " + value;
+                // The HUD only offers the mic control in a session, and it is not allowed to know about this
+                // assembly, so the state is pushed across the same seam the status line uses.
+                Snowfield.Player.NetStatus.InSession = value != Offline;
+            }
         }
         static string s_Status = Offline;
         const string Offline = "offline";
+
+        /// <summary>
+        /// True while a session is up. Asked by the pause menu, which may not stop the clock in a shared field.
+        /// </summary>
+        public static bool Online => s_Status != Offline;
 
         /// <summary>The code other players type to join this session. Empty while offline.</summary>
         public static string JoinCode { get; private set; } = "";
@@ -310,9 +322,12 @@ namespace Snowfield.Net
             catch { /* session mid-teardown */ }
         }
 
+        // The keys are spelled by Snowfield.Player.InputGlyphInfo rather than written out here: the mic and the
+        // leave chord are already prompts on the HUD, and a second hand-typed copy of them is a copy to go stale.
         static string Describe(ISession session) =>
             $"{(session.IsHost ? "hosting" : "joined")} {session.PlayerCount}/{session.MaxPlayers}" +
-            "   ·   M mute   ·   Shift+N leave";
+            $"   ·   {Snowfield.Player.InputGlyphInfo.Name(Snowfield.Player.InputGlyph.Mute)} mute" +
+            $"   ·   {Snowfield.Player.InputGlyphInfo.Name(Snowfield.Player.InputGlyph.SessionChord)} leave";
 
         void OnSessionEnded(string why)
         {

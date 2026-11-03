@@ -50,11 +50,35 @@ namespace Snowfield.Player
         }
 
         [Serializable]
-        public class ActionPrompt
+        public class ActionArt
         {
             public CursorAction action;
             public Sprite icon;
             public string label;
+        }
+
+        /// <summary>
+        /// How one prompt row is drawn, wherever it is drawn. The reticle stack and the corner hints share these
+        /// numbers so a key cap is the same key cap in both places — the previous HUD styled three hand-placed
+        /// prompt slots separately, which is how one of them ended up with no key picture at all.
+        /// </summary>
+        [Serializable]
+        public class PromptRowSettings
+        {
+            public float height = 34f;
+            public float padding = 8f;
+            public float gap = 6f;
+            public float minWidth = 140f;
+            public int fontSize = 14;
+            [Header("Input chip")]
+            [Tooltip("Size of the mouse sprites.")]
+            public float inputIconSize = 22f;
+            [Tooltip("Smallest key cap; wider keys ('WASD') grow past it.")]
+            public float keyCapMinWidth = 30f;
+            public float keyCapHeight = 22f;
+            public int keyCapFontSize = 12;
+            [Header("Action icon")]
+            public float iconSize = 26f;
         }
 
         [Serializable]
@@ -63,24 +87,33 @@ namespace Snowfield.Player
             [Tooltip("Sprite drawn at the screen centre. Leave empty to use the procedural cross.")]
             public Sprite defaultIcon;
             public float iconSize = 28f;
-            [Header("Prompts (primary = LMB, secondary = RMB)")]
-            [Tooltip("Sprite shown at the left of the primary (LMB) prompt.")]
-            public Sprite primaryInputIcon;
-            [Tooltip("Sprite shown at the left of the secondary (RMB) prompt.")]
-            public Sprite secondaryInputIcon;
-            [Tooltip("Sprite shown at the left of the tertiary (F key) prompt.")]
-            public Sprite tertiaryInputIcon;
-            public float inputIconSize = 22f;
-            public Vector2 primaryOffset = new Vector2(-110f, -48f);
-            public Vector2 secondaryOffset = new Vector2(110f, -48f);
-            public Vector2 tertiaryOffset = new Vector2(0f, -92f);
-            public float promptIconSize = 26f;
-            public float promptHeight = 34f;
-            public float promptPadding = 8f;
-            public float promptMinWidth = 120f;
-            public int promptFontSize = 14;
+            [Header("Input sprites (a key cap with text is drawn when one is missing)")]
+            public Sprite leftMouseIcon;
+            public Sprite rightMouseIcon;
+            public Sprite scrollIcon;
+            [Header("Contextual stack, under the reticle")]
+            [Tooltip("Top-centre of the stack, relative to the reticle. It grows downward.")]
+            public Vector2 stackOffset = new Vector2(0f, -56f);
+            [Tooltip("Most rows the stack will draw at once. Extra actions are dropped rather than wrapping off-screen.")]
+            public int maxRows = 5;
+            public PromptRowSettings row = new PromptRowSettings();
             [Tooltip("One entry per action. Assign an icon; edit the label if the default wording is off.")]
-            public List<ActionPrompt> prompts = new List<ActionPrompt>();
+            public List<ActionArt> prompts = new List<ActionArt>();
+        }
+
+        /// <summary>
+        /// The persistent corner strip: the handful of actions that are always there (the accessory overlay, the
+        /// menu, the mic in a session). They used to live only in the dev status line, which ships switched off —
+        /// so the Tab overlay, a whole mode of the game, was invisible unless you already knew about it.
+        /// </summary>
+        [Serializable]
+        public class HintSettings
+        {
+            public bool show = true;
+            public Vector2 margin = new Vector2(24f, 24f);
+            public PromptRowSettings row = new PromptRowSettings { minWidth = 150f, height = 30f, fontSize = 13 };
+            [Tooltip("Opacity of the strip relative to the contextual prompts — these are reminders, not offers.")]
+            [Range(0.1f, 1f)] public float opacity = 0.75f;
         }
 
         [Serializable]
@@ -119,8 +152,11 @@ namespace Snowfield.Player
             public Color promptBg = new Color(0.08f, 0.1f, 0.14f, 0.72f);
             public Color promptText = new Color(0.9f, 0.92f, 0.97f);
             public Color promptIconTint = Color.white;
-            [Tooltip("Tint for the LMB/RMB input icons on both prompts.")]
+            [Tooltip("Tint for the mouse sprites on a prompt.")]
             public Color inputIconTint = Color.white;
+            [Tooltip("Key cap drawn for any input without a sprite (Tab, Esc, M, Shift...).")]
+            public Color keyCapBg = new Color(0.86f, 0.89f, 0.95f, 0.92f);
+            public Color keyCapText = new Color(0.09f, 0.12f, 0.18f);
             public Color thumbnailPlaceholder = new Color(0.5f, 0.55f, 0.65f, 0.6f);
             public Color countBg = new Color(0.2f, 0.45f, 0.8f, 0.95f);
             public Color countText = Color.white;
@@ -142,31 +178,60 @@ namespace Snowfield.Player
         public AccessoryBarSettings accessoryBar = new AccessoryBarSettings();
         public ReticleSettings reticle = new ReticleSettings();
         public CursorSettings cursor = new CursorSettings();
+        public HintSettings hints = new HintSettings();
         public StatusSettings status = new StatusSettings();
         public Palette colors = new Palette();
+
+        [Serializable]
+        public class PreviewPrompt
+        {
+            public CursorAction action = CursorAction.ScoopSnow;
+            public InputGlyph input = InputGlyph.LeftMouse;
+            public bool hold;
+        }
 
         [Header("Edit-mode preview")]
         public ToolMode previewMode = ToolMode.Hand;
         public bool previewAccessoryBar = true;
         public int previewAccessoryIndex = 0;
         public bool previewChargeRing = false;
-        public CursorAction previewPrimary = CursorAction.AddSnow;
-        public CursorAction previewSecondary = CursorAction.Grab;
-        public CursorAction previewTertiary = CursorAction.Grab;
+        [Tooltip("Rows the stack shows with the game stopped, so the layout can be tuned without pressing Play.")]
+        public List<PreviewPrompt> previewActions = new List<PreviewPrompt>
+        {
+            new PreviewPrompt { action = CursorAction.ScoopSnow, input = InputGlyph.LeftMouse },
+            new PreviewPrompt { action = CursorAction.Smooth, input = InputGlyph.RightMouse },
+            new PreviewPrompt { action = CursorAction.BrushRadius, input = InputGlyph.Scroll },
+        };
 
         // ------------------------------------------------------------------ generated refs
 
         [Serializable]
         class AccessoryItem { public RectTransform root; public Image box, boxOutline, countBox, countOutline; public RawImage thumb; public Text label, count; }
 
-        [SerializeField, HideInInspector] RectTransform _accessoryBarRoot, _reticleRoot, _statusRoot;
+        [SerializeField, HideInInspector] RectTransform _accessoryBarRoot, _reticleRoot, _statusRoot, _stackRoot, _hintRoot;
         [SerializeField, HideInInspector] List<AccessoryItem> _accessories = new List<AccessoryItem>();
         [SerializeField, HideInInspector] Image[] _reticleBars = new Image[4];
         [SerializeField, HideInInspector] Image[] _reticleShadows = new Image[4];
         [SerializeField, HideInInspector] Image _reticleDot, _reticleDotShadow;
         [SerializeField, HideInInspector] Image _chargeBg, _chargeFill, _cursorIcon;
-        [Serializable] class Prompt { public RectTransform root; public Image bg, outline, input, icon; public Text label; }
-        [SerializeField, HideInInspector] Prompt _primary, _secondary, _tertiary;
+
+        /// <summary>
+        /// One prompt row: a box, the input chip (a mouse sprite or a key cap, plus an optional modifier cap),
+        /// the action's icon and its label. Both the reticle stack and the corner hints are pools of these.
+        /// </summary>
+        [Serializable]
+        class Prompt
+        {
+            public RectTransform root;
+            public Image bg, outline, input, icon, capBg, capOutline, modBg, modOutline;
+            public Text cap, mod, label;
+        }
+
+        [SerializeField, HideInInspector] List<Prompt> _rows = new List<Prompt>();
+        [SerializeField, HideInInspector] List<Prompt> _hintRows = new List<Prompt>();
+        /// <summary>Rebuilt each frame from the tool, then rendered. Field rather than local: no per-frame garbage.</summary>
+        readonly List<ActionPrompt> _shown = new List<ActionPrompt>();
+        readonly List<ActionPrompt> _persistent = new List<ActionPrompt>();
         static Sprite _ringSprite;
         [SerializeField, HideInInspector] Text _statusLine1, _statusLine2, _fieldLine;
 
@@ -217,18 +282,31 @@ namespace Snowfield.Player
         public void RebuildNow()
         {
             _accessories.Clear();
+            _rows.Clear();
+            _hintRows.Clear();
             Build();
             ApplyAll();
         }
 
+        /// <summary>How many hint rows the strip can ever need: Tab, the menu, and the mic in a session.</summary>
+        const int HintCapacity = 3;
+
         bool IsBuilt() =>
             canvas != null && _accessoryBarRoot != null && _reticleRoot != null && _statusRoot != null
+            && _stackRoot != null && _hintRoot != null
             && _accessories.Count == AccessoryCatalog.Entries.Count
-            && _tertiary != null && _tertiary.root != null
+            && _rows.Count == Mathf.Max(1, cursor.maxRows) && _hintRows.Count == HintCapacity
             && _statusLine1 != null && _reticleDot != null && _chargeFill != null
             && _cursorIcon != null && _fieldLine != null
-            && _primary != null && _primary.root != null && _primary.input != null && _secondary != null && _secondary.root != null
+            && Intact(_rows) && Intact(_hintRows)
             && (_accessories.Count == 0 || _accessories[0].count != null);
+
+        static bool Intact(List<Prompt> pool)
+        {
+            foreach (var p in pool)
+                if (p == null || p.root == null || p.input == null || p.cap == null || p.mod == null) return false;
+            return true;
+        }
 
         // ------------------------------------------------------------------ build
 
@@ -249,6 +327,8 @@ namespace Snowfield.Player
             // Wipe previously generated children and rebuild deterministically.
             for (int i = canvas.transform.childCount - 1; i >= 0; i--) Kill(canvas.transform.GetChild(i).gameObject);
             _accessories.Clear();
+            _rows.Clear();
+            _hintRows.Clear();
 
             var root = canvas.transform;
 
@@ -298,9 +378,15 @@ namespace Snowfield.Player
             _chargeFill.fillClockwise = true;
             _cursorIcon = Img("CursorIcon", _reticleRoot);
             _cursorIcon.preserveAspect = true;
-            _primary = BuildPrompt("PromptPrimary", _reticleRoot);
-            _secondary = BuildPrompt("PromptSecondary", _reticleRoot);
-            _tertiary = BuildPrompt("PromptTertiary", _reticleRoot);
+
+            // --- contextual prompt stack (under the reticle, grows down) ---
+            _stackRoot = MakeRect("ActionStack", _reticleRoot, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 1f));
+            for (int i = 0; i < Mathf.Max(1, cursor.maxRows); i++) _rows.Add(BuildPrompt("Row" + i, _stackRoot));
+
+            // --- persistent hints (bottom-right, grows up) ---
+            _hintRoot = MakeRect("Hints", root, new Vector2(1, 0), new Vector2(1, 0), new Vector2(1, 0));
+            for (int i = 0; i < HintCapacity; i++) _hintRows.Add(BuildPrompt("Hint" + i, _hintRoot));
+
             EnsurePromptList();
         }
 
@@ -379,9 +465,10 @@ namespace Snowfield.Player
             Centre(_chargeBg.rectTransform, Vector2.zero, Vector2.one * reticle.chargeRadius * 2f);
             Centre(_chargeFill.rectTransform, Vector2.zero, Vector2.one * reticle.chargeRadius * 2f);
             Centre(_cursorIcon.rectTransform, Vector2.zero, Vector2.one * cursor.iconSize);
-            LayoutPrompt(_primary, cursor.primaryOffset);
-            LayoutPrompt(_secondary, cursor.secondaryOffset);
-            LayoutPrompt(_tertiary, cursor.tertiaryOffset);
+            _stackRoot.anchoredPosition = cursor.stackOffset;
+            _hintRoot.anchoredPosition = new Vector2(-hints.margin.x, hints.margin.y);
+            foreach (var p in _rows) StylePrompt(p, cursor.row, 1f);
+            foreach (var p in _hintRows) StylePrompt(p, hints.row, hints.opacity);
             var ring = RingSprite();
             _chargeBg.sprite = ring; _chargeFill.sprite = ring;
             _chargeBg.color = c.chargeRingBg; _chargeFill.color = c.chargeRingFill;
@@ -437,10 +524,33 @@ namespace Snowfield.Player
             for (int i = 0; i < 4; i++) { _reticleBars[i].gameObject.SetActive(!useIcon); _reticleShadows[i].gameObject.SetActive(!useIcon); }
             _reticleDot.gameObject.SetActive(!useIcon); _reticleDotShadow.gameObject.SetActive(!useIcon);
 
-            // action prompts
-            ApplyPrompt(_primary, playing ? tool.PrimaryAction : previewPrimary);
-            ApplyPrompt(_secondary, playing ? tool.SecondaryAction : previewSecondary);
-            ApplyPrompt(_tertiary, playing ? tool.TertiaryAction : previewTertiary);
+            // --- action prompts: one stack of rows, one row per thing you can do right now ---
+            _shown.Clear();
+            if (playing)
+            {
+                var offered = tool.Actions;
+                for (int i = 0; i < offered.Count; i++) _shown.Add(offered[i]);
+            }
+            else if (previewActions != null)
+            {
+                foreach (var p in previewActions)
+                    if (p != null) _shown.Add(new ActionPrompt(p.action, p.input, p.hold));
+            }
+            DrawStack(_rows, _shown, cursor.row, 1f, downward: true);
+
+            // --- persistent hints: the actions that are always there, so they are never a secret ---
+            // With the cursor free (menu open) none of them are live, and the rule here is that a prompt on
+            // screen is an action you can take — so the strip goes away rather than promising a dead key.
+            _persistent.Clear();
+            if (hints.show && (!playing || Cursor.lockState == CursorLockMode.Locked))
+            {
+                _persistent.Add(new ActionPrompt(ToolModeInfo.TabAction(mode), InputGlyph.Tab));
+                _persistent.Add(new ActionPrompt(CursorAction.OpenMenu, InputGlyph.Escape));
+                if (!playing || NetStatus.InSession)
+                    _persistent.Add(new ActionPrompt(NetStatus.MicMuted ? CursorAction.UnmuteMic : CursorAction.MuteMic,
+                                                     InputGlyph.Mute));
+            }
+            DrawStack(_hintRows, _persistent, hints.row, hints.opacity, downward: false);
 
             // throw charge ring
             float charge = playing ? tool.ThrowCharge : 0f;
@@ -460,7 +570,7 @@ namespace Snowfield.Player
                 line = mode == ToolMode.Accessory
                     ? (placer == null ? ""
                        : placer.ActiveChain != null
-                         ? $"{placer.Selected.DisplayName} — {placer.ActiveChain.PointCount} point{(placer.ActiveChain.PointCount == 1 ? "" : "s")} (Shift+click to finish)"
+                         ? $"{placer.Selected.DisplayName} — {placer.ActiveChain.PointCount} point{(placer.ActiveChain.PointCount == 1 ? "" : "s")}"
                          : placer.Selected.DisplayName)
                     : tool.Roller != null && tool.Roller.IsEngaged
                         ? (tool.Roller.Ball != null ? $"snowball {tool.Roller.Radius * 2f:0.00} m" : "carrying sculpture")
@@ -475,7 +585,9 @@ namespace Snowfield.Player
             }
             _statusLine1.text = $"[{ToolModeInfo.DisplayName(mode)}]  {line}";
             _fieldLine.text = NetStatus.Line; // written by the net layer; empty in single-player
-            _statusLine2.text = $"{ToolModeInfo.Hint(mode)}   ·   WASD move · Shift run · Space jump · Q crouch · E tiptoe · Esc cursor · Shift+N multiplayer";
+            // Movement only. The sculpting controls are the prompt stack, and the second hand-written copy of
+            // them that used to live on this line is what drifted away from the code.
+            _statusLine2.text = Controls.MovementLine;
         }
 
         // ------------------------------------------------------------------ helpers
@@ -533,9 +645,17 @@ namespace Snowfield.Player
         Prompt BuildPrompt(string name, Transform parent)
         {
             var p = new Prompt();
-            p.root = MakeRect(name, parent, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
+            p.root = MakeRect(name, parent, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f));
             p.outline = Img("Outline", p.root);
             p.bg = Img("Box", p.root);
+            var mod = MakeRect("Modifier", p.root, new Vector2(0, 0.5f), new Vector2(0, 0.5f), new Vector2(0, 0.5f));
+            p.modOutline = Img("Outline", mod);
+            p.modBg = Img("Cap", mod);
+            p.mod = Txt("Text", mod, TextAnchor.MiddleCenter);
+            var cap = MakeRect("KeyCap", p.root, new Vector2(0, 0.5f), new Vector2(0, 0.5f), new Vector2(0, 0.5f));
+            p.capOutline = Img("Outline", cap);
+            p.capBg = Img("Cap", cap);
+            p.cap = Txt("Text", cap, TextAnchor.MiddleCenter);
             p.input = Img("Input", p.root);
             p.input.preserveAspect = true;
             p.icon = Img("Icon", p.root);
@@ -544,70 +664,153 @@ namespace Snowfield.Player
             return p;
         }
 
-        void LayoutPrompt(Prompt p, Vector2 offset)
+        /// <summary>The part of a row that never depends on what is in it. Size and position come later.</summary>
+        void StylePrompt(Prompt p, PromptRowSettings s, float opacity)
         {
-            float pad = cursor.promptPadding, ico = cursor.promptIconSize, h = cursor.promptHeight;
-            p.root.anchoredPosition = offset;
-            p.root.sizeDelta = new Vector2(cursor.promptMinWidth, h);
             Stretch(p.outline.rectTransform, -outlineWidth);
             Stretch(p.bg.rectTransform, 0);
             var inr = p.input.rectTransform;
             inr.anchorMin = inr.anchorMax = new Vector2(0, 0.5f); inr.pivot = new Vector2(0, 0.5f);
-            inr.sizeDelta = Vector2.one * cursor.inputIconSize;
+            inr.sizeDelta = Vector2.one * s.inputIconSize;
             var ir = p.icon.rectTransform;
             ir.anchorMin = ir.anchorMax = new Vector2(0, 0.5f); ir.pivot = new Vector2(0, 0.5f);
-            ir.sizeDelta = Vector2.one * ico;
+            ir.sizeDelta = Vector2.one * s.iconSize;
             var lr = p.label.rectTransform;
             lr.anchorMin = new Vector2(0, 0); lr.anchorMax = new Vector2(1, 1); lr.pivot = new Vector2(0.5f, 0.5f);
-            lr.offsetMax = new Vector2(-pad, 0);
-            p.label.fontSize = cursor.promptFontSize;
-            p.bg.color = colors.promptBg;
-            p.outline.color = Frame(colors.outline, colors.promptBg);
-            p.label.color = colors.promptText;
+            lr.offsetMax = new Vector2(-s.padding, 0);
+            p.label.fontSize = s.fontSize;
+
+            var bg = Fade(colors.promptBg, opacity);
+            p.bg.color = bg;
+            p.outline.color = Frame(colors.outline, bg);
+            p.label.color = Fade(colors.promptText, opacity);
+            var cap = Fade(colors.keyCapBg, opacity);
+            StyleCap(p.capBg, p.capOutline, p.cap, cap, s, opacity);
+            StyleCap(p.modBg, p.modOutline, p.mod, cap, s, opacity);
         }
 
-        void ApplyPrompt(Prompt p, CursorAction action)
+        void StyleCap(Image box, Image outline, Text text, Color cap, PromptRowSettings s, float opacity)
         {
-            bool show = action != CursorAction.None;
-            p.root.gameObject.SetActive(show);
-            if (!show) return;
-            var entry = FindPrompt(action);
-            string label = entry != null && !string.IsNullOrEmpty(entry.label) ? entry.label : CursorActionInfo.DefaultLabel(action);
-            var icon = entry != null ? entry.icon : null;
-            var input = p == _primary ? cursor.primaryInputIcon : p == _secondary ? cursor.secondaryInputIcon : cursor.tertiaryInputIcon;
-            float pad = cursor.promptPadding;
+            box.color = cap;
+            Stretch(box.rectTransform, 0);
+            outline.color = Frame(colors.outline, cap);
+            Stretch(outline.rectTransform, -outlineWidth);
+            text.color = Fade(colors.keyCapText, opacity);
+            text.fontSize = s.keyCapFontSize;
+            text.fontStyle = FontStyle.Bold;
+            Stretch(text.rectTransform, 0);
+        }
 
-            // Row: [input icon] [action icon] [label], each part skipped when absent.
-            float x = pad;
-            p.input.gameObject.SetActive(input != null);
-            if (input != null)
+        static Color Fade(Color c, float a) => new Color(c.r, c.g, c.b, c.a * a);
+
+        /// <summary>
+        /// Draw a list of prompts into a pool of rows: fill the ones that are needed, hide the rest, give them all
+        /// one width so the key chips line up into a column, and stack them.
+        /// </summary>
+        void DrawStack(List<Prompt> pool, List<ActionPrompt> items, PromptRowSettings s, float opacity, bool downward)
+        {
+            int row = 0;
+            float width = s.minWidth;
+            for (int i = 0; i < items.Count && row < pool.Count; i++)
             {
-                p.input.sprite = input; p.input.color = colors.inputIconTint;
-                p.input.rectTransform.anchoredPosition = new Vector2(x, 0);
-                x += cursor.inputIconSize + pad;
+                if (!items[i].IsSomething) continue;   // never costs a row: a blank gap would read as a lost prompt
+                pool[row].root.gameObject.SetActive(true);
+                width = Mathf.Max(width, ApplyPrompt(pool[row], items[i], s, opacity));
+                row++;
             }
+            int filled = row;
+            for (; row < pool.Count; row++) pool[row].root.gameObject.SetActive(false);
+
+            // Second pass: every visible row takes the widest row's width, so the chips share a left edge.
+            for (int i = 0; i < filled; i++)
+            {
+                float y = (s.height + s.gap) * i;
+                pool[i].root.anchoredPosition = new Vector2(0f, downward ? -y : y);
+                pool[i].root.sizeDelta = new Vector2(width, s.height);
+            }
+        }
+
+        /// <summary>Fill one row and report the width its content wants.</summary>
+        float ApplyPrompt(Prompt p, ActionPrompt item, PromptRowSettings s, float opacity)
+        {
+            var entry = FindPrompt(item.Action);
+            string label = entry != null && !string.IsNullOrEmpty(entry.label)
+                ? entry.label : CursorActionInfo.DefaultLabel(item.Action);
+            var icon = entry != null ? entry.icon : null;
+
+            // A hold reads as a modifier on the input, not as words inside the label: "Hold [LMB] Throw".
+            string modifier = InputGlyphInfo.Modifier(item.Input);
+            if (item.Hold) modifier = modifier.Length == 0 ? "Hold" : modifier + " + hold";
+
+            // Row: [modifier cap] [mouse sprite | key cap] [action icon] [label], each part skipped when absent.
+            float pad = s.padding;
+            float x = pad;
+            x += Cap(p.mod, p.modBg, modifier, s, x);
+            var sprite = InputGlyphInfo.Art(item.Input) switch
+            {
+                GlyphArt.LeftMouse => cursor.leftMouseIcon,
+                GlyphArt.RightMouse => cursor.rightMouseIcon,
+                GlyphArt.Scroll => cursor.scrollIcon,
+                _ => null,
+            };
+            p.input.gameObject.SetActive(sprite != null);
+            if (sprite != null)
+            {
+                p.input.sprite = sprite;
+                p.input.color = Fade(colors.inputIconTint, opacity);
+                p.input.rectTransform.anchoredPosition = new Vector2(x, 0);
+                x += s.inputIconSize + pad;
+                SetActive(p.cap, false);
+            }
+            else
+            {
+                // No sprite for this input — the key cap carries its name. This is the fallback that was missing:
+                // an input without a picture used to be drawn as a label with no key beside it at all.
+                x += Cap(p.cap, p.capBg, InputGlyphInfo.Face(item.Input), s, x);
+            }
+
             p.icon.gameObject.SetActive(icon != null);
             if (icon != null)
             {
-                p.icon.sprite = icon; p.icon.color = colors.promptIconTint;
+                p.icon.sprite = icon;
+                p.icon.color = Fade(colors.promptIconTint, opacity);
                 p.icon.rectTransform.anchoredPosition = new Vector2(x, 0);
-                x += cursor.promptIconSize + pad;
+                x += s.iconSize + pad;
             }
+
             p.label.text = label;
-            var lr = p.label.rectTransform;
-            lr.offsetMin = new Vector2(x, 0);
-            float w = Mathf.Max(cursor.promptMinWidth, x + p.label.preferredWidth + pad);
-            p.root.sizeDelta = new Vector2(w, cursor.promptHeight);
+            p.label.rectTransform.offsetMin = new Vector2(x, 0);
+            return x + p.label.preferredWidth + pad;
         }
 
-        ActionPrompt FindPrompt(CursorAction a)
+        /// <summary>Place a key cap at <paramref name="x"/> and report the width it consumed (0 when empty).</summary>
+        float Cap(Text text, Image box, string face, PromptRowSettings s, float x)
+        {
+            bool show = !string.IsNullOrEmpty(face);
+            SetActive(text, show);
+            if (!show) return 0f;
+            text.text = face;
+            float w = Mathf.Max(s.keyCapMinWidth, text.preferredWidth + s.padding * 1.5f);
+            var rt = (RectTransform)box.transform.parent;
+            rt.anchoredPosition = new Vector2(x, 0);
+            rt.sizeDelta = new Vector2(w, s.keyCapHeight);
+            return w + s.padding;
+        }
+
+        /// <summary>A cap is a text inside a box object; showing or hiding one means the whole box.</summary>
+        static void SetActive(Text capText, bool on)
+        {
+            if (capText != null) capText.transform.parent.gameObject.SetActive(on);
+        }
+
+        ActionArt FindPrompt(CursorAction a)
         {
             foreach (var e in cursor.prompts) if (e.action == a) return e;
             return null;
         }
 
         /// <summary>Bump whenever CursorAction values are added/removed/reordered: stored rows are keyed by the enum's int.</summary>
-        const int PromptSchemaVersion = 4;
+        const int PromptSchemaVersion = 5;
         [SerializeField, HideInInspector] int _promptSchemaVersion;
 
         /// <summary>Make sure the inspector list has one row per action, with default labels filled in.</summary>
@@ -623,7 +826,7 @@ namespace Snowfield.Player
             {
                 if (a == CursorAction.None) continue;
                 var e = FindPrompt(a);
-                if (e == null) { e = new ActionPrompt { action = a }; cursor.prompts.Add(e); }
+                if (e == null) { e = new ActionArt { action = a }; cursor.prompts.Add(e); }
                 if (string.IsNullOrEmpty(e.label)) e.label = CursorActionInfo.DefaultLabel(a);
             }
         }

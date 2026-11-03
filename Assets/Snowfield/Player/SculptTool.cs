@@ -13,10 +13,15 @@ namespace Snowfield.Player
     ///   LMB — scoop: on a sculpture, bite out a chunk; on bare ground, a handful. Either way that snow is now in
     ///         your hands (mass continuity). While carrying: a tap lets go where the snow already is (fusing into
     ///         snow, falling otherwise), a hold charges a throw.
-    ///   Shift+LMB — smooth/pat snow (works with a ball in hand too)
+    ///   RMB — smooth/pat snow (works with a ball in hand too; the ball stays put)
+    ///   Shift+LMB — planar shave on a sculpture; Shift+scroll turns the cut line
     ///   A carried ball rides the ground in front of you and rolls (grows) while the cursor points near you.
     ///   Scroll — brush radius (accessory selection while the overlay is open) · Tab — accessory overlay
-    /// Remesh on a timer while stroking; colliders rebuild on release. The HUD is a separate object reading this.
+    /// Remesh on a timer while stroking; colliders rebuild on release.
+    ///
+    /// Every one of those is published as an <see cref="ActionPrompt"/> in <see cref="Actions"/> the frame it
+    /// becomes available, and that list is the only thing the HUD reads. Adding an input here means adding a
+    /// row there, which is what keeps a bound action from being one nothing on screen mentions.
     /// </summary>
     public class SculptTool : MonoBehaviour
     {
@@ -67,12 +72,18 @@ namespace Snowfield.Player
         public SnowballRoller Roller { get; private set; }
         /// <summary>0..1 while charging a throw (LMB held with a carried ball); 0 otherwise. Drives the HUD ring.</summary>
         public float ThrowCharge { get; private set; }
-        /// <summary>What LMB would do right now (HUD prompt). Recomputed every frame.</summary>
-        public CursorAction PrimaryAction { get; private set; }
-        /// <summary>What RMB would do right now (HUD prompt). Recomputed every frame.</summary>
-        public CursorAction SecondaryAction { get; private set; }
-        /// <summary>Reserved for a third key; unused in the current scheme.</summary>
-        public CursorAction TertiaryAction { get; private set; }
+        /// <summary>
+        /// Everything the player can do this instant, each with the input that does it. Rebuilt every frame and
+        /// read by the HUD. A list rather than the old fixed primary/secondary/tertiary slots: how many actions
+        /// are on offer genuinely varies (aiming at bare ground is one, a sculpture is three), and the fixed
+        /// slots meant an action either squeezed into a slot whose key icon was wrong or was never shown at all.
+        /// </summary>
+        public IReadOnlyList<ActionPrompt> Actions => _actions;
+
+        /// <summary>The first offered action, or None. Kept for the playtest harness.</summary>
+        public CursorAction PrimaryAction => _actions.Count > 0 ? _actions[0].Action : CursorAction.None;
+
+        readonly List<ActionPrompt> _actions = new List<ActionPrompt>();
 
         /// <summary>Radius multiplier on top of config, driven by scroll. Session-only.</summary>
         public float radiusScale = 1f;
@@ -129,7 +140,7 @@ namespace Snowfield.Player
                 if (_placer != null && _placer.ActiveChain != null) FinishChainWithFlourish();
                 HideBrushCursor();
                 if (_placer != null) _placer.HidePreview();
-                PrimaryAction = SecondaryAction = TertiaryAction = CursorAction.None;
+                _actions.Clear();
                 ThrowCharge = 0f;
                 _lmbDownTime = -1f;
                 return;
@@ -167,9 +178,16 @@ namespace Snowfield.Player
 
         // ---------- prompts ----------
 
+        /// <summary>
+        /// The whole offer, rebuilt each frame: one row per thing you can do, in the order the hands would reach
+        /// for them. Each row carries its own input, so a row can only appear with the key that actually performs
+        /// it — which is the point. Every branch here mirrors a branch in <see cref="UpdateHand"/> or
+        /// <see cref="UpdateAccessory"/>; if a condition drifts apart from its twin the prompt starts promising
+        /// something the click will not do, so they are written to read the same way round.
+        /// </summary>
         void ComputeActions(Keyboard kb)
         {
-            CursorAction p = CursorAction.None, s = CursorAction.None;
+            _actions.Clear();
             bool onSnow = HasHit && Target != null;
             bool shift = kb != null && kb.leftShiftKey.isPressed;
 
@@ -178,35 +196,58 @@ namespace Snowfield.Player
                 if (_placer.ActiveChain != null)
                 {
                     // No prompt on another sculpture: the click would do nothing, so promising a point would lie.
-                    p = AimedAnchor != null && AimedAnchor.Chain == _placer.ActiveChain ? CursorAction.UsePoint
-                      : onSnow && _placer.CanExtendOnto(Target) ? CursorAction.AddPoint : CursorAction.None;
-                    s = CursorAction.FinishChain;
+                    var click = AimedAnchor != null && AimedAnchor.Chain == _placer.ActiveChain ? CursorAction.UsePoint
+                              : onSnow && _placer.CanExtendOnto(Target) ? CursorAction.AddPoint : CursorAction.None;
+                    Offer(click, InputGlyph.LeftMouse);
+                    Offer(CursorAction.FinishChain, InputGlyph.ShiftLeftMouse);
                 }
                 else
                 {
-                    p = AimedProp != null ? CursorAction.RetrieveAccessory
-                      : onSnow ? (_placer.Selected.Drape != null ? CursorAction.AddPoint : CursorAction.PlaceAccessory)
-                      : CursorAction.None;
+                    Offer(AimedProp != null ? CursorAction.RetrieveAccessory
+                        : onSnow ? (_placer.Selected.Drape != null ? CursorAction.AddPoint : CursorAction.PlaceAccessory)
+                        : CursorAction.None, InputGlyph.LeftMouse);
                 }
+                Offer(CursorAction.PickAccessory, InputGlyph.Scroll);
             }
             else if (Roller.IsCarrying)
             {
-                if (shift && onSnow && Roller.IsCarryingBall) p = CursorAction.Smooth;
-                else p = ThrowCharge > 0f ? CursorAction.Throw
-                       : (onSnow && Target != Roller.Carried) ? CursorAction.AttachSnowball
-                       : CursorAction.Drop;
+                // LMB always lets the snow go where it is; a hold on a ball turns that into a throw.
+                Offer(ThrowCharge > 0f ? CursorAction.Throw
+                    : (onSnow && Target != Roller.Carried) ? CursorAction.AttachSnowball
+                    : CursorAction.Drop, InputGlyph.LeftMouse);
+                if (Roller.IsCarryingBall && ThrowCharge <= 0f)
+                    Offer(CursorAction.Throw, InputGlyph.LeftMouse, hold: true);
+                // Smoothing with a ball still in hand: the ball stays put, RMB pats the snow you are aiming at.
+                if (Roller.IsCarryingBall && onSnow && Target != Roller.Carried)
+                    Offer(CursorAction.Smooth, InputGlyph.RightMouse);
             }
             else if (onSnow)
             {
-                p = shift ? CursorAction.Smooth : CursorAction.ScoopSnow;
+                // Shift lines up the planar shave and owns the click while it does, so scoop and slice are never
+                // offered together — and neither is smoothing, which UpdateHand returns before ever reaching.
+                if (shift)
+                {
+                    Offer(CursorAction.SliceSnow, InputGlyph.ShiftLeftMouse);
+                    Offer(CursorAction.RotateSlice, InputGlyph.ShiftScroll);
+                }
+                else
+                {
+                    Offer(CursorAction.ScoopSnow, InputGlyph.LeftMouse);
+                    Offer(CursorAction.Smooth, InputGlyph.RightMouse);
+                    Offer(CursorAction.BrushRadius, InputGlyph.Scroll);
+                }
             }
             else if (HasGroundHit && Roller.CanReachGround(GroundPoint) && !shift)
             {
-                p = CursorAction.ScoopSnow;
+                Offer(CursorAction.ScoopSnow, InputGlyph.LeftMouse);
+                Offer(CursorAction.BrushRadius, InputGlyph.Scroll);
             }
-            PrimaryAction = p;
-            SecondaryAction = s;
-            TertiaryAction = CursorAction.None;
+        }
+
+        void Offer(CursorAction action, InputGlyph input, bool hold = false)
+        {
+            if (action == CursorAction.None) return;
+            _actions.Add(new ActionPrompt(action, input, hold));
         }
 
         // ---------- hands ----------
@@ -399,6 +440,7 @@ namespace Snowfield.Player
             bool lmb = mouse != null && mouse.leftButton.isPressed;
             bool lmbDown = mouse != null && mouse.leftButton.wasPressedThisFrame;
             bool lmbUp = mouse != null && mouse.leftButton.wasReleasedThisFrame;
+            bool rmb = mouse != null && mouse.rightButton.isPressed;
             bool shift = kb != null && kb.leftShiftKey.isPressed;
             _placer.HidePreview();
 
@@ -415,23 +457,22 @@ namespace Snowfield.Player
             }
             if (planeCut != null) planeCut.Hide();
 
-            // --- carrying: LMB tap lets go where the snow is, hold charges a throw; Shift+LMB still smooths ---
+            // --- carrying: LMB tap lets go where the snow is, hold charges a throw; RMB smooths ---
             if (Roller.IsCarrying)
             {
                 bool onSnow = HasHit && Target != null && Target != Roller.Carried;
-                // Shift doubles as the run key now, so it only means "keep the snow in hand and smooth" when
-                // it can actually smooth (a ball in hand, aiming at snow) — otherwise a sprinting LMB tap
-                // would be dead and the HUD's Drop/Throw prompt a lie.
-                bool sculptingHold = shift && Roller.IsCarryingBall && onSnow;
-                bool letGo = !sculptingHold;
-                if (letGo && lmbDown) _lmbDownTime = Time.time;
-                bool charging = letGo && lmb && _lmbDownTime >= 0f && Roller.IsCarryingBall
+                // Patting with a ball in hand is RMB — the same button it is with free hands, no modifier. It
+                // used to be Shift+LMB, which the planar shave then took, leaving smoothing reachable only by
+                // holding Shift, LMB and RMB together: a bound action nothing could have told you about.
+                // RMB does not fight LMB, so letting go and charging a throw keep working while you pat.
+                bool sculpting = rmb && Roller.IsCarryingBall && onSnow;
+                if (lmbDown) _lmbDownTime = Time.time;
+                bool charging = lmb && _lmbDownTime >= 0f && Roller.IsCarryingBall
                                 && Time.time - _lmbDownTime > config.throwTapThreshold;
                 ThrowCharge = charging
                     ? Mathf.Min(1f, (Time.time - _lmbDownTime - config.throwTapThreshold) / Mathf.Max(0.05f, Roller.chargeTime))
                     : 0f;
 
-                bool sculpting = sculptingHold && lmb; // brushing keeps the snow in hand
                 bool cursorNear = false;
                 if (HasGroundHit && reachOrigin != null)
                 {
@@ -443,7 +484,7 @@ namespace Snowfield.Player
                 Roller.UpdateCarrying(preview, liftToHand: charging || sculpting,
                                       rollOnGround: cursorNear && !charging && !sculpting && !onSnow);
 
-                if (letGo && lmbUp && _lmbDownTime >= 0f)
+                if (lmbUp && _lmbDownTime >= 0f)
                 {
                     float held = Time.time - _lmbDownTime;
                     _lmbDownTime = -1f;
@@ -464,7 +505,7 @@ namespace Snowfield.Player
                 }
 
                 // A ball in hand still leaves you free to smooth; a whole sculpture fills both hands.
-                if (sculpting) { UpdateBrush(mouse, true); return; }
+                if (sculpting) { UpdateBrush(smoothing: true); return; }
                 HideBrushCursor();
                 return;
             }
@@ -484,7 +525,7 @@ namespace Snowfield.Player
                 }
             }
 
-            UpdateBrush(mouse, shift);
+            UpdateBrush(smoothing: rmb);
         }
 
         /// <summary>
@@ -534,13 +575,15 @@ namespace Snowfield.Player
                     _netTargets.Add(s);
         }
 
-        /// <summary>The stroke loop: Shift+LMB smooths. (Adding is disabled; LMB scoops instead.) Multi-target.</summary>
-        void UpdateBrush(Mouse mouse, bool shift)
+        /// <summary>
+        /// The stroke loop. RMB smooths; adding is disabled (LMB scoops instead), so smoothing is the only op
+        /// this still runs. The caller decides whether it is smoothing rather than reading the mouse here: with a
+        /// ball in hand the same button has to be read alongside the let-go/throw timing, and two places reading
+        /// the button for themselves is how the brush and the HUD prompt came to disagree about it.
+        /// </summary>
+        void UpdateBrush(bool smoothing)
         {
-            bool lmb = mouse != null && mouse.leftButton.isPressed;
-
-            bool rmb = mouse != null && mouse.rightButton.isPressed;
-            BrushOp op = rmb ? BrushOp.Smooth : BrushOp.None;
+            BrushOp op = smoothing ? BrushOp.Smooth : BrushOp.None;
             CurrentOp = op;
 
             IBrushTarget target = Target;
@@ -555,7 +598,7 @@ namespace Snowfield.Player
                 {
                     cursor.position = BrushPoint;
                     cursor.localScale = Vector3.one * radius * 2f;
-                    SetCursorColor(shift ? cursorAddColor : cursorCarveColor);
+                    SetCursorColor(smoothing ? cursorAddColor : cursorCarveColor);
                 }
             }
 

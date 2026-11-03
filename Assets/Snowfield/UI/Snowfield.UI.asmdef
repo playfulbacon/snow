@@ -1,0 +1,21 @@
+{
+  "name": "Snowfield.UI",
+  "rootNamespace": "Snowfield.UI",
+  "references": [
+    "Snowfield.Config",
+    "Snowfield.Sculpture",
+    "Snowfield.Player",
+    "Snowfield.Net",
+    "Unity.InputSystem",
+    "UnityEngine.UI"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

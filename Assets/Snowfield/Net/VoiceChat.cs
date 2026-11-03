@@ -14,7 +14,17 @@ namespace Snowfield.Net
     public static class VoiceChat
     {
         public static bool Joined { get; private set; }
-        public static bool Muted { get; private set; }
+
+        /// <summary>
+        /// Mic state. Mirrored onto <see cref="Snowfield.Player.NetStatus"/> so the HUD's hint can offer the
+        /// action you do not currently have ("mute" or "unmute") without reaching into this assembly.
+        /// </summary>
+        public static bool Muted
+        {
+            get => s_Muted;
+            private set { s_Muted = value; Snowfield.Player.NetStatus.MicMuted = value; }
+        }
+        static bool s_Muted;
 
         static string _channel;
         static bool _initialized;
@@ -52,6 +62,7 @@ namespace Snowfield.Net
             var positional = new Channel3DProperties(32, 2, 1.0f, AudioFadeModel.InverseByDistance);
             await VivoxService.Instance.JoinPositionalChannelAsync(_channel, ChatCapability.AudioOnly, positional);
             Joined = true;
+            SetOutputVolume(Snowfield.Config.GameSettings.VoiceVolume);
             Debug.Log($"[SnowNet] Voice up in '{_channel}' — open mic, M to mute");
 
             if (_ticker == null)
@@ -84,6 +95,19 @@ namespace Snowfield.Net
             {
                 _channel = null;
             }
+        }
+
+        /// <summary>
+        /// Other players' voices, from a 0..1 slider. Vivox takes a volume *adjustment* of -50..50 where 0 is
+        /// "as recorded", so the slider's top is unity gain and everything below it only ever turns people down —
+        /// mapping 1.0 to +50 would ship a game that shouts at you by default.
+        /// </summary>
+        public static void SetOutputVolume(float volume01)
+        {
+            if (VivoxService.Instance == null) return;
+            int adjustment = Mathf.RoundToInt(Mathf.Lerp(-50f, 0f, Mathf.Clamp01(volume01)));
+            try { VivoxService.Instance.SetOutputDeviceVolume(adjustment); }
+            catch (System.Exception e) { Debug.LogWarning($"[SnowNet] Voice volume failed: {e.Message}"); }
         }
 
         public static void ToggleMute()

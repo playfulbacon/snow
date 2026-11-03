@@ -2,9 +2,12 @@ using System.IO;
 using Snowfield.Config;
 using Snowfield.Player;
 using Snowfield.Sculpture;
+using Snowfield.UI;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.EventSystems;
+using UnityEngine.InputSystem.UI;
 
 namespace SnowDays.EditorTools
 {
@@ -158,12 +161,18 @@ namespace SnowDays.EditorTools
             hud.tool = tool;
             hud.placer = placer;
             hud.cursor.defaultIcon = AssetDatabase.LoadAssetAtPath<Sprite>(ReticlePath);
-            hud.cursor.primaryInputIcon = AssetDatabase.LoadAssetAtPath<Sprite>(LeftClickPath);
-            hud.cursor.secondaryInputIcon = AssetDatabase.LoadAssetAtPath<Sprite>(RightClickPath);
+            // Mouse buttons get their pictures; every other input is drawn as a key cap with its name in it, so
+            // an input with no sprite is still readable rather than silently keyless.
+            hud.cursor.leftMouseIcon = AssetDatabase.LoadAssetAtPath<Sprite>(LeftClickPath);
+            hud.cursor.rightMouseIcon = AssetDatabase.LoadAssetAtPath<Sprite>(RightClickPath);
             if (statusText.HasValue) hud.colors.statusText = statusText.Value;
 
             // --- join code, corner of the screen while a session is up ---
-            EnsureJoinCode(scene, game);
+            var joinCode = EnsureJoinCode(scene, game);
+
+            // --- pause menu (Esc): settings, multiplayer, quit. Its own canvas above the HUD. ---
+            var pauseMenu = EnsurePauseMenu(scene, game, hud, viewCamera);
+            var eventSystem = EnsureEventSystem(scene, game);
 
             // --- planar shave preview ---
             tool.planeCut = EnsurePlaneCut(game);
@@ -173,6 +182,14 @@ namespace SnowDays.EditorTools
             // canvas's children with DestroyImmediate and Unity forbids destroying a child that belongs to a
             // prefab, so the asset must hold the Canvas and the tuned fields and nothing underneath.
             PromoteGame(game.gameObject);
+
+            // Anything this run had to create is, until now, only an override on this scene's instance of that
+            // prefab. These belong to the game, not to the scene it is standing in.
+            ApplyAdded(pauseMenu);
+            ApplyAdded(eventSystem);
+            ApplyAdded(joinCode);
+            ApplyAdded(tool.planeCut != null ? tool.planeCut.gameObject : null);
+
             hud.RebuildNow();
 
             // --- Multiplayer: NetworkManager root + avatar/channel prefabs ---
@@ -343,9 +360,10 @@ namespace SnowDays.EditorTools
             return rt;
         }
 
-        static void EnsureJoinCode(UnityEngine.SceneManagement.Scene scene, Transform game)
+        static GameObject EnsureJoinCode(UnityEngine.SceneManagement.Scene scene, Transform game)
         {
-            if (game.Find("JoinCode") != null) return;
+            var already = game.Find("JoinCode");
+            if (already != null) return already.gameObject;
 
             var go = new GameObject("JoinCode", typeof(RectTransform), typeof(Canvas),
                                     typeof(UnityEngine.UI.CanvasScaler));
@@ -372,6 +390,85 @@ namespace SnowDays.EditorTools
             var label = go.AddComponent<Snowfield.Net.JoinCodeLabel>();
             label.label = text;
             textGo.SetActive(false); // nothing to show until there is a session
+            return go;
+        }
+
+        /// <summary>
+        /// The pause menu, from Assets/Prefabs/UI/PauseMenu.prefab (built on the first run, then left alone so it
+        /// can be restyled). Only the two things it cannot know about itself are assigned: the camera the
+        /// field-of-view setting lands on, and the HUD whose dev status lines the Display page can switch.
+        /// </summary>
+        static GameObject EnsurePauseMenu(UnityEngine.SceneManagement.Scene scene, Transform game, ToolHud hud,
+                                          Camera viewCamera)
+        {
+            var prefab = PauseMenuPrefabs.EnsureAll();
+            var child = game.Find("PauseMenu");
+            GameObject go = child != null ? child.gameObject : null;
+
+            // A menu dragged into the scene by hand to try it out is adopted rather than duplicated: two of them
+            // would both answer Esc.
+            if (go == null)
+            {
+                go = FindInactiveRoot(scene, "PauseMenu");
+                if (go != null) go.transform.SetParent(game, false);
+            }
+            if (go == null)
+            {
+                if (prefab == null)
+                {
+                    Debug.LogWarning("[MainSceneSetup] No pause menu prefab; the scene has no Esc menu.");
+                    return null;
+                }
+                go = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
+                go.name = "PauseMenu";
+                go.transform.SetParent(game, false);
+            }
+
+            var menu = go.GetComponent<PauseMenu>();
+            if (menu == null) return go;
+            menu.viewCamera = viewCamera;
+            menu.hud = hud;
+            EditorUtility.SetDirty(menu);
+            return go;
+        }
+
+        /// <summary>
+        /// uGUI does nothing without one of these, and until the pause menu arrived nothing in this scene was
+        /// clickable, so there was none. On the new Input System, so the old StandaloneInputModule would read no
+        /// mouse at all.
+        /// </summary>
+        static GameObject EnsureEventSystem(UnityEngine.SceneManagement.Scene scene, Transform game)
+        {
+            var found = Object.FindAnyObjectByType<EventSystem>(FindObjectsInactive.Include);
+            var go = found != null
+                ? found.gameObject
+                : EnsureUnder(scene, game, "EventSystem", () => new GameObject("EventSystem"));
+            // One found loose in the scene belongs in the kit too: it is the game that needs it, not the scene.
+            if (go.transform.parent != game) go.transform.SetParent(game, false);
+            if (go.GetComponent<EventSystem>() == null) go.AddComponent<EventSystem>();
+            if (go.GetComponent<BaseInputModule>() == null) go.AddComponent<InputSystemUIInputModule>();
+            return go;
+        }
+
+        /// <summary>
+        /// An object this setup creates once Game.prefab already exists is not in the kit: it is an <i>added
+        /// GameObject override</i> on this scene's instance, so it lives in the scene file, reaches no other
+        /// scene, and disappears the moment someone reverts the instance. Promotion only covers the very first
+        /// run, when the asset is written out of the whole hierarchy.
+        ///
+        /// So each one is applied into the asset, which is what makes "a scene needs only this prefab" true for
+        /// the things added later — the pause menu and the EventSystem above all, which were added long after the
+        /// prefab was born. References they hold to their new siblings are remapped by Unity as part of the
+        /// apply, because every one of those siblings is inside the same prefab.
+        /// </summary>
+        static void ApplyAdded(GameObject go)
+        {
+            if (go == null) return;
+            if (AssetDatabase.LoadAssetAtPath<GameObject>(GamePrefabPath) == null) return; // first run: promoted
+            if (!PrefabUtility.IsAddedGameObjectOverride(go)) return;                      // already in the asset
+            PrefabUtility.ApplyAddedGameObject(go, GamePrefabPath, InteractionMode.AutomatedAction);
+            Debug.Log("[MainSceneSetup] " + go.name + " applied into " + GamePrefabPath
+                      + "; it is part of the kit now, not of this scene.");
         }
 
         static GameObject FindInactiveRoot(UnityEngine.SceneManagement.Scene scene, string name)
