@@ -177,8 +177,9 @@ namespace Snowfield.Player
             {
                 if (_placer.ActiveChain != null)
                 {
+                    // No prompt on another sculpture: the click would do nothing, so promising a point would lie.
                     p = AimedAnchor != null && AimedAnchor.Chain == _placer.ActiveChain ? CursorAction.UsePoint
-                      : onSnow ? CursorAction.AddPoint : CursorAction.None;
+                      : onSnow && _placer.CanExtendOnto(Target) ? CursorAction.AddPoint : CursorAction.None;
                     s = CursorAction.FinishChain;
                 }
                 else
@@ -714,7 +715,7 @@ namespace Snowfield.Player
             // --- a chain is being placed: clicks add points, the strand drapes live to the cursor ---
             if (_placer.ActiveChain != null)
             {
-                _placer.UpdateChainTip(HasHit && Target != null ? BrushPoint : (Vector3?)null);
+                _placer.UpdateChainTip(Target, HasHit ? BrushPoint : (Vector3?)null);
                 if (!lmbDown) return;
                 if (shift) { FinishChainWithFlourish(); return; }
                 if (AimedAnchor != null && AimedAnchor.Chain == _placer.ActiveChain)
@@ -722,9 +723,9 @@ namespace Snowfield.Player
                     _placer.UseExistingPoint(AimedAnchor);
                     PulseFree(AimedAnchor.transform.position, -(Vector3)BrushNormal);
                 }
-                else if (HasHit && Target != null)
+                else if (HasHit && _placer.CanExtendOnto(Target))
                 {
-                    _placer.AppendPoint(BrushPoint);
+                    _placer.AppendPoint(Target, BrushPoint);
                     PulseFree(BrushPoint, -(Vector3)BrushNormal);
                 }
                 return;

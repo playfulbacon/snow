@@ -39,8 +39,6 @@ namespace Snowfield.Sculpture
         Transform _strand;
         Vector3? _tipWorld;
         bool _hasTip;
-        Vector3 _scannedAt;    // where the live end was when _surfaces was last gathered
-        bool _hasScan;
         float _swing;          // 1 = just knocked, 0 = at rest
         float _swingPhase;
         Bounds _reach;         // world bounds of the strand, for cheap bump tests
@@ -104,9 +102,6 @@ namespace Snowfield.Sculpture
             if (Frozen) return;
             _tipWorld = world;
             _hasTip = world.HasValue;
-            // Drag the live end onto the snowman next door and the strand has to be able to see it. Re-scanning
-            // every frame means a FindObjects per frame, so only once the end has actually gone somewhere.
-            if (_hasTip && (!_hasScan || Vector3.Distance(_scannedAt, world.Value) > 0.3f)) RefreshSurfaces();
         }
 
         /// <summary>Re-lay the strand for this frame. Deterministic from the points, so it cannot drift or shake.</summary>
@@ -296,29 +291,17 @@ namespace Snowfield.Sculpture
         }
 
         /// <summary>
-        /// Which sculptures the strand can rest on: the owner, plus anything its points or its live end reach into.
+        /// Which sculptures the strand can rest on: its owner, and only its owner.
+        ///
+        /// It used to gather the neighbours its points or live end reached into, back when a point could be placed
+        /// on any sculpture. Every point lands on one sculpture now, so a neighbour can only ever be snow that
+        /// happens to stand between two of them — and letting the solve grab it is how a scarf ends up half on the
+        /// snowman and half on whatever was parked beside him. One strand, one surface.
         /// </summary>
         void RefreshSurfaces()
         {
             _surfaces.Clear();
             if (Sculpture != null) _surfaces.Add(Sculpture);
-            if (Sculpture == null) return;
-            if (_hasTip && _tipWorld.HasValue) { _scannedAt = _tipWorld.Value; _hasScan = true; }
-            if (_points.Count == 0) return;
-
-            var all = FindObjectsByType<SnowSculpture>(FindObjectsSortMode.None);
-            foreach (var s in all)
-            {
-                if (s == null || s == Sculpture || _surfaces.Contains(s)) continue;
-                var b = s.WorldBounds;
-                if (_hasTip && _tipWorld.HasValue && b.Contains(_tipWorld.Value)) { _surfaces.Add(s); continue; }
-                foreach (var p in _points)
-                {
-                    if (!b.Contains(Sculpture.transform.TransformPoint(p))) continue;
-                    _surfaces.Add(s);
-                    break;
-                }
-            }
         }
 
         void OnDestroy()

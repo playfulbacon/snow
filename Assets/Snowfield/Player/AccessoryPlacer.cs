@@ -51,9 +51,18 @@ namespace Snowfield.Player
             ActiveChain = DrapedAccessory.Create(sculpture, Selected, new[] { local }, frozen: false);
         }
 
-        public void AppendPoint(Vector3 worldPoint)
+        /// <summary>
+        /// A strand belongs to the sculpture its first point landed on, and every later point has to land there
+        /// too. The shape is solved against that one grid, so a point on the snowman next door would be joined to
+        /// the rest by a span with nothing under it — a straight line through the air between two sculptures. It
+        /// also has nowhere to live: the points are stored in the owner's local space and travel with it.
+        /// </summary>
+        public bool CanExtendOnto(SnowSculpture target) =>
+            ActiveChain != null && target != null && target == ActiveChain.Sculpture;
+
+        public void AppendPoint(SnowSculpture target, Vector3 worldPoint)
         {
-            if (ActiveChain == null) return;
+            if (!CanExtendOnto(target)) return;
             ActiveChain.AddPointWorld(worldPoint);
         }
 
@@ -68,13 +77,16 @@ namespace Snowfield.Player
         bool _hasSmoothTip;
 
         /// <summary>
-        /// Run the live drape out to the cursor. Pass null when the cursor is off the snow.
+        /// Run the live drape out to the cursor. <paramref name="target"/> is the sculpture under it; pass null
+        /// for either when the cursor is off the snow. Aiming at a sculpture the strand does not belong to counts
+        /// as off: the strand reels back to its last point, which is the feedback that the click will not land.
         /// The point is smoothed first: the raw raycast hit jitters by a millimetre or two per frame and the strand
         /// would whip with it.
         /// </summary>
-        public void UpdateChainTip(Vector3? worldPoint)
+        public void UpdateChainTip(SnowSculpture target, Vector3? worldPoint)
         {
             if (ActiveChain == null) return;
+            if (!CanExtendOnto(target)) worldPoint = null;
             if (!worldPoint.HasValue)
             {
                 _hasSmoothTip = false;
