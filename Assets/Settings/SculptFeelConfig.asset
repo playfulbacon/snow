@@ -53,6 +53,14 @@ MonoBehaviour:
   handSpringDamping: 22
   handHoverWeight: 0.3
   handFollowThrough: 0.18
+  accessoryHoldOffset: {x: 0.3, y: -0.28, z: 0.65}
+  accessoryHoldEuler: {x: -15, y: 0, z: -15}
+  accessoryPalmEuler: {x: 0, y: 0, z: 180}
+  accessoryPlaceTime: 0.28
+  accessoryPlaceRecovery: 0.42
+  accessoryScrollThreshold: 1
+  accessoryScrollCooldown: 0.2
+  accessoryScrollResetTime: 0.25
   handPatAmplitude: 0.05
   handPatRate: 5
   snowfallRecoverHours: 2

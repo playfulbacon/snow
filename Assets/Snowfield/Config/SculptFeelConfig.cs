@@ -105,6 +105,26 @@ namespace Snowfield.Config
         [Tooltip("Pats per second while smoothing.")]
         public float handPatRate = 5f;
 
+        [Header("Held accessories")]
+        [Tooltip("Selected item's grip position in camera space: right, down, forward (metres).")]
+        public Vector3 accessoryHoldOffset = new Vector3(0.30f, -0.28f, 0.65f);
+        [Tooltip("Held item rotation relative to the camera. Item prefabs point along +Y.")]
+        public Vector3 accessoryHoldEuler = new Vector3(-15f, 0f, -15f);
+        [Tooltip("Palm pose relative to the held item's Grip: +Y faces out of the palm, +Z points towards the fingertips. Does not rotate the item.")]
+        public Vector3 accessoryPalmEuler = new Vector3(0f, 0f, 180f);
+        [Tooltip("Seconds to move a held item to the clicked surface before placing it.")]
+        [Min(0.01f)] public float accessoryPlaceTime = 0.28f;
+        [Tooltip("Seconds after placement for the empty hand to press and return before holding the next item.")]
+        [Min(0f)] public float accessoryPlaceRecovery = 0.42f;
+
+        [Header("Inventory selection")]
+        [Tooltip("Accumulated wheel movement needed to switch items. A normal wheel notch is 1.")]
+        [Min(0.01f)] public float accessoryScrollThreshold = 1f;
+        [Tooltip("Minimum seconds between item switches. Extra scroll during this interval is discarded.")]
+        [Min(0f)] public float accessoryScrollCooldown = 0.2f;
+        [Tooltip("Seconds without scroll input before discarding an incomplete scroll step.")]
+        [Min(0.01f)] public float accessoryScrollResetTime = 0.25f;
+
         [Header("Snowfall")]
         [Tooltip("Hours of snowfall to refill a full-depth path. 0 disables recovery.")]
         public float snowfallRecoverHours = 2f;

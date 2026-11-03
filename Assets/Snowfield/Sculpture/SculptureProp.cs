@@ -10,6 +10,7 @@ namespace Snowfield.Sculpture
     {
         public string prefabId;
         public SnowSculpture Sculpture { get; private set; }
+        public bool IsRemoved { get; private set; }
 
         public Vector3 LocalPos => transform.localPosition;
         public Quaternion LocalRot => transform.localRotation;
@@ -35,6 +36,9 @@ namespace Snowfield.Sculpture
 
         public void Remove()
         {
+            if (IsRemoved) return;
+            IsRemoved = true;
+            AccessoryCatalog.SetColliders(gameObject, false);
             if (Sculpture != null) Sculpture.UnregisterProp(this);
             Destroy(gameObject);
         }

@@ -11,12 +11,12 @@ namespace Snowfield.Player
 
     public static class ToolModeInfo
     {
-        public static string DisplayName(ToolMode m) => m == ToolMode.Accessory ? "Accessories" : "Hand";
+        public static string DisplayName(ToolMode m) => m == ToolMode.Accessory ? "Inventory" : "Hand";
 
         public static string Hint(ToolMode m) => m switch
         {
-            ToolMode.Hand => "LMB scoop snow into your hands (sculpture: a chunk · ground: a handful) · carrying: LMB lets go, hold to throw · Shift+LMB smooth · a carried ball rolls while your cursor is near the ground · Tab accessories",
-            ToolMode.Accessory => "scroll pick · LMB place (on an accessory: remove it) · Tab close",
+            ToolMode.Hand => "LMB pick up items / scoop snow · carrying: LMB lets go, hold to throw · Shift+LMB smooth · a carried ball rolls near the ground · Tab inventory",
+            ToolMode.Accessory => "scroll cycle items · LMB pick up / place / take back · each placement uses 1 item · Tab close",
             _ => "",
         };
     }

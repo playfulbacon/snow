@@ -6,6 +6,7 @@
     "Snowfield.Sculpture",
     "Snowfield.Voxel",
     "Snowfield.Config",
+    "UnityEngine.UI",
     "UnityEngine.TestRunner",
     "UnityEditor.TestRunner"
   ],

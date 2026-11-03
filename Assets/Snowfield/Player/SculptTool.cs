@@ -49,6 +49,7 @@ namespace Snowfield.Player
         // ---- aim results (refreshed every frame) ----
         public SnowSculpture Target { get; set; }
         public SculptureProp AimedProp { get; private set; }
+        public ItemPickup AimedPickup { get; private set; }
         /// <summary>A clickable point of the chain being placed, when the reticle is on one.</summary>
         public DrapeAnchor AimedAnchor { get; private set; }
         /// <summary>A loose, resting snowball under the reticle (it is also <see cref="Target"/>).</summary>
@@ -87,6 +88,9 @@ namespace Snowfield.Player
         AccessoryPlacer _placer;
         bool _lockedLastFrame;
         float _lmbDownTime = -1f;
+        float _itemScroll;
+        float _lastItemScrollTime = float.NegativeInfinity;
+        float _nextItemScrollTime;
         float _tickAccumulator;
         float _remeshAccumulator;
         readonly HashSet<IBrushTarget> _dirtyTargets = new HashSet<IBrushTarget>();
@@ -101,6 +105,7 @@ namespace Snowfield.Player
                             : viewCamera != null ? viewCamera.transform : transform;
             _placer = GetComponent<AccessoryPlacer>();
             if (_placer == null) _placer = gameObject.AddComponent<AccessoryPlacer>();
+            if (GetComponent<ItemPickupSpawner>() == null) gameObject.AddComponent<ItemPickupSpawner>();
             Roller = GetComponent<SnowballRoller>();
             if (Roller == null) Roller = gameObject.AddComponent<SnowballRoller>();
             if (Roller.config == null) Roller.config = config;
@@ -108,6 +113,25 @@ namespace Snowfield.Player
             if (hands == null) hands = GetComponentInParent<HandRig>();
             if (hands == null && reachOrigin != null) hands = reachOrigin.gameObject.AddComponent<HandRig>();
             if (hands != null && hands.config == null) hands.config = config;
+            var held = GetComponent<HeldAccessoryView>();
+            if (held == null) held = gameObject.AddComponent<HeldAccessoryView>();
+            held.tool = this;
+        }
+
+        public void SetMode(ToolMode mode)
+        {
+            if (Mode == mode) return;
+            if (_placer.ActiveChain != null) FinishChainWithFlourish();
+            _placer.CancelPlacement();
+            ResetItemScroll();
+            Mode = mode;
+            HideBrushCursor();
+        }
+
+        void OnDisable()
+        {
+            if (_placer != null) _placer.CancelPlacement();
+            ResetItemScroll();
         }
 
         void Update()
@@ -125,10 +149,11 @@ namespace Snowfield.Player
             _lockedLastFrame = locked;
             if (!locked || justLocked)
             {
+                ResetItemScroll();
                 if (IsSculpting) { IsSculpting = false; Flush(); }
                 if (_placer != null && _placer.ActiveChain != null) FinishChainWithFlourish();
                 HideBrushCursor();
-                if (_placer != null) _placer.HidePreview();
+                if (_placer != null && _placer.IsPlacing) _placer.CancelPlacement();
                 PrimaryAction = SecondaryAction = TertiaryAction = CursorAction.None;
                 ThrowCharge = 0f;
                 _lmbDownTime = -1f;
@@ -137,10 +162,7 @@ namespace Snowfield.Player
 
             if (kb != null && kb.tabKey.wasPressedThisFrame)
             {
-                if (_placer.ActiveChain != null) FinishChainWithFlourish();
-                Mode = Mode == ToolMode.Accessory ? ToolMode.Hand : ToolMode.Accessory;
-                _placer.HidePreview();
-                HideBrushCursor();
+                SetMode(Mode == ToolMode.Accessory ? ToolMode.Hand : ToolMode.Accessory);
             }
             HandleScroll(mouse, kb != null && kb.leftShiftKey.isPressed);
             Aim();
@@ -172,10 +194,16 @@ namespace Snowfield.Player
             CursorAction p = CursorAction.None, s = CursorAction.None;
             bool onSnow = HasHit && Target != null;
             bool shift = kb != null && kb.leftShiftKey.isPressed;
+            bool bothHandsBusy = Roller.IsCarrying && Roller.TwoHandedCarry;
 
-            if (Mode == ToolMode.Accessory)
+            if (AimedPickup != null && !bothHandsBusy && !_placer.IsBusy && _placer.ActiveChain == null && (Mode == ToolMode.Accessory || !Roller.IsCarrying))
             {
-                if (_placer.ActiveChain != null)
+                p = AimedPickup.CanCollect(_placer.Inventory) ? CursorAction.CollectItem : CursorAction.None;
+            }
+            else if (Mode == ToolMode.Accessory)
+            {
+                if (_placer.IsBusy || bothHandsBusy) { p = CursorAction.None; }
+                else if (_placer.ActiveChain != null)
                 {
                     p = AimedAnchor != null && AimedAnchor.Chain == _placer.ActiveChain ? CursorAction.UsePoint
                       : onSnow ? CursorAction.AddPoint : CursorAction.None;
@@ -183,8 +211,9 @@ namespace Snowfield.Player
                 }
                 else
                 {
-                    p = AimedProp != null ? CursorAction.RetrieveAccessory
-                      : onSnow ? (_placer.Selected.Drape != null ? CursorAction.AddPoint : CursorAction.PlaceAccessory)
+                    p = AimedProp != null ? (_placer.CanRetrieve(AimedProp) ? CursorAction.RetrieveAccessory : CursorAction.None)
+                      : onSnow ? (!_placer.HasSelectedItem ? CursorAction.FindItems
+                          : _placer.Selected.Drape != null ? CursorAction.AddPoint : CursorAction.PlaceAccessory)
                       : CursorAction.None;
                 }
             }
@@ -249,17 +278,11 @@ namespace Snowfield.Player
                 aim = Vector3.ProjectOnPlane(goal - Body.position, n);
                 weight = 1f;
             }
-            else if (Mode == ToolMode.Accessory && AimedProp != null)
+            else if (Mode == ToolMode.Hand && AimedPickup != null && !Roller.IsCarrying)
             {
-                goal = AimedProp.transform.position;      // about to pull this one back off
+                goal = AimedPickup.transform.position;
                 aim = goal - Body.position;
-                weight = 1f;
-            }
-            else if (Mode == ToolMode.Accessory && HasHit)
-            {
-                goal = (Vector3)BrushPoint;
-                aim = -(Vector3)BrushNormal;              // about to press one in
-                weight = 1f;
+                weight = config.handHoverWeight;
             }
             else if (Mode == ToolMode.Hand && !Roller.IsCarrying && HasHit && Target != null)
             {
@@ -338,14 +361,50 @@ namespace Snowfield.Player
         {
             if (mouse == null) return;
             float scroll = mouse.scroll.ReadValue().y;
+            if (Mode == ToolMode.Accessory)
+            {
+                HandleItemScroll(scroll);
+                return;
+            }
             if (math.abs(scroll) <= 0.01f) return;
             int dir = scroll > 0 ? 1 : -1;
             if (shift && Mode == ToolMode.Hand)
                 _cutAngle = Mathf.Repeat(_cutAngle + dir * cutAngleStep, 360f);
-            else if (Mode == ToolMode.Accessory)
-                _placer.Step(-dir); // scroll down = next, matches reading order
             else
                 radiusScale = math.clamp(radiusScale * (dir > 0 ? 1.15f : 1f / 1.15f), 0.25f, 4f);
+        }
+
+        void HandleItemScroll(float scroll)
+        {
+            if (_placer.IsBusy || _placer.ActiveChain != null || !_placer.HasSelectedItem)
+            {
+                ResetItemScroll();
+                return;
+            }
+            if (math.abs(scroll) <= 0.01f) return;
+            float now = Time.unscaledTime;
+            if (now < _nextItemScrollTime)
+            {
+                _itemScroll = 0f; // never queue a burst of delayed switches
+                _lastItemScrollTime = now;
+                return;
+            }
+            if (now - _lastItemScrollTime > config.accessoryScrollResetTime
+                || (_itemScroll != 0f && Mathf.Sign(_itemScroll) != Mathf.Sign(scroll)))
+                _itemScroll = 0f;
+            _lastItemScrollTime = now;
+            _itemScroll += scroll;
+            if (math.abs(_itemScroll) < Mathf.Max(0.01f, config.accessoryScrollThreshold)) return;
+            _placer.Step(_itemScroll > 0f ? -1 : 1);
+            _itemScroll = 0f;
+            _nextItemScrollTime = now + Mathf.Max(0f, config.accessoryScrollCooldown);
+        }
+
+        void ResetItemScroll()
+        {
+            _itemScroll = 0f;
+            _lastItemScrollTime = float.NegativeInfinity;
+            _nextItemScrollTime = 0f;
         }
 
         // ---------- aim ----------
@@ -356,6 +415,7 @@ namespace Snowfield.Player
             HasGroundHit = false;
             Target = null;
             AimedProp = null;
+            AimedPickup = null;
             AimedAnchor = null;
             AimedSnowball = null;
             AimedColliderPath = "";
@@ -373,6 +433,8 @@ namespace Snowfield.Player
 
             AimedAnchor = hit.collider.GetComponent<DrapeAnchor>();
             AimedProp = hit.collider.GetComponentInParent<SculptureProp>();
+            AimedPickup = hit.collider.GetComponentInParent<ItemPickup>();
+            if (AimedPickup != null) return;
             var s = hit.collider.GetComponentInParent<SnowSculpture>();
             if (s != null)
             {
@@ -399,7 +461,18 @@ namespace Snowfield.Player
             bool lmbDown = mouse != null && mouse.leftButton.wasPressedThisFrame;
             bool lmbUp = mouse != null && mouse.leftButton.wasReleasedThisFrame;
             bool shift = kb != null && kb.leftShiftKey.isPressed;
-            _placer.HidePreview();
+
+            if (AimedPickup != null && !Roller.IsCarrying)
+            {
+                if (IsSculpting) { IsSculpting = false; Flush(); }
+                HideBrushCursor();
+                AimingCut = false;
+                if (planeCut != null) planeCut.Hide();
+                ThrowCharge = 0f;
+                _lmbDownTime = -1f;
+                if (lmbDown) CollectAimedItem();
+                return;
+            }
 
             // Planar shave. Only while actually aiming at a sculpture: Shift is also the run key, and a preview
             // that flashed up every time you sprinted across the field would be unreadable noise.
@@ -711,10 +784,13 @@ namespace Snowfield.Player
             bool shift = kb != null && kb.leftShiftKey.isPressed;
             bool lmbDown = mouse != null && mouse.leftButton.wasPressedThisFrame;
 
+            if (_placer.IsBusy || (Roller.IsCarrying && Roller.TwoHandedCarry)) return;
+
             // --- a chain is being placed: clicks add points, the strand drapes live to the cursor ---
             if (_placer.ActiveChain != null)
             {
                 _placer.UpdateChainTip(HasHit && Target != null ? BrushPoint : (Vector3?)null);
+                if (mouse != null && mouse.rightButton.wasPressedThisFrame) { FinishChainWithFlourish(); return; }
                 if (!lmbDown) return;
                 if (shift) { FinishChainWithFlourish(); return; }
                 if (AimedAnchor != null && AimedAnchor.Chain == _placer.ActiveChain)
@@ -730,22 +806,34 @@ namespace Snowfield.Player
                 return;
             }
 
-            // Hovering a placed accessory hides the ghost: this click takes that one back instead of adding another.
-            _placer.UpdatePreview(HasHit && AimedProp == null, BrushPoint, BrushNormal);
-
             if (!lmbDown) return;
-            if (AimedProp != null)
+            if (AimedPickup != null) CollectAimedItem();
+            else if (AimedProp != null)
             {
                 Vector3 at = AimedProp.transform.position; // read before it is unparented and destroyed
-                _placer.Retrieve(AimedProp);
-                PulseFree(at, at - Body.position);
+                if (_placer.Retrieve(AimedProp)) PulseFree(at, at - Body.position);
             }
-            else if (HasHit && Target != null)
+            else if (HasHit && Target != null && _placer.HasSelectedItem)
             {
-                if (_placer.Selected.Drape != null) _placer.BeginChain(Target, BrushPoint);
-                else _placer.Place(Target, BrushPoint, BrushNormal);
-                PulseFree(BrushPoint, -(Vector3)BrushNormal);
+                if (_placer.Selected.Drape != null)
+                {
+                    _placer.BeginChain(Target, BrushPoint);
+                    PulseFree(BrushPoint, -(Vector3)BrushNormal);
+                }
+                else _placer.BeginPlacement(Target, BrushPoint, BrushNormal,
+                    config.accessoryPlaceTime, config.accessoryPlaceRecovery);
             }
+        }
+
+        void CollectAimedItem()
+        {
+            if (AimedPickup == null) return;
+            Vector3 at = AimedPickup.transform.position;
+            string id = AimedPickup.itemId;
+            bool selectCollected = !_placer.HasSelectedItem;
+            if (AimedPickup.Collect(_placer.Inventory) <= 0) return;
+            if (selectCollected) _placer.Select(_placer.Inventory.FindFirstSlot(id));
+            PulseFree(at, at - Body.position);
         }
 
         /// <summary>End the chain: a one-point chain was a misclick, so drop it rather than leaving a stub.</summary>

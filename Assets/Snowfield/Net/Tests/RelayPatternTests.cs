@@ -74,6 +74,8 @@ namespace Snowfield.Net.Tests
             var pose = default(HandSyncPose);
             pose.RightPosition = new Vector3(0.25f, 1.05f, 0.6f);
             pose.RightAim = new Vector3(0f, 0f, 1f);
+            pose.RightPalmNormal = new Vector3(.6f, .8f, 0f);
+            pose.LeftPalmNormal = Vector3.up;
             pose.RightWeight = 1f;
             pose.LeftWeight = 0f;
 
@@ -89,6 +91,8 @@ namespace Snowfield.Net.Tests
             Assert.AreEqual(pose.RightWeight, got.RightWeight, 1e-4f);
             Assert.Less((pose.RightPosition - got.RightPosition).magnitude, 1e-4f, "hand position was mangled in transit");
             Assert.Less((pose.RightAim - got.RightAim).magnitude, 1e-4f, "hand aim was mangled in transit");
+            Assert.Less((pose.RightPalmNormal - got.RightPalmNormal).magnitude, 1e-4f, "palm roll was mangled in transit");
+            Assert.Less((pose.LeftPalmNormal - got.LeftPalmNormal).magnitude, 1e-4f);
             Assert.IsFalse(got.LeftActive, "an idle hand should arrive idle");
         }
     }

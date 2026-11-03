@@ -45,6 +45,35 @@ namespace Snowfield.Player.Tests
 
             var roller = Object.FindAnyObjectByType<SnowballRoller>();
             Assert.IsNotNull(roller, "SnowballRoller missing from Main scene");
+            var placer = roller.GetComponent<AccessoryPlacer>();
+            Assert.IsNotNull(placer.Inventory, "Older scene wiring must acquire an inventory automatically");
+            foreach (var entry in AccessoryCatalog.Entries)
+                Assert.AreEqual(0, placer.Inventory.Count(entry.Id), "Inventory must start empty");
+
+            // Existing scenes need no hand-editing to make the collection loop playable.
+            ItemPickup[] pickups;
+            deadline = Time.realtimeSinceStartup + 8f;
+            do
+            {
+                yield return null;
+                // Levels may also contain authored pickup prefabs; count only the automatic supplies.
+                pickups = System.Array.FindAll(Object.FindObjectsByType<ItemPickup>(FindObjectsSortMode.None),
+                    p => p.transform.parent != null && p.transform.parent.name == "AccessorySupplies");
+            }
+            while (pickups.Length < AccessoryCatalog.Entries.Count && Time.realtimeSinceStartup < deadline);
+            Assert.AreEqual(AccessoryCatalog.Entries.Count, pickups.Length, "Spawn one finite supply stack per item");
+            foreach (var pickup in pickups)
+            {
+                Assert.IsNotNull(pickup.GetComponent<Collider>(), "World supplies must be targetable");
+                Assert.IsNotEmpty(pickup.GetComponentsInChildren<Renderer>(), "World supplies must be visible");
+                int quantity = pickup.quantity;
+                Assert.AreEqual(quantity, pickup.Collect(placer.Inventory));
+                Assert.AreEqual(quantity, placer.Inventory.Count(pickup.itemId));
+                Assert.AreEqual(0, pickup.Collect(placer.Inventory), "Depleted supplies cannot refill a slot");
+                // The catalog can contain more item types than the inventory has slots.
+                for (int i = 0; i < quantity; i++) Assert.IsTrue(placer.Inventory.TryConsume(pickup.itemId));
+            }
+
             Vector3 player = roller.character != null ? roller.character.position : Vector3.zero;
             Vector3 p = player + new Vector3(1.5f, 0f, 1.5f);
 

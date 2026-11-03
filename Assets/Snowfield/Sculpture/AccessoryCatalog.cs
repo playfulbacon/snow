@@ -4,8 +4,8 @@ using UnityEngine;
 namespace Snowfield.Sculpture
 {
     /// <summary>
-    /// The accessories a player can stick into snow. Built procedurally from primitives for now so there are no
-    /// prefab assets to maintain; swap <see cref="Build"/> for prefab instantiation later without touching callers.
+    /// The accessories a player can stick into snow. Includes procedural tools and prefab-backed item definitions
+    /// from Resources/Items. Prefab definitions can replace a built-in id while retaining saved item identity.
     /// Every accessory is authored with +Y pointing *out of* the snow surface and its origin at the snow contact point.
     /// </summary>
     public static class AccessoryCatalog
@@ -14,6 +14,8 @@ namespace Snowfield.Sculpture
         {
             public string Id;
             public string DisplayName;
+            /// <summary>Maximum quantity in this item's inventory slot.</summary>
+            public int StackLimit = 1;
             /// <summary>How far (m) to push the origin below the surface so it reads as stuck in, not floating.</summary>
             public float Sink;
             /// <summary>Rotation that lays the item on flat ground (authored +Y = out of snow).</summary>
@@ -25,6 +27,7 @@ namespace Snowfield.Sculpture
             /// Null = an ordinary prop. <see cref="Build"/> then only supplies the HUD thumbnail / hover sample.
             /// </summary>
             public DrapeStyle Drape;
+            public GameObject Prefab;
             public System.Func<GameObject> Build;
         }
 
@@ -63,15 +66,45 @@ namespace Snowfield.Sculpture
             FringeCount = 5,
         };
 
-        public static readonly IReadOnlyList<Entry> Entries = new List<Entry>
+        static IReadOnlyList<Entry> _entries;
+        public static IReadOnlyList<Entry> Entries => _entries ?? (_entries = BuildEntries());
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        public static void ReloadDefinitions() => _entries = null;
+
+        static IReadOnlyList<Entry> BuildEntries()
         {
-            new Entry { Id = "twig",   DisplayName = "Twig",   Sink = 0.06f,  GroundRest = Quaternion.Euler(90f, 0f, 0f), GroundLift = 0.012f, Build = BuildTwig },
-            new Entry { Id = "carrot", DisplayName = "Carrot", Sink = 0.12f,  GroundRest = Quaternion.Euler(90f, 0f, 0f), GroundLift = 0.06f,  Build = BuildCarrot },
-            new Entry { Id = "button", DisplayName = "Button", Sink = 0.015f, GroundRest = Quaternion.identity,          GroundLift = 0f,     Build = BuildButton },
-            new Entry { Id = "pebble", DisplayName = "Pebble", Sink = 0.015f, GroundRest = Quaternion.identity,          GroundLift = 0f,     Build = BuildPebble },
-            new Entry { Id = "lights", DisplayName = "Lights", Sink = 0f,     GroundRest = Quaternion.identity,          GroundLift = 0f,     Drape = LightsStyle, Build = BuildLightsSample },
-            new Entry { Id = "scarf",  DisplayName = "Scarf",  Sink = 0f,     GroundRest = Quaternion.identity,          GroundLift = 0f,     Drape = ScarfStyle,  Build = BuildScarfSample },
-        };
+            var entries = new List<Entry>
+            {
+                new Entry { Id = "twig",   DisplayName = "Twig",   StackLimit = 12, Sink = 0.06f,  GroundRest = Quaternion.Euler(90f, 0f, 0f), GroundLift = 0.012f, Build = BuildTwig },
+                new Entry { Id = "carrot", DisplayName = "Carrot", StackLimit = 6,  Sink = 0.12f,  GroundRest = Quaternion.Euler(90f, 0f, 0f), GroundLift = 0.06f,  Build = BuildCarrot },
+                new Entry { Id = "button", DisplayName = "Button", StackLimit = 24, Sink = 0.015f, GroundRest = Quaternion.identity,          GroundLift = 0f,     Build = BuildButton },
+                new Entry { Id = "pebble", DisplayName = "Pebble", StackLimit = 24, Sink = 0.015f, GroundRest = Quaternion.identity,          GroundLift = 0f,     Build = BuildPebble },
+                new Entry { Id = "lights", DisplayName = "Lights", StackLimit = 3,  Sink = 0f,     GroundRest = Quaternion.identity,          GroundLift = 0.08f,  Drape = LightsStyle, Build = BuildLightsSample },
+                new Entry { Id = "scarf",  DisplayName = "Scarf",  StackLimit = 2,  Sink = 0f,     GroundRest = Quaternion.identity,          GroundLift = 0.08f,  Drape = ScarfStyle,  Build = BuildScarfSample },
+            };
+            var definitions = Resources.LoadAll<AccessoryItemDefinition>("Items");
+            System.Array.Sort(definitions, (a, b) => string.CompareOrdinal(a.itemId, b.itemId));
+            var seen = new HashSet<string>();
+            foreach (var definition in definitions)
+            {
+                if (string.IsNullOrWhiteSpace(definition.itemId) || definition.prefab == null || definition.stackLimit < 1)
+                {
+                    Debug.LogWarning($"[Snowfield] Invalid accessory item definition: {definition.name}", definition);
+                    continue;
+                }
+                if (!seen.Add(definition.itemId))
+                {
+                    Debug.LogWarning($"[Snowfield] Duplicate accessory item id: {definition.itemId}", definition);
+                    continue;
+                }
+                var entry = definition.CreateEntry();
+                int index = entries.FindIndex(e => e.Id == entry.Id);
+                if (index >= 0) entries[index] = entry;
+                else entries.Add(entry);
+            }
+            return entries;
+        }
 
 
         public static Entry Find(string id)

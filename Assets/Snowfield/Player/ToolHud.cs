@@ -7,8 +7,7 @@ using UnityEngine.UI;
 namespace Snowfield.Player
 {
     /// <summary>
-    /// uGUI overlay for the tool: mode boxes with number badges along the bottom, an accessory row above them,
-    /// a status line top-left, and the centre reticle.
+    /// uGUI status and cursor prompts. Selected accessories are shown in the player's hand, outside the HUD.
     ///
     /// Sits on its own "HUD" GameObject with the Canvas, builds the children itself, and runs in edit mode, so the layout can be tuned in the
     /// Scene/Game view without pressing Play. **This component's inspector is the source of truth**: every size,
@@ -20,22 +19,6 @@ namespace Snowfield.Player
     public class ToolHud : MonoBehaviour
     {
         // ------------------------------------------------------------------ settings
-
-        [Serializable]
-        public class AccessoryBarSettings
-        {
-            public float boxSize = 96f;
-            public float gap = 18f;
-            [Tooltip("Space between the mode-bar badges and the bottom of the accessory boxes.")]
-            public float bottomMargin = 40f;
-            public float labelHeight = 20f;
-            public int labelFontSize = 14;
-            public float thumbnailPadding = 6f;
-            [Header("Count badge")]
-            public float countSize = 22f;
-            public int countFontSize = 13;
-            public Vector2 countOffset = new Vector2(-4f, -4f);
-        }
 
         [Serializable]
         public class ReticleSettings
@@ -136,7 +119,6 @@ namespace Snowfield.Player
         [Header("Layout")]
         [Tooltip("Re-apply sizes/positions/colours from the settings below every frame. Turn off to hand-edit the generated objects.")]
         public bool applyLayoutFromSettings = true;
-        public AccessoryBarSettings accessoryBar = new AccessoryBarSettings();
         public ReticleSettings reticle = new ReticleSettings();
         public CursorSettings cursor = new CursorSettings();
         public StatusSettings status = new StatusSettings();
@@ -144,8 +126,6 @@ namespace Snowfield.Player
 
         [Header("Edit-mode preview")]
         public ToolMode previewMode = ToolMode.Hand;
-        public bool previewAccessoryBar = true;
-        public int previewAccessoryIndex = 0;
         public bool previewChargeRing = false;
         public CursorAction previewPrimary = CursorAction.AddSnow;
         public CursorAction previewSecondary = CursorAction.Grab;
@@ -153,11 +133,9 @@ namespace Snowfield.Player
 
         // ------------------------------------------------------------------ generated refs
 
-        [Serializable]
-        class AccessoryItem { public RectTransform root; public Image box, boxOutline, countBox, countOutline; public RawImage thumb; public Text label, count; }
-
-        [SerializeField, HideInInspector] RectTransform _accessoryBarRoot, _reticleRoot, _statusRoot;
-        [SerializeField, HideInInspector] List<AccessoryItem> _accessories = new List<AccessoryItem>();
+        const int HudSchemaVersion = 1;
+        [SerializeField, HideInInspector] int _hudSchemaVersion;
+        [SerializeField, HideInInspector] RectTransform _reticleRoot, _statusRoot;
         [SerializeField, HideInInspector] Image[] _reticleBars = new Image[4];
         [SerializeField, HideInInspector] Image[] _reticleShadows = new Image[4];
         [SerializeField, HideInInspector] Image _reticleDot, _reticleDotShadow;
@@ -191,8 +169,8 @@ namespace Snowfield.Player
 #if UNITY_EDITOR
         void EditorTick()
         {
-            if (this == null) return;
-            if (_pendingBuild) Build();
+            if (this == null || UnityEditor.EditorUtility.IsPersistent(this)) return;
+            if (_pendingBuild || !IsBuilt()) Build();
             ApplyAll();
         }
 
@@ -205,7 +183,10 @@ namespace Snowfield.Player
 
         void Update()
         {
-            if (_pendingBuild) Build();
+#if UNITY_EDITOR
+            if (UnityEditor.EditorUtility.IsPersistent(this)) return;
+#endif
+            if (_pendingBuild || !IsBuilt()) Build();
             if (Application.isPlaying && tool == null) ResolveRefs();
             ApplyAll();
         }
@@ -213,25 +194,27 @@ namespace Snowfield.Player
         [ContextMenu("Rebuild HUD")]
         public void RebuildNow()
         {
-            _accessories.Clear();
             Build();
             ApplyAll();
         }
 
         bool IsBuilt() =>
-            canvas != null && _accessoryBarRoot != null && _reticleRoot != null && _statusRoot != null
-            && _accessories.Count == AccessoryCatalog.Entries.Count
+            canvas != null && _reticleRoot != null && _statusRoot != null
+            && _hudSchemaVersion == HudSchemaVersion
             && _tertiary != null && _tertiary.root != null
             && _statusLine1 != null && _reticleDot != null && _chargeFill != null
             && _cursorIcon != null && _fieldLine != null
-            && _primary != null && _primary.root != null && _primary.input != null && _secondary != null && _secondary.root != null
-            && (_accessories.Count == 0 || _accessories[0].count != null);
+            && _primary != null && _primary.root != null && _primary.input != null && _secondary != null && _secondary.root != null;
 
         // ------------------------------------------------------------------ build
 
         void Build()
         {
+#if UNITY_EDITOR
+            if (UnityEditor.EditorUtility.IsPersistent(this)) return;
+#endif
             _pendingBuild = false;
+            _hudSchemaVersion = HudSchemaVersion;
             _font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
 
             if (canvas == null) canvas = GetComponent<Canvas>();
@@ -244,8 +227,12 @@ namespace Snowfield.Player
             scaler.matchWidthOrHeight = 0.5f;
 
             // Wipe previously generated children and rebuild deterministically.
-            for (int i = canvas.transform.childCount - 1; i >= 0; i--) Kill(canvas.transform.GetChild(i).gameObject);
-            _accessories.Clear();
+            for (int i = canvas.transform.childCount - 1; i >= 0; i--)
+            {
+                var child = canvas.transform.GetChild(i).gameObject;
+                child.SetActive(false);
+                Kill(child);
+            }
 
             var root = canvas.transform;
 
@@ -255,27 +242,6 @@ namespace Snowfield.Player
             _statusLine2 = Txt("Line2", _statusRoot, TextAnchor.UpperLeft);
             _fieldLine = Txt("Field", _statusRoot, TextAnchor.UpperLeft);
             _fieldLine.fontStyle = FontStyle.Bold;
-
-            // --- accessory bar (bottom-centre, shown while the Tab overlay is open) ---
-            _accessoryBarRoot = MakeRect("AccessoryBar", root, new Vector2(0.5f, 0), new Vector2(0.5f, 0), new Vector2(0.5f, 0));
-            foreach (var e in AccessoryCatalog.Entries)
-            {
-                var item = new AccessoryItem();
-                item.root = MakeRect(e.DisplayName, _accessoryBarRoot, new Vector2(0, 0), new Vector2(0, 0), new Vector2(0, 0));
-                item.boxOutline = Img("Outline", item.root);
-                item.box = Img("Box", item.root);
-                var thumbGo = new GameObject("Thumbnail", typeof(RectTransform), typeof(RawImage));
-                thumbGo.transform.SetParent(item.root, false);
-                item.thumb = thumbGo.GetComponent<RawImage>();
-                item.thumb.raycastTarget = false;
-                item.label = Txt("Label", item.root, TextAnchor.MiddleCenter);
-                var countRoot = MakeRect("Count", item.root, new Vector2(1, 1), new Vector2(1, 1), new Vector2(1, 1));
-                item.countOutline = Img("Outline", countRoot);
-                item.countBox = Img("Box", countRoot);
-                item.count = Txt("Label", countRoot, TextAnchor.MiddleCenter);
-                item.count.fontStyle = FontStyle.Bold;
-                _accessories.Add(item);
-            }
 
             // --- reticle (centre) ---
             _reticleRoot = MakeRect("Reticle", root, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
@@ -328,39 +294,6 @@ namespace Snowfield.Player
             _fieldLine.fontSize = status.fieldFontSize;
             _fieldLine.color = c.statusText;
 
-            // accessory bar
-            int k = _accessories.Count;
-            float accW = k * accessoryBar.boxSize + (k - 1) * accessoryBar.gap;
-            float accY = accessoryBar.bottomMargin;
-            _accessoryBarRoot.anchoredPosition = new Vector2(0, accY);
-            _accessoryBarRoot.sizeDelta = new Vector2(accW, accessoryBar.boxSize);
-            for (int i = 0; i < k; i++)
-            {
-                var a = _accessories[i];
-                a.root.anchoredPosition = new Vector2(i * (accessoryBar.boxSize + accessoryBar.gap), 0);
-                a.root.sizeDelta = Vector2.one * accessoryBar.boxSize;
-                Stretch(a.boxOutline.rectTransform, -ow);
-                Stretch(a.box.rectTransform, 0);
-                float p = accessoryBar.thumbnailPadding;
-                var tr = a.thumb.rectTransform;
-                tr.anchorMin = new Vector2(0, 0); tr.anchorMax = new Vector2(1, 1);
-                tr.offsetMin = new Vector2(p, accessoryBar.labelHeight);
-                tr.offsetMax = new Vector2(-p, -p);
-                var lr = a.label.rectTransform;
-                lr.anchorMin = new Vector2(0, 0); lr.anchorMax = new Vector2(1, 0); lr.pivot = new Vector2(0.5f, 0);
-                lr.anchoredPosition = Vector2.zero;
-                lr.sizeDelta = new Vector2(0, accessoryBar.labelHeight);
-                a.label.fontSize = accessoryBar.labelFontSize;
-                a.label.text = AccessoryCatalog.Entries[i].DisplayName;
-                var cr = (RectTransform)a.countBox.transform.parent;
-                cr.anchoredPosition = accessoryBar.countOffset;
-                cr.sizeDelta = Vector2.one * accessoryBar.countSize;
-                Stretch(a.countOutline.rectTransform, -ow);
-                Stretch(a.countBox.rectTransform, 0);
-                Stretch(a.count.rectTransform, 0);
-                a.count.fontSize = accessoryBar.countFontSize;
-            }
-
             // reticle
             float arm = reticle.arm, gap = reticle.gap, th = reticle.thickness;
             _reticleRoot.sizeDelta = Vector2.one * ((arm + gap) * 2);
@@ -391,36 +324,13 @@ namespace Snowfield.Player
         {
             bool playing = Application.isPlaying && tool != null;
             ToolMode mode = playing ? tool.Mode : previewMode;
-            bool accVisible = playing ? mode == ToolMode.Accessory : previewAccessoryBar;
-            int accIndex = playing && placer != null ? placer.SelectedIndex : previewAccessoryIndex;
             var c = colors;
-
-            _accessoryBarRoot.gameObject.SetActive(accVisible);
-            if (accVisible)
-            {
-                var thumbs = playing && placer != null ? placer.Thumbnails : null;
-                for (int i = 0; i < _accessories.Count; i++)
-                {
-                    bool sel = i == accIndex;
-                    var a = _accessories[i];
-                    a.box.color = sel ? c.selectedBg : c.boxBg;
-                    a.label.color = sel ? c.selectedText : c.boxText;
-                    var tex = thumbs != null && i < thumbs.Count ? thumbs[i] : null;
-                    a.thumb.texture = tex;
-                    a.thumb.color = tex != null ? Color.white : c.thumbnailPlaceholder;
-                    a.countBox.color = c.countBg;
-                    a.count.color = c.countText;
-                    if (a.countBox != null) ((RectTransform)a.countBox.transform.parent).gameObject.SetActive(false); // unlimited supply
-                    a.boxOutline.color = Frame(c.outline, a.box.color);
-                    a.countOutline.color = Frame(c.outline, a.countBox.color);
-                }
-            }
 
             // reticle colour
             Color rc = c.reticleIdle;
             if (playing)
             {
-                if (mode == ToolMode.Accessory && tool.AimedProp != null) rc = c.reticleOnProp;
+                if (tool.AimedPickup != null || (mode == ToolMode.Accessory && tool.AimedProp != null)) rc = c.reticleOnProp;
                 else if (tool.HasHit) rc = c.reticleOnSnow;
             }
             Color shadow = new Color(0, 0, 0, rc.a * 0.5f);
@@ -454,15 +364,16 @@ namespace Snowfield.Player
                 line = mode == ToolMode.Accessory
                     ? (placer == null ? ""
                        : placer.ActiveChain != null
-                         ? $"{placer.Selected.DisplayName} — {placer.ActiveChain.PointCount} point{(placer.ActiveChain.PointCount == 1 ? "" : "s")} (Shift+click to finish)"
-                         : placer.Selected.DisplayName)
+                         ? "Shift+click or RMB to finish"
+                         : "")
                     : tool.Roller != null && tool.Roller.IsEngaged
                         ? (tool.Roller.Ball != null ? $"snowball {tool.Roller.Radius * 2f:0.00} m" : "carrying sculpture")
                         : $"radius {tool.CurrentRadius():0.00} m   rate {tool.config.addRatePerTick:0}/tick @ {tool.config.ticksPerSecond:0} Hz";
             }
             if (playing)
             {
-                string aim = tool.AimedSnowball != null ? "loose snowball"
+                string aim = tool.AimedPickup != null ? $"{tool.AimedPickup.Item?.DisplayName} ×{tool.AimedPickup.quantity}"
+                           : tool.AimedSnowball != null ? "loose snowball"
                            : tool.Target != null ? (tool.Target.GetComponent<Snowball>() != null ? "fixed snowball" : "sculpture")
                            : tool.HasGroundHit ? "ground" : "nothing";
                 line += $"   ·   aim: {aim}{(tool.AimedProp != null ? " (prop)" : "")} [{tool.AimedColliderPath}]";
@@ -567,6 +478,12 @@ namespace Snowfield.Player
             if (!show) return;
             var entry = FindPrompt(action);
             string label = entry != null && !string.IsNullOrEmpty(entry.label) ? entry.label : CursorActionInfo.DefaultLabel(action);
+            if (action == CursorAction.CollectItem && tool != null && tool.AimedPickup != null && placer != null)
+            {
+                var pickup = tool.AimedPickup;
+                int amount = Mathf.Min(pickup.quantity, placer.Inventory.SpaceFor(pickup.itemId));
+                label = $"Pick up {pickup.Item?.DisplayName} ×{amount}";
+            }
             var icon = entry != null ? entry.icon : null;
             var input = p == _primary ? cursor.primaryInputIcon : p == _secondary ? cursor.secondaryInputIcon : cursor.tertiaryInputIcon;
             float pad = cursor.promptPadding;

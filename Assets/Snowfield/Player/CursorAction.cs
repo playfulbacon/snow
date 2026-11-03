@@ -19,6 +19,9 @@ namespace Snowfield.Player
         MakeMound,
         Grab,
         Drop,
+        CollectItem,
+        StackFull,
+        FindItems,
     }
 
     public static class CursorActionInfo
@@ -35,11 +38,14 @@ namespace Snowfield.Player
             CursorAction.PlaceAccessory => "Place",
             CursorAction.AddPoint => "Add point",
             CursorAction.UsePoint => "Use this point",
-            CursorAction.FinishChain => "Finish (Shift)",
+            CursorAction.FinishChain => "Finish strand",
             CursorAction.ScoopSnow => "Scoop",
             CursorAction.MakeMound => "Start mound",
             CursorAction.Grab => "Pick up",
             CursorAction.Drop => "Drop (hold: throw)",
+            CursorAction.CollectItem => "Pick up item",
+            CursorAction.StackFull => "Inventory full",
+            CursorAction.FindItems => "Find items to collect",
             _ => "",
         };
     }

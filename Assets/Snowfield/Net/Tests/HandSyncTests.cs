@@ -181,6 +181,38 @@ namespace Snowfield.Net.Tests
         }
 
         [UnityTest]
+        public IEnumerator PalmGrip_MirrorsPositionAndWristRoll_ForBothHands()
+        {
+            foreach (var side in new[] { HandRig.Side.Right, HandRig.Side.Left })
+            {
+                Vector3 goal = ReachableGoal(side);
+                Vector3 localGoal = _ownerGo.transform.InverseTransformPoint(goal);
+                var frame = Quaternion.Euler(-15f, 10f, side == HandRig.Side.Right ? -35f : 35f);
+                var receiver = new HandSyncReceiver();
+                yield return DriveFor(1f, () =>
+                {
+                    _ownerRig.Reach(side, goal, 1f, _ownerGo.transform.rotation * frame * Vector3.forward,
+                        palmNormal: _ownerGo.transform.rotation * frame * Vector3.up);
+                    receiver.Receive(HandSyncPose.Sample(_ownerRig, _ownerGo.transform));
+                    receiver.Tick(_remoteRig, _remoteGo.transform, Time.deltaTime);
+                });
+                Assert.Less(Vector3.Distance(_ownerGo.transform.InverseTransformPoint(_ownerRig.PalmPosition(side)), localGoal), .04f);
+                Assert.Less(Vector3.Distance(_remoteGo.transform.InverseTransformPoint(_remoteRig.PalmPosition(side)), localGoal), .04f);
+                Assert.Less(Quaternion.Angle(Quaternion.Inverse(_ownerGo.transform.rotation) * _ownerRig.PalmRotation(side), frame), 2f);
+                Assert.Less(Quaternion.Angle(Quaternion.Inverse(_remoteGo.transform.rotation) * _remoteRig.PalmRotation(side), frame), 2f);
+
+                // A contact pulse must retain the full grip, and a later snow reach must clear it.
+                _ownerRig.Pulse(side, goal, .1f, frame * Vector3.forward, frame * Vector3.up);
+                yield return null;
+                Assert.Greater(_ownerRig.CurrentGoal(side).PalmNormal.sqrMagnitude, .9f);
+                yield return new WaitForSeconds(.15f);
+                _ownerRig.Reach(side, goal, 1f, Vector3.forward);
+                yield return null;
+                Assert.AreEqual(Vector3.zero, _ownerRig.CurrentGoal(side).PalmNormal);
+            }
+        }
+
+        [UnityTest]
         public IEnumerator Idle_Hands_Report_Inactive_And_Ease_Home()
         {
             var receiver = new HandSyncReceiver();

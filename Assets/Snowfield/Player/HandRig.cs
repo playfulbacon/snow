@@ -46,6 +46,7 @@ namespace Snowfield.Player
         static readonly HumanBodyBones[] HandBones = { HumanBodyBones.LeftHand, HumanBodyBones.RightHand };
 
         Arm[] _arms;
+        Matrix4x4 _previousWorldToLocal;
 
         /// <summary>Both arms found their bones; nothing else on this component does anything until they have.</summary>
         public bool IsReady => _arms != null && _arms[0].valid && _arms[1].valid;
@@ -56,6 +57,7 @@ namespace Snowfield.Player
         {
             if (animator == null) animator = GetComponentInChildren<Animator>(true);
             _arms = new[] { BuildArm(Side.Left), BuildArm(Side.Right) };
+            _previousWorldToLocal = transform.worldToLocalMatrix;
             if (!IsReady) return;
 
             // A stretched arm leaves the skinned bounds behind, and a mesh culled by its own bind pose pops out of
@@ -79,6 +81,14 @@ namespace Snowfield.Player
             a.restHand = a.hand.localPosition;
             // Mixamo ends each limb in a *_end bone; it is the only fingertip direction this rig has.
             a.tip = a.hand.childCount > 0 ? a.hand.GetChild(0) : null;
+            // Calibrate in the imported rest pose, before animation. Both mitten palms face down;
+            // using the rest frame also accounts for the mirrored axes of the left hand.
+            Vector3 fingers = a.tip != null ? a.tip.position - a.hand.position : a.hand.position - a.lower.position;
+            Vector3 palm = Vector3.ProjectOnPlane(-animator.transform.up, fingers).normalized;
+            if (palm.sqrMagnitude < 1e-6f) palm = Vector3.ProjectOnPlane(animator.transform.forward, fingers).normalized;
+            a.palmFrame = Quaternion.Inverse(a.hand.rotation) * Quaternion.LookRotation(fingers, palm);
+            // Offsets are stored in rotation-only space, in metres, independent of model import scale.
+            a.palmOffset = Quaternion.Inverse(a.hand.rotation) * (fingers * .5f + palm * .012f);
             return a;
         }
 
@@ -89,14 +99,19 @@ namespace Snowfield.Player
         /// stop calling and it eases back to the animation. <paramref name="aim"/> is the world direction the
         /// fingertips should point (zero leaves the wrist alone). <paramref name="weight"/> below 1 is a partial
         /// reach — the hand drifts that far from its animated pose toward the goal.
+        /// A nonzero <paramref name="palmNormal"/> constrains palm roll too: position then targets the palm
+        /// centre, aim points along the fingers, and palmNormal points out of the palm.
         /// </summary>
-        public void Reach(Side side, Vector3 position, float weight = 1f, Vector3 aim = default)
+        public void Reach(Side side, Vector3 position, float weight = 1f, Vector3 aim = default, bool followBody = false,
+            Vector3 palmNormal = default)
         {
             if (!IsReady) return;
             Arm a = _arms[(int)side];
             a.goal = position;
             a.aim = aim;
+            a.palmNormal = palmNormal;
             a.request = Mathf.Clamp01(weight);
+            a.followBody = followBody;
         }
 
         /// <summary>
@@ -104,12 +119,13 @@ namespace Snowfield.Player
         /// snow that stops existing the moment you touch it: without this, fusing a ball snaps the arms home on
         /// the same frame the ball disappears and the press is never seen. Outranks <see cref="Reach"/> while it lasts.
         /// </summary>
-        public void Pulse(Side side, Vector3 position, float seconds, Vector3 aim = default)
+        public void Pulse(Side side, Vector3 position, float seconds, Vector3 aim = default, Vector3 palmNormal = default)
         {
             if (!IsReady || seconds <= 0f) return;
             Arm a = _arms[(int)side];
             a.pulseGoal = position;
             a.pulseAim = aim;
+            a.pulsePalmNormal = palmNormal;
             a.pulseUntil = Time.time + seconds;
         }
 
@@ -123,14 +139,30 @@ namespace Snowfield.Player
         {
             public readonly Vector3 Position;
             public readonly Vector3 Aim;
+            public readonly Vector3 PalmNormal;
             public readonly float Weight;
-            public Goal(Vector3 position, Vector3 aim, float weight)
-            { Position = position; Aim = aim; Weight = weight; }
+            public Goal(Vector3 position, Vector3 aim, float weight, Vector3 palmNormal = default)
+            { Position = position; Aim = aim; Weight = weight; PalmNormal = palmNormal; }
             public bool Active => Weight > 0.001f;
         }
 
         /// <summary>The goal <paramref name="side"/> was solved against last frame. See <see cref="Goal"/>.</summary>
         public Goal CurrentGoal(Side side) => IsReady ? _arms[(int)side].last : default;
+
+        /// <summary>The solved wrist transform, for objects that must follow a hand after IK.</summary>
+        public Transform HandBone(Side side) => IsReady ? _arms[(int)side].hand : null;
+
+        /// <summary>Centre of the solved palm, where a carried item's grip should sit.</summary>
+        public Vector3 PalmPosition(Side side)
+        {
+            if (!IsReady) return transform.position;
+            var a = _arms[(int)side];
+            return a.hand.position + a.hand.rotation * a.palmOffset;
+        }
+
+        /// <summary>Solved anatomical frame: +Z towards the fingertips, +Y out of the palm.</summary>
+        public Quaternion PalmRotation(Side side) => IsReady
+            ? _arms[(int)side].hand.rotation * _arms[(int)side].palmFrame : transform.rotation;
 
         /// <summary>Where the shoulder joint currently is — the anchor callers should measure a hold pose from.</summary>
         public Vector3 ShoulderPosition(Side side)
@@ -146,23 +178,37 @@ namespace Snowfield.Player
         {
             if (!IsReady) return;
             float dt = Mathf.Min(Time.deltaTime, 1f / 30f); // a hitch must not launch the spring
-            for (int i = 0; i < _arms.Length; i++) Apply(_arms[i], (Side)i, dt);
+            var bodyDelta = transform.localToWorldMatrix * _previousWorldToLocal;
+            _previousWorldToLocal = transform.worldToLocalMatrix;
+            for (int i = 0; i < _arms.Length; i++) Apply(_arms[i], (Side)i, dt, bodyDelta);
         }
 
-        void Apply(Arm a, Side side, float dt)
+        void Apply(Arm a, Side side, float dt, Matrix4x4 bodyDelta)
         {
             // Undo last frame's stretch before reading anything, so lengths never compound.
             a.lower.localPosition = a.restLower;
             a.hand.localPosition = a.restHand;
 
             bool pulsing = Time.time < a.pulseUntil;
+            if (a.followBody && !pulsing && a.request > 0f && a.weight > 0.002f)
+            {
+                // A carried item stays in body space while walking/turning. Surface reaches and pulses
+                // remain in world space, so an actual placement stays on the clicked point.
+                a.pos = bodyDelta.MultiplyPoint3x4(a.pos);
+                a.vel = bodyDelta.MultiplyVector(a.vel);
+            }
             float request = pulsing ? 1f : a.request;
             Vector3 goal = pulsing ? a.pulseGoal : a.goal;
             Vector3 aim = pulsing ? a.pulseAim : a.aim;
+            Vector3 palmNormal = pulsing ? a.pulsePalmNormal : a.palmNormal;
+            bool palmGrip = Vector3.Cross(aim, palmNormal).sqrMagnitude > 1e-6f;
             a.request = 0f; // callers re-ask every frame
-            a.last = new Goal(goal, aim, request); // what the network layer mirrors onto other machines
+            a.last = new Goal(goal, aim, request, palmGrip ? palmNormal : Vector3.zero);
 
-            Vector3 animHand = a.hand.position;
+            Vector3 palmOffset = a.hand.rotation * a.palmOffset;
+            if (a.wasPalm != palmGrip) a.pos += palmGrip ? palmOffset : -palmOffset;
+            a.wasPalm = palmGrip;
+            Vector3 animHand = a.hand.position + (palmGrip ? palmOffset : Vector3.zero);
             bool idle = a.weight <= 0.002f;
             if (idle)
             {
@@ -182,7 +228,17 @@ namespace Snowfield.Player
             a.vel += ((spring - a.pos) * k - a.vel * c) * dt;
             a.pos += a.vel * dt;
 
-            Solve(a, side, Vector3.Lerp(animHand, a.pos, a.weight), a.weight, aim);
+            Vector3 target = Vector3.Lerp(animHand, a.pos, a.weight);
+            if (palmGrip)
+            {
+                var rotation = Quaternion.LookRotation(aim, palmNormal) * Quaternion.Inverse(a.palmFrame);
+                // Solve the wrist so its palm reaches the requested point, then constrain wrist roll as
+                // well as fingertip direction. The carried item's own orientation remains independent.
+                rotation = Quaternion.Slerp(a.hand.rotation, rotation, a.weight);
+                Solve(a, side, target - rotation * a.palmOffset, a.weight, Vector3.zero);
+                a.hand.rotation = rotation;
+            }
+            else Solve(a, side, target, a.weight, aim);
         }
 
         void Solve(Arm a, Side side, Vector3 target, float weight, Vector3 aim)
@@ -288,11 +344,17 @@ namespace Snowfield.Player
         {
             public Transform shoulder, upper, lower, hand, tip;
             public Vector3 restLower, restHand;
+            public Quaternion palmFrame;
+            public Vector3 palmOffset;
             public bool valid;
 
             public Vector3 goal, aim;   // this frame's request
+            public Vector3 palmNormal;
             public float request;
+            public bool followBody;
+            public bool wasPalm;
             public Vector3 pulseGoal, pulseAim;
+            public Vector3 pulsePalmNormal;
             public float pulseUntil;
             public Goal last;           // pulse already resolved; what CurrentGoal reports
 
