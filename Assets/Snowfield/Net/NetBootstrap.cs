@@ -193,9 +193,11 @@ namespace Snowfield.Net
         /// <summary>Join the session with this code. A wrong code just leaves you offline in your own field.</summary>
         public async Task JoinWithCodeAsync(string code)
         {
-            code = (code ?? "").Trim();
+            code = JoinCodeFormat.Normalize(code);
             if (code.Length == 0) { Status = "offline (no code)"; return; }
-            await OpenAsync($"joining {code}", _ => MultiplayerService.Instance.JoinSessionByCodeAsync(code));
+            // Bare characters to the service, grouped ones in the status line: the code is read as "8KT QZ4".
+            await OpenAsync($"joining {JoinCodeFormat.Pretty(code)}",
+                            _ => MultiplayerService.Instance.JoinSessionByCodeAsync(code));
         }
 
         /// <summary>
@@ -272,7 +274,7 @@ namespace Snowfield.Net
             JoinCode = _session.Code ?? "";
             Status = Describe(_session);
             Debug.Log($"[SnowNet] {(_session.IsHost ? "Hosting" : "Joined")} session {_session.Id} " +
-                      $"({_session.PlayerCount}/{_session.MaxPlayers}, code {_session.Code})");
+                      $"({_session.PlayerCount}/{_session.MaxPlayers}, code {JoinCodeFormat.Pretty(_session.Code)})");
             WireSession(_session);
 
             // The world-sync channel is a dynamic spawn (scene management is off, so no in-scene NetworkObjects).

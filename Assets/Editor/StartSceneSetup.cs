@@ -18,6 +18,10 @@ namespace SnowDays.EditorTools
     ///
     /// <b>Create-only.</b> If Assets/Scenes/Start.unity already exists this does nothing, because re-running it
     /// would throw away whatever was done to the scene by hand. Delete the scene to regenerate it.
+    ///
+    /// The buttons it builds here are hand-made, one per call. In the saved scene they are instances of
+    /// Assets/Prefabs/UI/MenuButton.prefab instead, so the menu has one place to restyle; run
+    /// <see cref="MenuButtonPrefab"/> again after regenerating the scene to put them back on it.
     /// </summary>
     public static class StartSceneSetup
     {
@@ -69,7 +73,7 @@ namespace SnowDays.EditorTools
             // --- join panel: a code and a way to use it ---
             var join = Panel(canvasGo.transform, "JoinPanel");
             menu.joinPanel = join;
-            menu.codeField = Field(join.transform, "CodeField", "Enter a join code", new Vector2(0f, 20f));
+            menu.codeField = Field(join.transform, "CodeField", new Vector2(0f, 20f));
             menu.playButton = Button(join.transform, "PlayButton", "PLAY", new Vector2(0f, -70f));
             menu.backButton = Button(join.transform, "BackButton", "BACK", new Vector2(0f, -160f));
 
@@ -152,26 +156,28 @@ namespace SnowDays.EditorTools
             return go.GetComponent<Button>();
         }
 
-        static InputField Field(Transform parent, string name, string placeholder, Vector2 pos)
+        static InputField Field(Transform parent, string name, Vector2 pos)
         {
             var go = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(Image), typeof(InputField));
             var rt = Place(go, parent, pos, new Vector2(620f, 70f));
             go.GetComponent<Image>().color = new Color(1f, 1f, 1f, 0.6f);
 
             // InputField needs a text object to write into and, optionally, one to show while empty. Both must be
-            // children and both must be assigned, or it renders nothing at all as you type.
+            // children and both must be assigned, or it renders nothing at all as you type. Here neither is what
+            // you actually look at: JoinCodeField hides them both and draws the grouped mask over the top. They
+            // are still built and styled, because its display is made by copying the text object's style.
             var text = Text(go.transform, "Text", "", 36, Vector2.zero, rt.sizeDelta);
-            text.alignment = TextAnchor.MiddleLeft;
+            text.alignment = TextAnchor.MiddleCenter;
             text.supportRichText = false;
-            var hint = Text(go.transform, "Placeholder", placeholder, 36, Vector2.zero, rt.sizeDelta);
-            hint.alignment = TextAnchor.MiddleLeft;
-            hint.fontStyle = FontStyle.Italic;
+            var hint = Text(go.transform, "Placeholder", JoinCodeFormat.Mask(""), 36, Vector2.zero, rt.sizeDelta);
+            hint.alignment = TextAnchor.MiddleCenter;
             hint.color = new Color(0f, 0f, 0f, 0.4f);
 
             var field = go.GetComponent<InputField>();
             field.textComponent = text;
             field.placeholder = hint;
-            field.characterLimit = 16;
+            field.characterLimit = JoinCodeFormat.Length;
+            go.AddComponent<JoinCodeField>();
             return field;
         }
     }
