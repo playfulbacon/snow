@@ -31,8 +31,8 @@ namespace Snowfield.Player
 
         /// <summary>
         /// One thumbnail per catalog entry, rendered once at startup. Catalog-aligned, not slot-aligned: a slot
-        /// holds whatever item was picked up, and two slots can hold the same one, so the bar looks its picture
-        /// up by item id rather than by position. Removed as dead code while the bar did not exist yet.
+        /// holds whatever item was picked up, and two slots can hold the same one, so the grid looks its picture
+        /// up by item id rather than by position.
         /// </summary>
         public IReadOnlyList<Texture2D> Thumbnails => _thumbs;
         readonly List<Texture2D> _thumbs = new List<Texture2D>();
@@ -123,6 +123,7 @@ namespace Snowfield.Player
             const int size = 96;
             var camGo = new GameObject("ThumbnailCamera");
             var cam = camGo.AddComponent<Camera>();
+            cam.cameraType = CameraType.Preview; // World fog and fullscreen effects do not belong in item icons.
             cam.clearFlags = CameraClearFlags.SolidColor;
             cam.backgroundColor = new Color(0f, 0f, 0f, 0f);
             cam.orthographic = true;
@@ -162,7 +163,7 @@ namespace Snowfield.Player
                 camGo.transform.LookAt(b.center);
 
                 cam.targetTexture = rt;
-                cam.Render();
+                RenderThumbnailCamera(cam);
                 var tex = new Texture2D(size, size, TextureFormat.RGBA32, false) { name = "Thumb_" + e.Id };
                 var prev = RenderTexture.active;
                 RenderTexture.active = rt;
@@ -170,6 +171,8 @@ namespace Snowfield.Player
                 tex.Apply();
                 RenderTexture.active = prev;
                 _thumbs.Add(tex);
+                // Destroy is deferred: hide this sample before rendering the next one at the same location.
+                go.SetActive(false);
                 Destroy(go);
             }
 
@@ -177,6 +180,24 @@ namespace Snowfield.Player
             Destroy(rt);
             Destroy(camGo);
             Destroy(lightGo);
+        }
+
+        static void RenderThumbnailCamera(Camera camera)
+        {
+#if UNITY_EDITOR
+            // A one-shot thumbnail must capture the finished shader, never the async compilation placeholder.
+            bool asyncCompilation = UnityEditor.ShaderUtil.allowAsyncCompilation;
+            UnityEditor.ShaderUtil.allowAsyncCompilation = false;
+            try { camera.Render(); }
+            finally { UnityEditor.ShaderUtil.allowAsyncCompilation = asyncCompilation; }
+#else
+            camera.Render();
+#endif
+        }
+
+        void OnDestroy()
+        {
+            foreach (var thumbnail in _thumbs) if (thumbnail != null) Destroy(thumbnail);
         }
 
 

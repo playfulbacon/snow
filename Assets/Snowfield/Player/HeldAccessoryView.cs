@@ -49,14 +49,14 @@ namespace Snowfield.Player
         void Update() => Tick(Time.deltaTime, tool != null && tool.isActiveAndEnabled && tool.Mode == ToolMode.Accessory);
 
         /// <summary>Publish the hand's intent before IK. Also used by deterministic playtests without mouse input.</summary>
-        public void Tick(float dt, bool inventoryOpen)
+        public void Tick(float dt, bool itemEquipped)
         {
             if (_placer == null) _placer = GetComponent<AccessoryPlacer>();
             if (tool == null || tool.viewCamera == null || _placer == null) return;
             var roller = tool.Roller;
             bool carrying = roller != null && roller.IsCarrying;
             HandSide = carrying ? HandRig.Side.Left : HandRig.Side.Right;
-            if (!inventoryOpen || (carrying && roller.TwoHandedCarry))
+            if (!itemEquipped || (carrying && roller.TwoHandedCarry))
             {
                 _placer.CancelPlacement();
                 Hide();

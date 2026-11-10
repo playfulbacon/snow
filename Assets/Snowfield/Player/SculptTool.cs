@@ -9,14 +9,14 @@ using UnityEngine.InputSystem;
 namespace Snowfield.Player
 {
     /// <summary>
-    /// The player's hands. One persistent state (Hand) plus a Tab accessory overlay:
+    /// The player's hands. Tab opens an inventory grid; equipping an item keeps it in hand after the grid closes.
     ///   LMB — scoop: on a sculpture, bite out a chunk; on bare ground, a handful. Either way that snow is now in
     ///         your hands (mass continuity). While carrying: a tap lets go where the snow already is (fusing into
     ///         snow, falling otherwise), a hold charges a throw.
     ///   RMB — smooth/pat snow (works with a ball in hand too; the ball stays put)
     ///   Shift+LMB — planar shave on a sculpture; Shift+scroll turns the cut line
     ///   A carried ball rides the ground in front of you and rolls (grows) while the cursor points near you.
-    ///   Scroll — brush radius (accessory selection while the overlay is open) · Tab — accessory overlay
+    ///   Scroll — brush radius with empty hands, otherwise switch held items · Tab — inventory grid
     /// Remesh on a timer while stroking; colliders rebuild on release.
     ///
     /// Every one of those is published as an <see cref="ActionPrompt"/> in <see cref="Actions"/> the frame it
@@ -48,6 +48,7 @@ namespace Snowfield.Player
         public Color cursorCarveColor = new Color(1f, 0.35f, 0.3f, 0.3f);
 
         public ToolMode Mode { get; private set; } = ToolMode.Hand;
+        public bool InventoryOpen { get; private set; }
         public BrushOp CurrentOp { get; private set; } = BrushOp.None;
         public bool IsSculpting { get; private set; }
 
@@ -135,6 +136,60 @@ namespace Snowfield.Player
             held.tool = this;
         }
 
+        void OnEnable() => GamePause.Changed += OnPauseChanged;
+
+        void OnPauseChanged(bool paused)
+        {
+            if (paused) SetInventoryOpen(false);
+        }
+
+        public void SetInventoryOpen(bool open)
+        {
+            if (open && GamePause.IsPaused) return;
+            if (InventoryOpen == open) return;
+            InventoryOpen = open;
+            if (_placer.ActiveChain != null) FinishChainWithFlourish();
+            _placer.CancelPlacement();
+            ResetItemScroll();
+            if (IsSculpting || _scooping)
+            {
+                IsSculpting = false;
+                _scooping = false;
+                Flush();
+            }
+            CurrentOp = BrushOp.None;
+            AimingCut = false;
+            if (planeCut != null) planeCut.Hide();
+            HideBrushCursor();
+            _actions.Clear();
+            ThrowCharge = 0f;
+            _lmbDownTime = -1f;
+            _lockedLastFrame = false;
+            if (!GamePause.IsPaused)
+            {
+                Cursor.lockState = open ? CursorLockMode.None : CursorLockMode.Locked;
+                Cursor.visible = open;
+            }
+        }
+
+        public void HandleTab()
+        {
+            if (GamePause.IsPaused) return;
+            if (InventoryOpen) SetInventoryOpen(false);
+            else if (Mode == ToolMode.Accessory) SetMode(ToolMode.Hand);
+            else SetInventoryOpen(true);
+        }
+
+        /// <summary>A grid click equips a stack and returns to the world.</summary>
+        public void EquipInventorySlot(int slot)
+        {
+            if (!InventoryOpen || GamePause.IsPaused) return;
+            if (slot < 0 || _placer.Inventory.CountAt(slot) == 0) return;
+            _placer.Select(slot);
+            SetMode(ToolMode.Accessory);
+            SetInventoryOpen(false);
+        }
+
         public void SetMode(ToolMode mode)
         {
             if (Mode == mode) return;
@@ -148,6 +203,8 @@ namespace Snowfield.Player
 
         void OnDisable()
         {
+            GamePause.Changed -= OnPauseChanged;
+            SetInventoryOpen(false);
             if (_placer != null) _placer.CancelPlacement();
             ResetItemScroll();
             _scooping = false;
@@ -158,6 +215,16 @@ namespace Snowfield.Player
             if (config == null || viewCamera == null) return;
             var mouse = Mouse.current;
             var kb = Keyboard.current;
+
+            if (GamePause.IsPaused) return;
+            if (kb != null && kb.tabKey.wasPressedThisFrame)
+            {
+                HandleTab();
+                return;
+            }
+            if (InventoryOpen) return;
+            if (Mode == ToolMode.Accessory && !_placer.HasSelectedItem && !_placer.IsBusy)
+                SetMode(ToolMode.Hand);
 
             // Sculpting only in mouse-look mode: while the cursor is free, LMB is the relock gesture
             // (PlayerController.HandleCursor) and must not scoop. The relock happens synchronously in the
@@ -180,10 +247,6 @@ namespace Snowfield.Player
                 return;
             }
 
-            if (kb != null && kb.tabKey.wasPressedThisFrame)
-            {
-                SetMode(Mode == ToolMode.Accessory ? ToolMode.Hand : ToolMode.Accessory);
-            }
             HandleScroll(mouse, kb != null && kb.leftShiftKey.isPressed);
             Aim();
 

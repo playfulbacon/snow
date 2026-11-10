@@ -3,12 +3,13 @@ using System.Collections.Generic;
 using Snowfield.Sculpture;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.EventSystems;
+using UnityEngine.InputSystem.UI;
 
 namespace Snowfield.Player
 {
     /// <summary>
-    /// uGUI overlay for the tool: mode boxes with number badges along the bottom, an accessory row above them,
-    /// a status line top-left, and the centre reticle.
+    /// uGUI inventory grid, contextual prompts, status line and centre reticle.
     ///
     /// Sits on its own "HUD" GameObject with the Canvas, builds the children itself, and runs in edit mode, so the layout can be tuned in the
     /// Scene/Game view without pressing Play. **This component's inspector is the source of truth**: every size,
@@ -24,9 +25,11 @@ namespace Snowfield.Player
         [Serializable]
         public class AccessoryBarSettings
         {
-            public float boxSize = 96f;
+            public float boxSize = 112f;
+            [Range(1, 10)] public int columns = 6;
+            public float maxHeight = 650f;
             public float gap = 18f;
-            [Tooltip("Space between the mode-bar badges and the bottom of the accessory boxes.")]
+            [Tooltip("Minimum margin around the inventory panel.")]
             public float bottomMargin = 40f;
             public float labelHeight = 20f;
             public int labelFontSize = 14;
@@ -217,9 +220,13 @@ namespace Snowfield.Player
         // ------------------------------------------------------------------ generated refs
 
         [Serializable]
-        class AccessoryItem { public RectTransform root; public Image box, boxOutline, countBox, countOutline; public RawImage thumb; public Text label, count; }
+        class AccessoryItem { public RectTransform root; public Image box, boxOutline, countBox, countOutline; public RawImage thumb; public Text label, count; public Button button; public int slot; }
 
         [SerializeField, HideInInspector] RectTransform _accessoryBarRoot, _reticleRoot, _statusRoot, _stackRoot, _hintRoot;
+        [SerializeField, HideInInspector] ScrollRect _inventoryScroll;
+        [SerializeField, HideInInspector] GridLayoutGroup _inventoryGrid;
+        [SerializeField, HideInInspector] Text _inventoryTitle, _inventoryHint;
+        bool _inventoryWasVisible;
         [SerializeField, HideInInspector] List<AccessoryItem> _accessories = new List<AccessoryItem>();
         [SerializeField, HideInInspector] Image[] _reticleBars = new Image[4];
         [SerializeField, HideInInspector] Image[] _reticleShadows = new Image[4];
@@ -261,7 +268,8 @@ namespace Snowfield.Player
 
         void OnEnable()
         {
-            if (!IsBuilt()) _pendingBuild = true;
+            // Runtime listeners are not serialized with the edit-mode preview's buttons.
+            if (Application.isPlaying || !IsBuilt()) _pendingBuild = true;
 #if UNITY_EDITOR
             if (!Application.isPlaying) UnityEditor.EditorApplication.delayCall += EditorTick;
 #endif
@@ -307,14 +315,14 @@ namespace Snowfield.Player
         /// but not one built by an older version of this file whose object graph happens to still line up —
         /// a serialized scene keeps that one for ever otherwise.
         /// </summary>
-        const int HudSchemaVersion = 2;
+        const int HudSchemaVersion = 3;
         [SerializeField, HideInInspector] int _hudSchemaVersion;
 
         bool IsBuilt() =>
             _hudSchemaVersion == HudSchemaVersion
             && canvas != null && _accessoryBarRoot != null && _reticleRoot != null && _statusRoot != null
             && _stackRoot != null && _hintRoot != null
-            && _accessories.Count == AccessoryCatalog.Entries.Count
+            && _inventoryScroll != null && _inventoryGrid != null && _inventoryTitle != null && _inventoryHint != null
             && _rows.Count == Mathf.Max(1, cursor.maxRows) && _hintRows.Count == HintCapacity
             && _statusLine1 != null && _reticleDot != null && _chargeFill != null
             && _cursorIcon != null && _fieldLine != null
@@ -344,6 +352,9 @@ namespace Snowfield.Player
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
             scaler.referenceResolution = referenceResolution;
             scaler.matchWidthOrHeight = 0.5f;
+            if (canvas.GetComponent<GraphicRaycaster>() == null) canvas.gameObject.AddComponent<GraphicRaycaster>();
+            if (Application.isPlaying && FindAnyObjectByType<EventSystem>() == null)
+                new GameObject("InventoryEventSystem", typeof(EventSystem), typeof(InputSystemUIInputModule));
 
             // Wipe previously generated children and rebuild deterministically.
             for (int i = canvas.transform.childCount - 1; i >= 0; i--)
@@ -367,26 +378,33 @@ namespace Snowfield.Player
             _fieldLine = Txt("Field", _statusRoot, TextAnchor.UpperLeft);
             _fieldLine.fontStyle = FontStyle.Bold;
 
-            // --- accessory bar (bottom-centre, shown while the Tab overlay is open) ---
-            _accessoryBarRoot = MakeRect("AccessoryBar", root, new Vector2(0.5f, 0), new Vector2(0.5f, 0), new Vector2(0.5f, 0));
-            foreach (var e in AccessoryCatalog.Entries)
-            {
-                var item = new AccessoryItem();
-                item.root = MakeRect(e.DisplayName, _accessoryBarRoot, new Vector2(0, 0), new Vector2(0, 0), new Vector2(0, 0));
-                item.boxOutline = Img("Outline", item.root);
-                item.box = Img("Box", item.root);
-                var thumbGo = new GameObject("Thumbnail", typeof(RectTransform), typeof(RawImage));
-                thumbGo.transform.SetParent(item.root, false);
-                item.thumb = thumbGo.GetComponent<RawImage>();
-                item.thumb.raycastTarget = false;
-                item.label = Txt("Label", item.root, TextAnchor.MiddleCenter);
-                var countRoot = MakeRect("Count", item.root, new Vector2(1, 1), new Vector2(1, 1), new Vector2(1, 1));
-                item.countOutline = Img("Outline", countRoot);
-                item.countBox = Img("Box", countRoot);
-                item.count = Txt("Label", countRoot, TextAnchor.MiddleCenter);
-                item.count.fontStyle = FontStyle.Bold;
-                _accessories.Add(item);
-            }
+            // --- inventory panel with a clipped, vertically scrollable grid ---
+            _accessoryBarRoot = MakeRect("Inventory", root, Vector2.one * 0.5f, Vector2.one * 0.5f, Vector2.one * 0.5f);
+            var background = _accessoryBarRoot.gameObject.AddComponent<Image>();
+            background.color = new Color(0.045f, 0.065f, 0.10f, 0.97f);
+            _inventoryTitle = Txt("Title", _accessoryBarRoot, TextAnchor.MiddleLeft);
+            _inventoryTitle.text = "Inventory";
+            _inventoryTitle.fontSize = 26;
+            _inventoryTitle.fontStyle = FontStyle.Bold;
+            _inventoryHint = Txt("Hint", _accessoryBarRoot, TextAnchor.MiddleLeft);
+            _inventoryHint.text = "Click to equip · Tab to close · Scroll to browse";
+            _inventoryHint.fontSize = 15;
+            var viewport = MakeRect("Viewport", _accessoryBarRoot, Vector2.zero, Vector2.one, new Vector2(0, 1));
+            viewport.offsetMin = new Vector2(24, 24);
+            viewport.offsetMax = new Vector2(-24, -100);
+            viewport.gameObject.AddComponent<RectMask2D>();
+            var content = MakeRect("Items", viewport, new Vector2(0, 1), Vector2.one, new Vector2(0, 1));
+            _inventoryGrid = content.gameObject.AddComponent<GridLayoutGroup>();
+            _inventoryGrid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
+            var fitter = content.gameObject.AddComponent<ContentSizeFitter>();
+            fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+            _inventoryScroll = _accessoryBarRoot.gameObject.AddComponent<ScrollRect>();
+            _inventoryScroll.viewport = viewport;
+            _inventoryScroll.content = content;
+            _inventoryScroll.horizontal = false;
+            _inventoryScroll.movementType = ScrollRect.MovementType.Clamped;
+            _inventoryScroll.scrollSensitivity = 36f;
+            EnsureInventoryCards(AccessoryCatalog.Entries.Count);
 
             // --- reticle (centre) ---
             _reticleRoot = MakeRect("Reticle", root, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f));
@@ -445,37 +463,7 @@ namespace Snowfield.Player
             _fieldLine.fontSize = status.fieldFontSize;
             _fieldLine.color = c.statusText;
 
-            // accessory bar
-            int k = _accessories.Count;
-            float accW = k * accessoryBar.boxSize + (k - 1) * accessoryBar.gap;
-            float accY = accessoryBar.bottomMargin;
-            _accessoryBarRoot.anchoredPosition = new Vector2(0, accY);
-            _accessoryBarRoot.sizeDelta = new Vector2(accW, accessoryBar.boxSize);
-            for (int i = 0; i < k; i++)
-            {
-                var a = _accessories[i];
-                a.root.anchoredPosition = new Vector2(i * (accessoryBar.boxSize + accessoryBar.gap), 0);
-                a.root.sizeDelta = Vector2.one * accessoryBar.boxSize;
-                Stretch(a.boxOutline.rectTransform, -ow);
-                Stretch(a.box.rectTransform, 0);
-                float p = accessoryBar.thumbnailPadding;
-                var tr = a.thumb.rectTransform;
-                tr.anchorMin = new Vector2(0, 0); tr.anchorMax = new Vector2(1, 1);
-                tr.offsetMin = new Vector2(p, accessoryBar.labelHeight);
-                tr.offsetMax = new Vector2(-p, -p);
-                var lr = a.label.rectTransform;
-                lr.anchorMin = new Vector2(0, 0); lr.anchorMax = new Vector2(1, 0); lr.pivot = new Vector2(0.5f, 0);
-                lr.anchoredPosition = Vector2.zero;
-                lr.sizeDelta = new Vector2(0, accessoryBar.labelHeight);
-                a.label.fontSize = accessoryBar.labelFontSize;
-                var cr = (RectTransform)a.countBox.transform.parent;
-                cr.anchoredPosition = accessoryBar.countOffset;
-                cr.sizeDelta = Vector2.one * accessoryBar.countSize;
-                Stretch(a.countOutline.rectTransform, -ow);
-                Stretch(a.countBox.rectTransform, 0);
-                Stretch(a.count.rectTransform, 0);
-                a.count.fontSize = accessoryBar.countFontSize;
-            }
+            LayoutInventory();
 
             // reticle
             float arm = reticle.arm, gap = reticle.gap, th = reticle.thickness;
@@ -494,6 +482,7 @@ namespace Snowfield.Player
             Centre(_cursorIcon.rectTransform, Vector2.zero, Vector2.one * cursor.iconSize);
             _stackRoot.anchoredPosition = cursor.stackOffset;
             _hintRoot.anchoredPosition = new Vector2(-hints.margin.x, hints.margin.y);
+            _hintRoot.sizeDelta = Vector2.zero;
             foreach (var p in _rows) StylePrompt(p, cursor.row, 1f);
             foreach (var p in _hintRows) StylePrompt(p, hints.row, hints.opacity);
             var ring = RingSprite();
@@ -508,54 +497,36 @@ namespace Snowfield.Player
         {
             bool playing = Application.isPlaying && tool != null;
             ToolMode mode = playing ? tool.Mode : previewMode;
-            bool accVisible = playing ? mode == ToolMode.Accessory : previewAccessoryBar;
+            bool accVisible = playing ? tool.InventoryOpen : previewAccessoryBar;
             int accIndex = playing && placer != null ? placer.SelectedIndex : previewAccessoryIndex;
             var c = colors;
 
             _accessoryBarRoot.gameObject.SetActive(accVisible);
+            _reticleRoot.gameObject.SetActive(!accVisible);
             if (accVisible)
             {
-                // The bar is the inventory now, not the catalog: one box per occupied slot, in slot order, and
-                // the same item can hold two slots. So the box count varies at runtime while the pool does not,
-                // and the bar has to place and size itself here rather than in the structural pass. Out of play
-                // there is no inventory, so the preview falls back to showing the catalog — which is what the
-                // bar is for in the inspector.
                 var inv = playing && placer != null ? placer.Inventory : null;
-                int shown = inv != null ? Mathf.Min(inv.SlotCount, _accessories.Count) : _accessories.Count;
-                float bs = accessoryBar.boxSize, gp = accessoryBar.gap;
-                _accessoryBarRoot.sizeDelta = new Vector2(shown > 0 ? shown * bs + (shown - 1) * gp : 0f, bs);
-
-                for (int i = 0; i < _accessories.Count; i++)
+                int occupied = 0;
+                if (inv != null)
                 {
-                    var a = _accessories[i];
-                    bool used = i < shown;
-                    a.root.gameObject.SetActive(used);
-                    if (!used) continue;
-
-                    a.root.anchoredPosition = new Vector2(i * (bs + gp), 0);
-
-                    var entry = inv != null ? inv.ItemAt(i)
-                              : i < AccessoryCatalog.Entries.Count ? AccessoryCatalog.Entries[i] : null;
-                    bool sel = i == accIndex;
-                    a.box.color = sel ? c.selectedBg : c.boxBg;
-                    a.label.color = sel ? c.selectedText : c.boxText;
-                    a.label.text = entry != null ? entry.DisplayName : "";
-
-                    var tex = entry != null && placer != null ? placer.ThumbnailFor(entry.Id) : null;
-                    a.thumb.texture = tex;
-                    a.thumb.color = tex != null ? Color.white : c.thumbnailPlaceholder;
-
-                    // The badge used to be hidden outright, because the supply was unlimited. It is not any
-                    // more — a slot holds a finite stack, so the number is half the point of the bar.
-                    a.countBox.color = c.countBg;
-                    a.count.color = c.countText;
-                    a.count.text = inv != null ? inv.CountAt(i).ToString() : "";
-                    ((RectTransform)a.countBox.transform.parent).gameObject.SetActive(inv != null);
-
-                    a.boxOutline.color = Frame(c.outline, a.box.color);
-                    a.countOutline.color = Frame(c.outline, a.countBox.color);
+                    for (int slot = 0; slot < inv.SlotCount; slot++)
+                        if (inv.CountAt(slot) > 0) occupied++;
                 }
+                else occupied = playing ? 0 : AccessoryCatalog.Entries.Count;
+                EnsureInventoryCards(occupied);
+                int card = 0;
+                for (int slot = 0; slot < (inv != null ? inv.SlotCount : occupied); slot++)
+                {
+                    var entry = inv != null ? inv.ItemAt(slot) : AccessoryCatalog.Entries[slot];
+                    if (entry == null) continue;
+                    DrawInventoryCard(_accessories[card++], entry, slot, inv != null ? inv.CountAt(slot) : 0,
+                        mode == ToolMode.Accessory && slot == accIndex);
+                }
+                for (int i = card; i < _accessories.Count; i++) _accessories[i].root.gameObject.SetActive(false);
+                LayoutInventory();
+                if (!_inventoryWasVisible) _inventoryScroll.verticalNormalizedPosition = 1f;
             }
+            _inventoryWasVisible = accVisible;
 
             // reticle colour
             Color rc = c.reticleIdle;
@@ -593,9 +564,9 @@ namespace Snowfield.Player
             // With the cursor free (menu open) none of them are live, and the rule here is that a prompt on
             // screen is an action you can take — so the strip goes away rather than promising a dead key.
             _persistent.Clear();
-            if (hints.show && (!playing || Cursor.lockState == CursorLockMode.Locked))
+            if (hints.show && (!playing || tool.InventoryOpen || Cursor.lockState == CursorLockMode.Locked))
             {
-                _persistent.Add(new ActionPrompt(ToolModeInfo.TabAction(mode), InputGlyph.Tab));
+                _persistent.Add(new ActionPrompt(ToolModeInfo.TabAction(playing ? tool.InventoryOpen : previewAccessoryBar, mode), InputGlyph.Tab));
                 _persistent.Add(new ActionPrompt(CursorAction.OpenMenu, InputGlyph.Escape));
                 if (!playing || NetStatus.InSession)
                     _persistent.Add(new ActionPrompt(NetStatus.MicMuted ? CursorAction.UnmuteMic : CursorAction.MuteMic,
@@ -622,7 +593,7 @@ namespace Snowfield.Player
                     ? (placer == null ? ""
                        : placer.ActiveChain != null
                          ? $"{placer.Selected.DisplayName} — {placer.ActiveChain.PointCount} point{(placer.ActiveChain.PointCount == 1 ? "" : "s")}"
-                         : placer.Selected.DisplayName)
+                         : placer.Selected != null ? placer.Selected.DisplayName : "Empty hands")
                     : tool.Roller != null && tool.Roller.IsEngaged
                         ? (tool.Roller.Ball != null ? $"snowball {tool.Roller.Radius * 2f:0.00} m" : "carrying sculpture")
                         : $"radius {tool.CurrentRadius():0.00} m   rate {tool.config.addRatePerTick:0}/tick @ {tool.config.ticksPerSecond:0} Hz";
@@ -639,6 +610,101 @@ namespace Snowfield.Player
             // Movement only. The sculpting controls are the prompt stack, and the second hand-written copy of
             // them that used to live on this line is what drifted away from the code.
             _statusLine2.text = Controls.MovementLine;
+        }
+
+        void EnsureInventoryCards(int count)
+        {
+            while (_accessories.Count < count)
+            {
+                var item = new AccessoryItem();
+                item.root = MakeRect("Item", _inventoryScroll.content, Vector2.zero, Vector2.zero, new Vector2(0, 1));
+                item.boxOutline = Img("Outline", item.root);
+                item.box = Img("Box", item.root);
+                item.box.raycastTarget = true;
+                item.button = item.root.gameObject.AddComponent<Button>();
+                item.button.targetGraphic = item.box;
+                item.button.navigation = new Navigation { mode = Navigation.Mode.None };
+                item.button.onClick.AddListener(() => { if (tool != null) tool.EquipInventorySlot(item.slot); });
+                var thumbGo = new GameObject("Thumbnail", typeof(RectTransform), typeof(RawImage));
+                thumbGo.transform.SetParent(item.root, false);
+                item.thumb = thumbGo.GetComponent<RawImage>();
+                item.thumb.raycastTarget = false;
+                item.label = Txt("Label", item.root, TextAnchor.MiddleCenter);
+                item.label.horizontalOverflow = HorizontalWrapMode.Wrap;
+                item.label.verticalOverflow = VerticalWrapMode.Truncate;
+                item.label.resizeTextForBestFit = true;
+                item.label.resizeTextMinSize = 10;
+                var countRoot = MakeRect("Count", item.root, Vector2.one, Vector2.one, Vector2.one);
+                item.countOutline = Img("Outline", countRoot);
+                item.countBox = Img("Box", countRoot);
+                item.count = Txt("Label", countRoot, TextAnchor.MiddleCenter);
+                item.count.fontStyle = FontStyle.Bold;
+                _accessories.Add(item);
+            }
+        }
+
+        void LayoutInventory()
+        {
+            var area = ((RectTransform)canvas.transform).rect.size;
+            float bs = Mathf.Max(64f, accessoryBar.boxSize), gp = Mathf.Max(0f, accessoryBar.gap);
+            float available = Mathf.Max(bs, area.x - 2f * Mathf.Max(16f, accessoryBar.bottomMargin) - 48f);
+            int columns = Mathf.Clamp(Mathf.FloorToInt((available + gp) / (bs + gp)), 1, Mathf.Max(1, accessoryBar.columns));
+            float height = Mathf.Min(Mathf.Max(240f, accessoryBar.maxHeight), Mathf.Max(240f, area.y - 80f));
+            _accessoryBarRoot.anchoredPosition = Vector2.zero;
+            _accessoryBarRoot.sizeDelta = new Vector2(columns * (bs + gp) - gp + 48f, height);
+            _inventoryGrid.constraintCount = columns;
+            _inventoryGrid.cellSize = Vector2.one * bs;
+            _inventoryGrid.spacing = Vector2.one * gp;
+            Place(_inventoryTitle.rectTransform, new Vector2(0, 1), new Vector2(24, -16), new Vector2(600, 36));
+            Place(_inventoryHint.rectTransform, new Vector2(0, 1), new Vector2(24, -56),
+                new Vector2(_accessoryBarRoot.sizeDelta.x - 48f, 36));
+            _inventoryTitle.color = colors.boxText;
+            _inventoryHint.color = colors.boxText;
+            _inventoryHint.horizontalOverflow = HorizontalWrapMode.Wrap;
+            foreach (var a in _accessories)
+            {
+                Stretch(a.boxOutline.rectTransform, -outlineWidth);
+                Stretch(a.box.rectTransform, 0);
+                float padding = accessoryBar.thumbnailPadding;
+                var tr = a.thumb.rectTransform;
+                tr.anchorMin = Vector2.zero; tr.anchorMax = Vector2.one;
+                tr.offsetMin = Vector2.one * padding;
+                tr.offsetMax = Vector2.one * -padding;
+                var lr = a.label.rectTransform;
+                lr.anchorMin = Vector2.zero; lr.anchorMax = new Vector2(1, 0); lr.pivot = new Vector2(0.5f, 0);
+                lr.anchoredPosition = new Vector2(0, 4);
+                lr.sizeDelta = new Vector2(-8, accessoryBar.labelHeight + 6f);
+                a.label.fontSize = accessoryBar.labelFontSize;
+                a.label.resizeTextMaxSize = accessoryBar.labelFontSize;
+                var cr = (RectTransform)a.countBox.transform.parent;
+                cr.anchoredPosition = accessoryBar.countOffset;
+                cr.sizeDelta = Vector2.one * accessoryBar.countSize;
+                Stretch(a.countOutline.rectTransform, -outlineWidth);
+                Stretch(a.countBox.rectTransform, 0);
+                Stretch(a.count.rectTransform, 0);
+                a.count.fontSize = accessoryBar.countFontSize;
+            }
+        }
+
+        void DrawInventoryCard(AccessoryItem a, AccessoryCatalog.Entry entry, int slot, int quantity, bool selected)
+        {
+            a.root.gameObject.SetActive(true);
+            a.slot = slot;
+            a.root.name = entry.DisplayName;
+            a.box.color = selected ? colors.selectedBg : colors.boxBg;
+            a.label.color = selected ? colors.selectedText : colors.boxText;
+            a.label.gameObject.SetActive(false);
+            a.label.text = "";
+            var tex = entry != null && placer != null ? placer.ThumbnailFor(entry.Id) : null;
+            a.thumb.texture = tex;
+            a.thumb.gameObject.SetActive(tex != null);
+            a.thumb.color = Color.white;
+            a.countBox.color = colors.countBg;
+            a.count.color = colors.countText;
+            a.count.text = quantity.ToString();
+            a.countBox.transform.parent.gameObject.SetActive(quantity > 0);
+            a.boxOutline.color = Frame(colors.outline, a.box.color);
+            a.countOutline.color = Frame(colors.outline, a.countBox.color);
         }
 
         // ------------------------------------------------------------------ helpers
@@ -663,6 +729,7 @@ namespace Snowfield.Player
 
         Text Txt(string name, Transform parent, TextAnchor anchor)
         {
+            if (_font == null) _font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             var go = new GameObject(name, typeof(RectTransform), typeof(Text));
             go.transform.SetParent(parent, false);
             var t = go.GetComponent<Text>();
@@ -776,6 +843,7 @@ namespace Snowfield.Player
             for (int i = 0; i < filled; i++)
             {
                 float y = (s.height + s.gap) * i;
+                pool[i].root.pivot = downward ? new Vector2(0.5f, 1f) : new Vector2(1f, 0f);
                 pool[i].root.anchoredPosition = new Vector2(0f, downward ? -y : y);
                 pool[i].root.sizeDelta = new Vector2(width, s.height);
             }

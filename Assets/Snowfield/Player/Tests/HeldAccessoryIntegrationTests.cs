@@ -2,9 +2,11 @@ using System;
 using System.Collections;
 using System.IO;
 using NUnit.Framework;
+using Snowfield.Sculpture;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
+using UnityEngine.UI;
 
 namespace Snowfield.Player.Tests
 {
@@ -34,6 +36,52 @@ namespace Snowfield.Player.Tests
                 SceneManager.SetActiveScene(empty);
                 yield return SceneManager.UnloadSceneAsync(main);
             }
+        }
+
+        [UnityTest]
+        public IEnumerator MainScene_InventoryGrid_ShowsEveryStack_AndEquipsByClick()
+        {
+            SceneManager.LoadScene("Main");
+            yield return null;
+            var tool = UnityEngine.Object.FindAnyObjectByType<SculptTool>();
+            var placer = tool.GetComponent<AccessoryPlacer>();
+            var hud = UnityEngine.Object.FindAnyObjectByType<ToolHud>();
+            foreach (var item in AccessoryCatalog.Entries) placer.Inventory.Add(item.Id, 1);
+            // Exceed the old catalog-sized UI pool and leave a hole before the last stack.
+            var carrot = AccessoryCatalog.Find("carrot");
+            placer.Inventory.Add(carrot.Id, carrot.StackLimit * 8);
+            Assert.IsTrue(placer.Inventory.TryConsumeAt(placer.Inventory.FindFirstSlot("twig")));
+            int lastSlot = placer.Inventory.SlotCount - 1;
+            tool.SetInventoryOpen(true);
+            yield return null;
+            Canvas.ForceUpdateCanvases();
+            var panel = hud.transform.Find("Inventory");
+            Assert.IsNotNull(panel);
+            Assert.IsTrue(panel.gameObject.activeInHierarchy);
+            Assert.IsFalse(hud.transform.Find("Reticle").gameObject.activeSelf);
+            var scroll = panel.GetComponent<ScrollRect>();
+            var buttons = scroll.content.GetComponentsInChildren<Button>();
+            Assert.AreEqual(placer.Inventory.SlotCount - 1, buttons.Length,
+                "Only occupied stacks are shown, skipping the consumed twig slot");
+            Assert.Greater(buttons.Length, AccessoryCatalog.Entries.Count);
+            Assert.Greater(scroll.content.rect.height, scroll.viewport.rect.height, "Overflow must be scrollable");
+            Assert.IsTrue(Array.Exists(placer.ThumbnailFor(carrot.Id).GetPixels(),
+                pixel => pixel.a > 0.5f && pixel.r > pixel.g * 1.2f && pixel.g > pixel.b * 1.2f),
+                "Item thumbnails retain their material colors instead of the world's height fog");
+            yield return new WaitForSeconds(2f); // Let editor shader compilation finish before the preview.
+            Directory.CreateDirectory("Temp");
+            ScreenCapture.CaptureScreenshot("Temp/inventory-grid.png");
+            yield return null;
+            buttons[buttons.Length - 1].onClick.Invoke();
+            Assert.IsFalse(tool.InventoryOpen);
+            Assert.AreEqual(lastSlot, placer.SelectedIndex, "Card selection uses inventory slots despite holes");
+            yield return null;
+            Assert.IsFalse(panel.gameObject.activeSelf);
+            Assert.IsTrue(hud.transform.Find("Reticle").gameObject.activeSelf);
+            var held = tool.GetComponent<HeldAccessoryView>();
+            Assert.IsNotNull(held.Model);
+            Assert.IsTrue(held.Model.activeSelf);
+            Assert.AreEqual(carrot.Id, held.ItemId);
         }
 
         [UnityTest]
