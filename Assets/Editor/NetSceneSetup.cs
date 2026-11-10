@@ -11,7 +11,7 @@ namespace SnowDays.EditorTools
     /// <summary>
     /// Multiplayer wiring for the Main scene, called from <see cref="MainSceneSetup.Run"/> (and standalone
     /// from the menu). Idempotent, same conventions: find-or-create, direct field assignment.
-    /// Builds two prefabs (rebuilt every run; asset GUIDs — and so GlobalObjectIdHashes — stay stable):
+    /// Rebuilds two prefabs in place, keeping their network IDs stable:
     ///   Assets/Net/NetAvatar.prefab  — the player's body as others see it (model + animator + NetworkTransform)
     ///   Assets/Net/NetChannel.prefab — the world-sync channel, host-spawned at session start
     /// and a "Network" root: NetworkManager + UnityTransport + NetBootstrap. Scene management is off — this is
@@ -23,6 +23,7 @@ namespace SnowDays.EditorTools
         const string AvatarPrefabPath = NetFolder + "/NetAvatar.prefab";
         const string ChannelPrefabPath = NetFolder + "/NetChannel.prefab";
         const string ModelFbxPath = "Assets/CharacterTest/base_basic_shaded.fbx";
+        const string GamePrefabPath = "Assets/Prefabs/Game.prefab";
         const string ControllerPath = "Assets/Player/FirstPersonPlayer.controller";
         const string ConfigPath = "Assets/Settings/SculptFeelConfig.asset";
 
@@ -91,6 +92,13 @@ namespace SnowDays.EditorTools
                     model.transform.SetParent(root.transform, false);
                     model.transform.localPosition = Vector3.zero;
                     model.transform.localRotation = Quaternion.identity;
+                    // Match the authored local body, rather than the FBX's unscaled size. The local
+                    // model is 0.8x; using the FBX default made everyone else look 25% larger.
+                    var gamePrefab = AssetDatabase.LoadAssetAtPath<GameObject>(GamePrefabPath);
+                    var localModel = gamePrefab != null ? gamePrefab.transform.Find("Player/Model") : null;
+                    model.transform.localScale = localModel != null ? localModel.localScale : Vector3.one * 0.8f;
+                    if (localModel == null)
+                        Debug.LogWarning($"[NetSceneSetup] Player/Model missing from {GamePrefabPath}; using default 0.8x body scale.");
 
                     var animator = model.GetComponent<Animator>() ?? model.AddComponent<Animator>();
                     animator.runtimeAnimatorController =
@@ -110,8 +118,8 @@ namespace SnowDays.EditorTools
                             smr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
                     }
 
-                    // The same stretchy arms the local player has: NetAvatar replays the owner's hand goals
-                    // through this, so other people's arms reach for the snow they are actually working on.
+                    // Replay the owner's hand goals; HandSyncReceiver limits remote bone lengths while
+                    // the local first-person rig remains free to stretch onto the interaction point.
                     var hands = root.AddComponent<Snowfield.Player.HandRig>();
                     hands.config = AssetDatabase.LoadAssetAtPath<Snowfield.Config.SculptFeelConfig>(ConfigPath);
                     hands.animator = animator;
@@ -119,7 +127,7 @@ namespace SnowDays.EditorTools
                         Debug.LogWarning($"[NetSceneSetup] {ConfigPath} missing; remote arms fall back to default spring feel.");
                 }
 
-                return PrefabUtility.SaveAsPrefabAsset(root, AvatarPrefabPath);
+                return SaveNetworkPrefab(root, AvatarPrefabPath);
             }
             finally
             {
@@ -134,12 +142,21 @@ namespace SnowDays.EditorTools
             {
                 root.AddComponent<NetworkObject>();
                 root.AddComponent<SnowNetChannel>();
-                return PrefabUtility.SaveAsPrefabAsset(root, ChannelPrefabPath);
+                return SaveNetworkPrefab(root, ChannelPrefabPath);
             }
             finally
             {
                 Object.DestroyImmediate(root);
             }
+        }
+
+        static GameObject SaveNetworkPrefab(GameObject root, string path)
+        {
+            var prefab = PrefabUtility.SaveAsPrefabAsset(root, path);
+            // NGO computes the stable ID after the asset has a GUID and file ID. The first save can
+            // serialize the temporary object's hash, so save the imported asset with its computed ID.
+            if (prefab != null) PrefabUtility.SavePrefabAsset(prefab);
+            return prefab;
         }
     }
 }

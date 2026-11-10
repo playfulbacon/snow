@@ -48,7 +48,7 @@ MonoBehaviour:
   rollEngageDistance: 2.5
   throwTapThreshold: 0.2
   handTwoHandedRadius: 0.22
-  handMaxStretch: 3.5
+  handMaxStretch: 1
   handSpringStiffness: 260
   handSpringDamping: 22
   handHoverWeight: 0.3
