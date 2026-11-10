@@ -3,7 +3,37 @@ guid: 4a61ecbbffa204caaaa0f46f3544870b
 ModelImporter:
   serializedVersion: 24300
   internalIDToNameTable: []
-  externalObjects: {}
+  externalObjects:
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Boot
+    second: {fileID: 2100000, guid: 9026fed7d4ee347fbb99da8a2f93b878, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Pant
+    second: {fileID: 2100000, guid: 2c819ebf66e19449190e1f69c08f1286, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Jacket
+    second: {fileID: 2100000, guid: 36e7cae0020c94d7bbcd4aba2882b576, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Mitt
+    second: {fileID: 2100000, guid: 3177b041b15de4599ac2963365113530, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Skin
+    second: {fileID: 2100000, guid: f48e449a42b5e4d699a61b77584c283a, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Toque
+    second: {fileID: 2100000, guid: aaa47978a95714e2e842b9a53e2d89a8, type: 2}
   materials:
     materialImportMode: 2
     materialName: 0
