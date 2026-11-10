@@ -1,7 +1,7 @@
 namespace Snowfield.Player
 {
     /// <summary>
-    /// The only persistent state is Hand; Accessory is a Tab overlay you dip into to place/remove decorations.
+    /// Empty hands or an equipped accessory. Inventory visibility is independent of the held item.
     /// </summary>
     public enum ToolMode
     {
@@ -11,14 +11,15 @@ namespace Snowfield.Player
 
     public static class ToolModeInfo
     {
-        public static string DisplayName(ToolMode m) => m == ToolMode.Accessory ? "Inventory" : "Hand";
+        public static string DisplayName(ToolMode m) => m == ToolMode.Accessory ? "Item" : "Hand";
 
         /// <summary>
         /// What Tab does from here. There is deliberately no prose list of the mode's controls any more: the
         /// controls are <see cref="SculptTool.Actions"/>, drawn as prompts, and a second hand-written copy of
         /// them in a hint string is what went stale last time.
         /// </summary>
-        public static CursorAction TabAction(ToolMode m) =>
-            m == ToolMode.Accessory ? CursorAction.CloseAccessories : CursorAction.OpenAccessories;
+        public static CursorAction TabAction(bool inventoryOpen, ToolMode mode) =>
+            inventoryOpen ? CursorAction.CloseAccessories
+            : mode == ToolMode.Accessory ? CursorAction.PutAwayItem : CursorAction.OpenAccessories;
     }
 }

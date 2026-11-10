@@ -35,10 +35,11 @@ namespace Snowfield.Player.Tests
             // Inactive, so Start never fires: the placer renders the HUD thumbnails there and this test has no
             // use for them. Every method under test is called directly.
             var go = new GameObject("ChainTestPlacer");
-            go.SetActive(false);
             _placer = go.AddComponent<AccessoryPlacer>();
+            go.SetActive(false); // Awake wires the inventory; Start still never renders thumbnails.
             _spawned.Add(go);
-            _placer.Select(IndexOf("scarf"));
+            _placer.Inventory.Add("scarf", 1);
+            _placer.Select(_placer.Inventory.FindFirstSlot("scarf"));
             Assert.IsNotNull(_placer.Selected.Drape, "the scarf should be a chained accessory");
         }
 
@@ -81,14 +82,6 @@ namespace Snowfield.Player.Tests
             Assert.IsTrue(SurfaceProbe.Snap(s, centre + dir * 0.9f, dir, 1.5f, out var hit),
                           "the probe should find " + s.name + " along " + dir);
             return hit;
-        }
-
-        static int IndexOf(string id)
-        {
-            for (int i = 0; i < AccessoryCatalog.Entries.Count; i++)
-                if (AccessoryCatalog.Entries[i].Id == id) return i;
-            Assert.Fail("no accessory '" + id + "' in the catalog");
-            return -1;
         }
 
         [Test]

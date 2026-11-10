@@ -64,6 +64,7 @@ namespace SnowDays
         private const float GroundedGrace = 0.12f;
 
         private CharacterController m_Controller;
+        private SculptTool m_Tool;
         private Vector3 m_PlanarVelocity;
         private float m_VerticalVelocity;
         private float m_Pitch;
@@ -80,6 +81,7 @@ namespace SnowDays
         private void Awake()
         {
             m_Controller = GetComponent<CharacterController>();
+            m_Tool = GetComponentInChildren<SculptTool>();
             if (m_Animator == null) m_Animator = GetComponentInChildren<Animator>();
             if (m_CameraPivot == null) m_CameraPivot = transform.Find("CameraPivot");
 
@@ -123,7 +125,7 @@ namespace SnowDays
             if (keyboard == null || mouse == null) return;
 
             HandleCursor(keyboard, mouse);
-            if (Cursor.lockState == CursorLockMode.Locked) Look(mouse);
+            if (Cursor.lockState == CursorLockMode.Locked && !InventoryInputBlocked(keyboard)) Look(mouse);
             Move(keyboard);
             Animate();
         }
@@ -131,9 +133,12 @@ namespace SnowDays
         // Esc used to free the cursor here. It opens the pause menu now, and the menu frees it — so the only
         // gesture left is the relock. It has to be suppressed while paused or the first click on a menu button
         // would snatch the mouse back into mouse-look, with the button never pressed.
-        private static void HandleCursor(Keyboard keyboard, Mouse mouse)
+        private bool InventoryInputBlocked(Keyboard keyboard) =>
+            (m_Tool != null && m_Tool.InventoryOpen) || keyboard.tabKey.wasPressedThisFrame;
+
+        private void HandleCursor(Keyboard keyboard, Mouse mouse)
         {
-            if (GamePause.IsPaused) return;
+            if (GamePause.IsPaused || InventoryInputBlocked(keyboard)) return;
             if (Cursor.lockState != CursorLockMode.Locked && mouse.leftButton.wasPressedThisFrame) SetCursorLocked(true);
         }
 
@@ -157,7 +162,7 @@ namespace SnowDays
         private void Move(Keyboard keyboard)
         {
             Vector2 input = Vector2.zero;
-            if (Cursor.lockState == CursorLockMode.Locked)
+            if (Cursor.lockState == CursorLockMode.Locked && !InventoryInputBlocked(keyboard))
             {
                 if (keyboard.wKey.isPressed) input.y += 1f;
                 if (keyboard.sKey.isPressed) input.y -= 1f;

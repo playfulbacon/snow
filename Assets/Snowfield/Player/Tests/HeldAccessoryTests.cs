@@ -66,6 +66,58 @@ namespace Snowfield.Player.Tests
         }
 
         [Test]
+        public void InventoryClick_ClosesGrid_AndKeepsTheChosenItemInHand()
+        {
+            Inventory.Add("carrot", 1);
+            Inventory.Add("twig", 1);
+            _tool.SetInventoryOpen(true);
+            Assert.AreEqual(CursorLockMode.None, Cursor.lockState);
+            _tool.EquipInventorySlot(Inventory.FindFirstSlot("twig"));
+            Assert.IsFalse(_tool.InventoryOpen);
+            Assert.AreEqual(ToolMode.Accessory, _tool.Mode);
+            _held.Tick(0f, _tool.Mode == ToolMode.Accessory);
+            Assert.AreEqual("twig", _held.ItemId);
+            Assert.IsTrue(_held.Model.activeSelf);
+            _tool.SendMessage("HandleItemScroll", _config.accessoryScrollThreshold);
+            _held.Tick(0f, true);
+            Assert.AreEqual("carrot", _held.ItemId, "Closed inventory still permits switching held items");
+        }
+
+        [Test]
+        public void Tab_PutsAwayTheItem_ThenOpensAndClosesTheGrid()
+        {
+            Inventory.Add("carrot", 1);
+            _held.Tick(0f, true);
+            _tool.HandleTab();
+            _held.Tick(0f, _tool.Mode == ToolMode.Accessory);
+            Assert.IsFalse(_tool.InventoryOpen);
+            Assert.AreEqual(ToolMode.Hand, _tool.Mode);
+            Assert.IsFalse(_held.Model.activeSelf);
+            Assert.AreEqual(1, Inventory.Count("carrot"));
+            _tool.HandleTab();
+            Assert.IsTrue(_tool.InventoryOpen);
+            Assert.AreEqual(ToolMode.Hand, _tool.Mode);
+            _tool.EquipInventorySlot(-1);
+            Assert.IsTrue(_tool.InventoryOpen, "There is no empty-hands slot to equip");
+            _tool.HandleTab();
+            Assert.IsFalse(_tool.InventoryOpen);
+            Assert.AreEqual(ToolMode.Hand, _tool.Mode);
+        }
+
+        [Test]
+        public void OpeningInventory_CancelsPlacementWithoutSpendingTheStack()
+        {
+            Inventory.Add("carrot", 1);
+            var sculpture = Sculpture();
+            Assert.IsTrue(_placer.BeginPlacement(sculpture, Vector3.forward, Vector3.back, 0.3f, 0.4f));
+            _tool.SetInventoryOpen(true);
+            _held.Tick(1f, true);
+            Assert.IsFalse(_placer.IsBusy);
+            Assert.AreEqual(0, sculpture.Props.Count);
+            Assert.AreEqual(1, Inventory.Count("carrot"));
+        }
+
+        [Test]
         public void Holding_StaysAtFrontRight_AndDoesNotFollowTheAimedSurface()
         {
             Inventory.Add("carrot", 1);

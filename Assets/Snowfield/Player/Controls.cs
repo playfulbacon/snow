@@ -48,14 +48,14 @@ namespace Snowfield.Player
             new Binding(InputGlyph.PickUp, "Pick up a sculpture or a loose ball and carry it"),
             new Binding(InputGlyph.ShiftLeftMouse, Label(CursorAction.SliceSnow) + " a sculpture"),
             new Binding(InputGlyph.Scroll, Label(CursorAction.BrushRadius) + " · " + Label(CursorAction.PickAccessory)
-                        + " in the overlay"),
+                        + " held item"),
             new Binding(InputGlyph.ShiftScroll, Label(CursorAction.RotateSlice)),
         };
 
         /// <summary>Everything that is about the game rather than the snow.</summary>
         public static readonly Binding[] Game =
         {
-            new Binding(InputGlyph.Tab, Label(CursorAction.OpenAccessories)),
+            new Binding(InputGlyph.Tab, Label(CursorAction.OpenAccessories) + " / " + Label(CursorAction.PutAwayItem)),
             new Binding(InputGlyph.Escape, Label(CursorAction.OpenMenu)),
             new Binding(InputGlyph.SessionChord, "Join or leave the shared field"),
             new Binding(InputGlyph.Mute, "Mute the microphone"),
