@@ -170,64 +170,7 @@ MonoBehaviour:
       keyCapHeight: 22
       keyCapFontSize: 12
       iconSize: 26
-    prompts:
-    - action: 1
-      icon: {fileID: 0}
-      label: Smooth
-    - action: 2
-      icon: {fileID: 0}
-      label: Attach
-    - action: 3
-      icon: {fileID: 0}
-      label: Throw
-    - action: 4
-      icon: {fileID: 0}
-      label: Take back
-    - action: 5
-      icon: {fileID: 0}
-      label: Place
-    - action: 6
-      icon: {fileID: 0}
-      label: Add point
-    - action: 7
-      icon: {fileID: 0}
-      label: Use this point
-    - action: 8
-      icon: {fileID: 0}
-      label: Finish the strand
-    - action: 9
-      icon: {fileID: 0}
-      label: Scoop
-    - action: 10
-      icon: {fileID: 0}
-      label: Let go
-    - action: 11
-      icon: {fileID: 0}
-      label: Slice
-    - action: 12
-      icon: {fileID: 0}
-      label: Turn the cut
-    - action: 13
-      icon: {fileID: 0}
-      label: Brush size
-    - action: 14
-      icon: {fileID: 0}
-      label: Pick
-    - action: 15
-      icon: {fileID: 0}
-      label: Accessories
-    - action: 16
-      icon: {fileID: 0}
-      label: Close accessories
-    - action: 17
-      icon: {fileID: 0}
-      label: Menu
-    - action: 18
-      icon: {fileID: 0}
-      label: Mute mic
-    - action: 19
-      icon: {fileID: 0}
-      label: Unmute mic
+    prompts: []
   hints:
     show: 1
     margin: {x: 24, y: 24}
@@ -348,7 +291,6 @@ MonoBehaviour:
   _statusLine1: {fileID: 6047757657962852295}
   _statusLine2: {fileID: 2625975839126645819}
   _fieldLine: {fileID: 6254265208908826511}
-  _promptSchemaVersion: 5
 --- !u!223 &5790322499973437563
 Canvas:
   m_ObjectHideFlags: 0

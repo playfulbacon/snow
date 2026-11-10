@@ -49,12 +49,23 @@ namespace Snowfield.Player
             public float chargeThickness = 3f;
         }
 
+        /// <summary>
+        /// The icon for one action, assignable in the inspector. Keyed by the action's *name* as well as its
+        /// value: a serialized enum is an int, so inserting a <see cref="CursorAction"/> value used to slide
+        /// every stored row onto the action three places along — which is how the lift prompt ended up reading
+        /// "Turn the cut". <see cref="EnsurePromptList"/> re-keys off <see cref="key"/>, so a reorder repairs
+        /// itself instead of waiting on someone to bump a version constant.
+        ///
+        /// There is deliberately no label here. What an action is called lives in <see cref="CursorActionInfo"/>
+        /// and nowhere else — a serialized override is a second copy that goes stale on its own (this list still
+        /// said "Close accessories" long after the overlay became the inventory).
+        /// </summary>
         [Serializable]
         public class ActionArt
         {
             public CursorAction action;
             public Sprite icon;
-            public string label;
+            [HideInInspector] public string key;
         }
 
         /// <summary>
@@ -774,8 +785,7 @@ namespace Snowfield.Player
         float ApplyPrompt(Prompt p, ActionPrompt item, PromptRowSettings s, float opacity)
         {
             var entry = FindPrompt(item.Action);
-            string label = entry != null && !string.IsNullOrEmpty(entry.label)
-                ? entry.label : CursorActionInfo.DefaultLabel(item.Action);
+            string label = CursorActionInfo.DefaultLabel(item.Action);
             // The one row whose text is worth building per frame: "Pick up Pebble x3" beats "Pick up item",
             // and the count is what the pickup will actually give you, not what is lying there.
             if (item.Action == CursorAction.CollectItem && tool != null && tool.AimedPickup != null
@@ -858,27 +868,34 @@ namespace Snowfield.Player
             return null;
         }
 
-        /// <summary>Bump whenever CursorAction values are added/removed/reordered: stored rows are keyed by the enum's int.</summary>
-        const int PromptSchemaVersion = 5;
-        [SerializeField, HideInInspector] int _promptSchemaVersion;
-
-        /// <summary>Make sure the inspector list has one row per action, with default labels filled in.</summary>
+        /// <summary>
+        /// One row per action, re-keyed by name first. A row saved before the enum changed carries the name it
+        /// was authored against, so it goes back onto the action it was meant for however the ints have moved;
+        /// a row from before the names were stored is only worth keeping if it actually holds an icon, since
+        /// nothing else on it can be trusted.
+        /// </summary>
         void EnsurePromptList()
         {
-            if (_promptSchemaVersion != PromptSchemaVersion)
+            cursor.prompts.RemoveAll(e => e == null
+                || (string.IsNullOrEmpty(e.key) && e.icon == null)
+                || (!string.IsNullOrEmpty(e.key) && Named(e.key) == CursorAction.None));
+            foreach (var e in cursor.prompts)
             {
-                cursor.prompts.Clear(); // enum ints shifted: stored labels/icons would attach to the wrong actions
-                _promptSchemaVersion = PromptSchemaVersion;
+                if (string.IsNullOrEmpty(e.key)) e.key = e.action.ToString();
+                else e.action = Named(e.key);
             }
-            cursor.prompts.RemoveAll(e => !Enum.IsDefined(typeof(CursorAction), e.action) || e.action == CursorAction.None);
+            cursor.prompts.RemoveAll(e => e.action == CursorAction.None
+                                          || !Enum.IsDefined(typeof(CursorAction), e.action));
             foreach (CursorAction a in Enum.GetValues(typeof(CursorAction)))
             {
                 if (a == CursorAction.None) continue;
-                var e = FindPrompt(a);
-                if (e == null) { e = new ActionArt { action = a }; cursor.prompts.Add(e); }
-                if (string.IsNullOrEmpty(e.label)) e.label = CursorActionInfo.DefaultLabel(a);
+                if (FindPrompt(a) == null) cursor.prompts.Add(new ActionArt { action = a, key = a.ToString() });
             }
         }
+
+        /// <summary>The action a stored key names, or None if it names nothing this build has.</summary>
+        static CursorAction Named(string key) =>
+            Enum.TryParse(key, out CursorAction a) && Enum.IsDefined(typeof(CursorAction), a) ? a : CursorAction.None;
 
         /// <summary>Procedural ring sprite (transparent centre) so the charge indicator reads as a dial, not a square.</summary>
         Sprite RingSprite()
