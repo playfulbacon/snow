@@ -94,6 +94,9 @@ namespace Snowfield.Net
         /// <summary>Call every frame before the rig's LateUpdate. <paramref name="body"/> is the avatar root.</summary>
         public void Tick(HandRig rig, Transform body, float dt)
         {
+            // Restrict only the receiving avatar. Keep the transmitted intent intact so the owner's
+            // first-person hands can still reach the actual interaction point.
+            if (rig != null) rig.LimitStretch = true;
             if (!_hasPose || rig == null || body == null || !rig.IsReady) return;
             _age += dt;
             if (_age > StaleAfter) { _leftActive = _rightActive = false; return; }

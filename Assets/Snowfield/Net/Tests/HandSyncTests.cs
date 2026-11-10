@@ -99,7 +99,7 @@ namespace Snowfield.Net.Tests
             Vector3 shoulder = _ownerRig.ShoulderPosition(side);
             float arm = Vector3.Distance(shoulder, OwnerHand(side));
             Assert.Greater(arm, 1e-3f, "the rig reported no arm length; bones did not resolve");
-            return shoulder + _ownerGo.transform.forward * (arm * 1.8f) + Vector3.up * (arm * 0.4f);
+            return shoulder + _ownerGo.transform.forward * (arm * 0.65f) + Vector3.up * (arm * 0.1f);
         }
 
         Vector3 OwnerHand(HandRig.Side side) => HandPosition(_ownerRig, side);
@@ -111,6 +111,55 @@ namespace Snowfield.Net.Tests
             var bone = animator.GetBoneTransform(side == HandRig.Side.Left
                 ? HumanBodyBones.LeftHand : HumanBodyBones.RightHand);
             return bone.position;
+        }
+
+        static float ArmLength(HandRig rig, HandRig.Side side)
+        {
+            var upper = rig.animator.GetBoneTransform(side == HandRig.Side.Left
+                ? HumanBodyBones.LeftUpperArm : HumanBodyBones.RightUpperArm);
+            var lower = rig.animator.GetBoneTransform(side == HandRig.Side.Left
+                ? HumanBodyBones.LeftLowerArm : HumanBodyBones.RightLowerArm);
+            return Vector3.Distance(upper.position, lower.position)
+                + Vector3.Distance(lower.position, rig.HandBone(side).position);
+        }
+
+        [UnityTest]
+        public IEnumerator DistantInteractions_StretchOnlyFirstPersonHands()
+        {
+            var receiver = new HandSyncReceiver();
+            foreach (var side in new[] { HandRig.Side.Left, HandRig.Side.Right })
+            {
+                float ownerLength = ArmLength(_ownerRig, side);
+                float remoteLength = ArmLength(_remoteRig, side);
+                // Beyond both natural reach and the old 3.5x first-person cap.
+                Vector3 goal = _ownerRig.ShoulderPosition(side) + Vector3.forward * 6f;
+                Vector3 localGoal = _ownerGo.transform.InverseTransformPoint(goal);
+                foreach (bool palmGrip in new[] { false, true })
+                {
+                    Vector3 normal = palmGrip ? Vector3.up : Vector3.zero;
+                    // Exercise both continuous sculpting and one-shot placement intent.
+                    if (palmGrip) _ownerRig.Pulse(side, goal, 2f, Vector3.forward, normal);
+                    yield return DriveFor(1.5f, () =>
+                    {
+                        if (!palmGrip) _ownerRig.Reach(side, goal, 1f, Vector3.forward);
+                        receiver.Receive(HandSyncPose.Sample(_ownerRig, _ownerGo.transform));
+                        receiver.Tick(_remoteRig, _remoteGo.transform, Time.deltaTime);
+                    });
+
+                    Vector3 contact = palmGrip ? _ownerRig.PalmPosition(side) : OwnerHand(side);
+                    Assert.Less(Vector3.Distance(contact, goal), .04f,
+                        "first-person hand must reach the actual interaction point");
+                    Assert.Greater(ArmLength(_ownerRig, side), ownerLength * 3.5f);
+                    Assert.That(ArmLength(_remoteRig, side), Is.EqualTo(remoteLength).Within(.001f),
+                        "remote bones must keep their natural lengths");
+                    Assert.Greater(Vector3.Distance(RemoteHand(side), _remoteGo.transform.TransformPoint(localGoal)), 4f,
+                        "the remote hand should stop short of the distant interaction");
+                    Assert.Less(Vector3.Distance(_ownerRig.CurrentGoal(side).Position, goal), .001f,
+                        "limiting the remote presentation must not alter the owner's intent");
+                    Assert.IsFalse(_ownerRig.LimitStretch);
+                    Assert.IsTrue(_remoteRig.LimitStretch);
+                }
+            }
         }
 
         [UnityTest]

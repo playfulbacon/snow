@@ -8,7 +8,8 @@ namespace Snowfield.Player
     /// where the snow is</b>. Snow is at arm's length only by accident — a carried ball floats at the carry anchor,
     /// a scoop starts wherever the cursor was, a ball you are rolling is down at your feet — so rather than clamp
     /// the reach (which reads as the hands giving up), the arm lengthens: the elbow and wrist offsets scale along
-    /// their own bone and linear skinning turns that into taffy. Cartoon on purpose.
+    /// their own bone and linear skinning turns that into taffy. First-person hands always reach the goal;
+    /// remote avatars enable <see cref="LimitStretch"/> to keep their arms within the configured length.
     ///
     /// Runs in LateUpdate, after Mecanim has written the animated pose, and restores rest bone lengths before
     /// reading it so nothing compounds frame to frame. Callers push a goal every frame (<see cref="Reach"/>); a
@@ -25,6 +26,9 @@ namespace Snowfield.Player
         public SculptFeelConfig config;
         [Tooltip("Humanoid animator to drive. Defaults to the one under this object.")]
         public Animator animator;
+
+        /// <summary>Remote presentation limits bone stretching; the local interaction rig leaves this off.</summary>
+        public bool LimitStretch { get; set; }
 
         [Header("Solve")]
         [Tooltip("Direction the elbow is pulled, in this object's space (mirrored for the left arm). Keeps a nearly straight arm from flipping its bend.")]
@@ -132,8 +136,8 @@ namespace Snowfield.Player
         /// <summary>
         /// What a hand was actually asked for on the last solved frame, with any <see cref="Pulse"/> already
         /// resolved into it. This is the whole hand state worth putting on a wire: replaying it through
-        /// <see cref="Reach"/> on another machine reproduces the pose, and a pulse needs no representation of
-        /// its own — it is simply the same goal being reported for as long as it holds.
+        /// <see cref="Reach"/> on another machine reproduces the intent within that rig's stretch limit, and a
+        /// pulse needs no representation of its own — it is the same goal reported for as long as it holds.
         /// </summary>
         public readonly struct Goal
         {
@@ -260,7 +264,9 @@ namespace Snowfield.Player
             Vector3 bend = Vector3.Lerp(a.lower.position - a.upper.position,
                 transform.TransformDirection(hint), elbowHintWeight * weight);
 
-            float maxStretch = config != null ? Mathf.Max(1f, config.handMaxStretch) : 3.5f;
+            float maxStretch = LimitStretch
+                ? (config != null ? Mathf.Max(1f, config.handMaxStretch) : 1f)
+                : float.PositiveInfinity;
             Solve(a.upper, a.lower, a.hand, a.restLower, a.restHand, target, bend, maxStretch, reachSlack);
 
             if (aim.sqrMagnitude > 1e-6f && handAimWeight > 0f)
