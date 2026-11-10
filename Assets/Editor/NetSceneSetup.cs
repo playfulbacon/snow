@@ -72,6 +72,13 @@ namespace SnowDays.EditorTools
                 nt.Interpolate = true;
                 root.AddComponent<NetAvatar>();
 
+                // A body snowballs can hit (and that you bump into), matching the local player's capsule in
+                // Game.prefab. NetAvatar disables it on your own avatar, which sits inside your own capsule.
+                var body = root.AddComponent<CapsuleCollider>();
+                body.height = 2.1015205f;
+                body.radius = 0.42030412f;
+                body.center = new Vector3(0f, 1.0707603f, 0f);
+
                 var fbx = AssetDatabase.LoadAssetAtPath<GameObject>(ModelFbxPath);
                 if (fbx == null)
                 {

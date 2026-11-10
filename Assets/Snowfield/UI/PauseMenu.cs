@@ -70,11 +70,22 @@ namespace Snowfield.UI
         {
             if (root != null) root.SetActive(false);
             GameSettings.Changed += ApplyLive;
+            VoiceChat.DevicesChanged += OnVoiceDevicesChanged;
         }
 
         void OnDestroy()
         {
             GameSettings.Changed -= ApplyLive;
+            VoiceChat.DevicesChanged -= OnVoiceDevicesChanged;
+        }
+
+        /// <summary>
+        /// The device lists arrive a moment after the audio page is opened (and again when a headset is plugged
+        /// in), so the page is rebuilt rather than left showing "looking for devices" until it is reopened.
+        /// </summary>
+        void OnVoiceDevicesChanged()
+        {
+            if (IsOpen && _page == Page.Audio) Show(Page.Audio);
         }
 
         void Start()
@@ -131,6 +142,7 @@ namespace Snowfield.UI
         {
             if (viewCamera != null) viewCamera.fieldOfView = GameSettings.FieldOfView;
             VoiceChat.SetOutputVolume(GameSettings.VoiceVolume);
+            VoiceChat.ApplyDevices();
             if (hud != null && hud.status.show != GameSettings.ShowHudStatus)
             {
                 hud.status.show = GameSettings.ShowHudStatus;
@@ -182,8 +194,44 @@ namespace Snowfield.UI
                 if (on == !VoiceChat.Muted) return;
                 VoiceChat.ToggleMute();        // the M key and this switch are the same one state
             });
+            AddDeviceRow("MICROPHONE", VoiceChat.MicDevices, GameSettings.MicDevice,
+                         name => GameSettings.MicDevice = name);
+            AddDeviceRow("OUTPUT", VoiceChat.OutputDevices, GameSettings.OutputDevice,
+                         name => GameSettings.OutputDevice = name);
             AddRow("MIC KEY", InputGlyphInfo.Name(InputGlyph.Mute));
             Back();
+
+            // Listing devices means bringing the voice client up, which is a few hundred milliseconds and a
+            // service call, so it happens when someone actually looks at this page rather than on every launch.
+            // DevicesChanged rebuilds the page when the answer arrives.
+            if (!VoiceChat.DevicesKnown) _ = VoiceChat.RefreshDevicesAsync();
+        }
+
+        /// <summary>
+        /// A pick-one row of audio devices, with the system default always first — so there is always something
+        /// to choose, and "go back to whatever Windows is doing" is one click rather than a guess at which named
+        /// device that was. Before the list arrives, or when the voice service cannot be reached at all, the row
+        /// says so: an empty dropdown looks like a bug, and a missing row looks like a missing feature.
+        /// </summary>
+        void AddDeviceRow(string label, IReadOnlyList<string> devices, string current, Action<string> set)
+        {
+            if (devices == null || devices.Count == 0)
+            {
+                AddRow(label, VoiceChat.DevicesKnown ? "no devices found" : "looking for devices...");
+                return;
+            }
+
+            var options = new List<string>(devices.Count + 1) { "System default" };
+            int index = 0;
+            for (int i = 0; i < devices.Count; i++)
+            {
+                options.Add(devices[i]);
+                if (devices[i] == current) index = i + 1;
+            }
+            // The setter writes to GameSettings, whose Changed event runs ApplyLive, which puts the device into
+            // use. Nothing here talks to Vivox directly — the menu never has to know who is listening.
+            AddDropdown(label, options, index,
+                        i => set(i <= 0 ? GameSettings.SystemDevice : devices[i - 1]));
         }
 
         void BuildControls()

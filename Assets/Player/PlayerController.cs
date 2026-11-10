@@ -1,12 +1,19 @@
 using Snowfield.Config;
+using Snowfield.Player;
+using Snowfield.Sculpture;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.Rendering;
 
 namespace SnowDays
 {
-    // First-person controller: WASD + mouse look, LeftShift run, Space jump, Q crouch, E tiptoe. Esc belongs to
-    // the pause menu (Snowfield.UI.PauseMenu), which frees the cursor through Snowfield.Config.GamePause.
+    // First-person controller: WASD + mouse look, LeftShift run, Space jump. Esc belongs to the pause menu
+    // (Snowfield.UI.PauseMenu), which frees the cursor through Snowfield.Config.GamePause.
+    //
+    // Crouch (Q) and tiptoe (E) were removed in Nov 2026: the capsule now keeps its authored height, so the
+    // camera pivot keeps the hand-tuned 1.08 m eye line without anything animating it, and E belongs wholly to
+    // picking snow up. The old stance code (height scales, the overhang sphere-cast, the speed multipliers) is
+    // in git if they come back.
     [RequireComponent(typeof(CharacterController))]
     public class PlayerController : MonoBehaviour
     {
@@ -18,16 +25,6 @@ namespace SnowDays
         [SerializeField, Range(0f, 1f)] private float m_AirControl = 0.4f;
         [SerializeField, Range(0.1f, 1f)] private float m_BackpedalFactor = 0.75f;
         [SerializeField, Range(0.1f, 1f)] private float m_StrafeFactor = 0.9f;
-
-        [Header("Stance")]
-        // Snowfield's crouch (Q) / tiptoe (E), re-expressed as fractions of the authored standing
-        // height (its SnowCharacter stood 1.8 m, crouched to 1.0, tiptoed to 2.15).
-        [SerializeField, Range(0.3f, 1f)] private float m_CrouchHeightScale = 0.56f;
-        [SerializeField, Range(1f, 1.5f)] private float m_TiptoeHeightScale = 1.19f;
-        [SerializeField, Range(0.2f, 1f)] private float m_CrouchSpeedMultiplier = 0.6f;
-        [SerializeField, Range(0.2f, 1f)] private float m_TiptoeSpeedMultiplier = 0.7f;
-        // Exponential smoothing rate toward the stance height.
-        [SerializeField] private float m_StanceSpeed = 10f;
 
         [Header("Animation")]
         // Authored root-motion speeds of the source clips (m/s); PlayerSceneSetup measures and overwrites these.
@@ -42,6 +39,11 @@ namespace SnowDays
         [SerializeField] private float m_LookSensitivity = 0.12f;
         [SerializeField] private float m_PitchLimit = 85f;
         [SerializeField] private Transform m_CameraPivot;
+
+        [Header("Snowballs")]
+        // The player's own mass, only ever used as the thing a snowball's momentum is weighed against.
+        [SerializeField] private float m_BodyMass = 45f;
+        [SerializeField, Range(0f, 3f)] private float m_SnowballKnockback = 1f;
 
         [Header("Rig")]
         [SerializeField] private Animator m_Animator;
@@ -67,14 +69,6 @@ namespace SnowDays
         private float m_Pitch;
         private float m_LastGroundedTime = -10f;
         private float m_JumpPressedTime = -10f;
-        private float m_StandHeight;
-        private float m_StandCenterY;
-        private float m_StandPivotY;
-        private float m_CurrentHeight;
-
-        public enum Stance { Stand, Crouch, Tiptoe }
-        /// <summary>Hold-based: Q crouches, E tiptoes, releasing returns to standing.</summary>
-        public Stance CurrentStance { get; private set; }
 
         // Body hides from the local camera (shadow only); first-person hands/feet render for the owner only.
         public bool IsLocal
@@ -88,10 +82,27 @@ namespace SnowDays
             m_Controller = GetComponent<CharacterController>();
             if (m_Animator == null) m_Animator = GetComponentInChildren<Animator>();
             if (m_CameraPivot == null) m_CameraPivot = transform.Find("CameraPivot");
-            m_StandHeight = m_Controller.height;
-            m_StandCenterY = m_Controller.center.y; // authored center sits 2 cm above height/2; preserve it exactly
-            m_CurrentHeight = m_StandHeight;
-            if (m_CameraPivot != null) m_StandPivotY = m_CameraPivot.localPosition.y;
+
+            // Snowballs can hit people. Self-wiring rather than scene-authored for the same reason the rest of
+            // the kit is: a scene that stands this character up gets a hittable body with nothing to remember.
+            var target = GetComponent<SnowballTarget>();
+            if (target == null) target = gameObject.AddComponent<SnowballTarget>();
+            target.onHit = TakeSnowball;
+        }
+
+        /// <summary>
+        /// Wearing a snowball. Momentum in, momentum out: the ball's mass against the player's own decides how
+        /// far they are shoved, so a lobbed handful is a nudge and a two-handed boulder genuinely moves you.
+        /// Vertical is kept small and only ever upward — a downward shove would just bury the capsule in the
+        /// ground, and the stick velocity would eat it anyway.
+        /// </summary>
+        private void TakeSnowball(SnowballTarget.Hit hit)
+        {
+            float shove = hit.Impact * hit.mass / Mathf.Max(1f, m_BodyMass) * m_SnowballKnockback;
+            if (shove <= 0.01f) return;
+            Vector3 push = -hit.normal * shove;      // the normal points back out at the thrower
+            m_PlanarVelocity += new Vector3(push.x, 0f, push.z);
+            if (push.y > 0f) m_VerticalVelocity = Mathf.Max(m_VerticalVelocity, Mathf.Min(push.y, 2.5f));
         }
 
         private void Start()
@@ -113,55 +124,9 @@ namespace SnowDays
 
             HandleCursor(keyboard, mouse);
             if (Cursor.lockState == CursorLockMode.Locked) Look(mouse);
-            UpdateStance(keyboard);
             Move(keyboard);
             Animate();
         }
-
-        // Recomputed every frame from held keys; Q wins over E. Height changes keep the AUTHORED capsule
-        // bottom (center.y - height/2, 2 cm above the transform) fixed, so the feet never shift and the
-        // standing pose is bit-identical to the pre-stance scene.
-        private void UpdateStance(Keyboard keyboard)
-        {
-            CurrentStance = Stance.Stand;
-            if (Cursor.lockState == CursorLockMode.Locked)
-            {
-                if (keyboard.qKey.isPressed) CurrentStance = Stance.Crouch;
-                else if (keyboard.eKey.isPressed) CurrentStance = Stance.Tiptoe;
-            }
-
-            float target = m_StandHeight * (CurrentStance == Stance.Crouch ? m_CrouchHeightScale
-                         : CurrentStance == Stance.Tiptoe ? m_TiptoeHeightScale : 1f);
-
-            // Growing (tiptoe, or standing back up) must not push the capsule into an overhang: clamp the
-            // target to the clearance above the top sphere. Height writes bypass collision resolution, so
-            // without this the next Move jitters against overlap recovery under porch roofs.
-            if (target > m_CurrentHeight + 0.001f)
-            {
-                float need = target - m_CurrentHeight;
-                Vector3 topCentre = transform.position + m_Controller.center
-                    + Vector3.up * (m_Controller.height * 0.5f - m_Controller.radius);
-                if (Physics.SphereCast(topCentre, m_Controller.radius * 0.95f, Vector3.up, out RaycastHit hit,
-                        need + m_Controller.skinWidth, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
-                    target = Mathf.Max(m_CurrentHeight, m_CurrentHeight + hit.distance - m_Controller.skinWidth);
-            }
-
-            m_CurrentHeight = Mathf.Lerp(m_CurrentHeight, target, 1f - Mathf.Exp(-m_StanceSpeed * Time.deltaTime));
-
-            m_Controller.height = m_CurrentHeight;
-            Vector3 center = m_Controller.center;
-            center.y = m_StandCenterY + (m_CurrentHeight - m_StandHeight) * 0.5f;
-            m_Controller.center = center;
-            if (m_CameraPivot != null)
-            {
-                Vector3 pivot = m_CameraPivot.localPosition;
-                pivot.y = m_StandPivotY * (m_CurrentHeight / m_StandHeight);
-                m_CameraPivot.localPosition = pivot;
-            }
-        }
-
-        private float StanceSpeedMultiplier => CurrentStance == Stance.Crouch ? m_CrouchSpeedMultiplier
-            : CurrentStance == Stance.Tiptoe ? m_TiptoeSpeedMultiplier : 1f;
 
         // Esc used to free the cursor here. It opens the pause menu now, and the menu frees it — so the only
         // gesture left is the relock. It has to be suppressed while paused or the first click on a menu button
@@ -205,11 +170,14 @@ namespace SnowDays
             bool grounded = m_Controller.isGrounded;
             if (grounded) m_LastGroundedTime = Time.time;
 
-            // Run only while standing: crouch and tiptoe are deliberate, careful stances.
-            bool run = keyboard.leftShiftKey.isPressed && CurrentStance == Stance.Stand;
+            bool run = keyboard.leftShiftKey.isPressed;
             Vector3 wishDir = transform.right * input.x + transform.forward * input.y;
-            float targetSpeed = (run ? m_RunSpeed : m_WalkSpeed) * StanceSpeedMultiplier
+            float targetSpeed = (run ? m_RunSpeed : m_WalkSpeed)
                 * input.magnitude * DirectionSpeedScale(input);
+            // Snow you are shoving sets the pace (Snowfield.Player.SnowPush). Infinity unless a hand is on a
+            // ball, so this costs nothing the rest of the time; a boulder slows you to a shuffle, and another
+            // player leaning on the same ball raises the limit for both of you.
+            targetSpeed = Mathf.Min(targetSpeed, SnowPush.SpeedLimit);
             float accel = m_Acceleration * (grounded ? 1f : m_AirControl);
             m_PlanarVelocity = Vector3.MoveTowards(m_PlanarVelocity, wishDir * targetSpeed, accel * Time.deltaTime);
 

@@ -35,16 +35,17 @@ namespace Snowfield.Player
             new Binding(InputGlyph.Look, "Look"),
             new Binding(InputGlyph.Run, "Run"),
             new Binding(InputGlyph.Jump, "Jump"),
-            new Binding(InputGlyph.Stances, "Crouch / tiptoe (hold)"),
         };
 
         /// <summary>The hands. Owned by <see cref="SculptTool"/>; each row mirrors a branch of its action table.</summary>
         public static readonly Binding[] Sculpting =
         {
             new Binding(InputGlyph.LeftMouse,
-                        Label(CursorAction.ScoopSnow) + " · " + Label(CursorAction.Drop) + " · hold to "
-                        + Label(CursorAction.Throw).ToLowerInvariant()),
+                        Label(CursorAction.ScoopSnow) + " (hold to "
+                        + Label(CursorAction.ScoopAcross).ToLowerInvariant() + ") · "
+                        + Label(CursorAction.Drop) + " · hold to " + Label(CursorAction.Throw).ToLowerInvariant()),
             new Binding(InputGlyph.RightMouse, Label(CursorAction.Smooth) + " and pat"),
+            new Binding(InputGlyph.PickUp, "Pick up a sculpture or a loose ball and carry it"),
             new Binding(InputGlyph.ShiftLeftMouse, Label(CursorAction.SliceSnow) + " a sculpture"),
             new Binding(InputGlyph.Scroll, Label(CursorAction.BrushRadius) + " · " + Label(CursorAction.PickAccessory)
                         + " in the overlay"),

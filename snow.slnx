@@ -130,6 +130,7 @@
   <Project Path="Snowfield.Player.EditTests.csproj" />
   <Project Path="Unity.CollabProxy.Editor.csproj" />
   <Project Path="Unity.RenderPipeline.Universal.ShaderLibrary.csproj" />
+  <Project Path="Snowfield.Player.Tests.csproj" />
   <Project Path="Unity.Services.Core.Registration.csproj" />
   <Project Path="Unity.Multiplayer.Tools.Editor.csproj" />
   <Project Path="Unity.Multiplayer.Tools.NetVis.Editor.Visualization.csproj" />

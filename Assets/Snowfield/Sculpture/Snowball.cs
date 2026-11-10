@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace Snowfield.Sculpture
@@ -18,7 +19,7 @@ namespace Snowfield.Sculpture
         [Range(0f, 1f)] public float fuseSink = 0.45f;
 
         [Header("Flight")]
-        [Tooltip("Packed snow (kg/m3), used for the flight mass. A ball with a real weight shoves what it hits instead of pinging off it.")]
+        [Tooltip("Fallback snow density (kg/m3) for a ball with no config. SculptFeelConfig.snowDensity is the real one - a ball and a sculpture must weigh the same per litre or the lift rules disagree with themselves.")]
         public float density = 350f;
         public float restTime = 0.35f;
         public float restSpeed = 0.08f;
@@ -57,8 +58,22 @@ namespace Snowfield.Sculpture
         public SnowSculpture Sculpture => _sculpture != null ? _sculpture : (_sculpture = GetComponent<SnowSculpture>());
         public Vector3 Centre => transform.position;
         public Vector3 GroundPoint => transform.position - Vector3.up * radius;
-        /// <summary>Flight mass (kg) this ball would have at its current radius. Throw power scales against it.</summary>
-        public float Mass => Mathf.Max(0.2f, 4f / 3f * Mathf.PI * radius * radius * radius * density);
+        /// <summary>
+        /// Mass (kg) at this ball's current radius: what it throws like, what it shoves, and what it costs to
+        /// roll or lift. Taken from the ball's nominal radius rather than its density field, which is both free
+        /// and the number the player can see - a brushed-up ball still weighs what it looks like it weighs.
+        /// </summary>
+        public float Mass => Mathf.Max(0.2f, 4f / 3f * Mathf.PI * radius * radius * radius * Density);
+
+        /// <summary>Config's density when there is one; the serialized fallback otherwise.</summary>
+        float Density
+        {
+            get
+            {
+                var cfg = Sculpture != null ? Sculpture.Config : null;
+                return cfg != null && cfg.snowDensity > 0f ? cfg.snowDensity : density;
+            }
+        }
 
         SnowSculpture _sculpture;
         Rigidbody _rb;
@@ -72,7 +87,24 @@ namespace Snowfield.Sculpture
         float _settleTargetY;
         float _settleFor = -1f;
 
-        public void SetState(State s) => Current = s;
+        /// <summary>
+        /// Every ball somebody currently has their hands on — the local player's, and any remote player's once
+        /// their carried-pose stream arrives. Short (one entry per player carrying something), and the only way
+        /// to find a ball to help push: a carried ball's colliders are off and its layer is Ignore Raycast, so
+        /// no physics query will ever turn one up.
+        /// </summary>
+        public static IReadOnlyList<Snowball> CarriedBalls => s_Carried;
+        static readonly List<Snowball> s_Carried = new List<Snowball>();
+
+        public void SetState(State s)
+        {
+            Current = s;
+            bool held = s == State.Carrying || s == State.Pushing;
+            if (held) { if (!s_Carried.Contains(this)) s_Carried.Add(this); }
+            else s_Carried.Remove(this);
+        }
+
+        void OnDestroy() => s_Carried.Remove(this);
 
         /// <summary>No longer pushable/carryable. Called when something is attached to this ball.</summary>
         public void Fix() { IsLoose = false; Current = State.Resting; }
@@ -167,16 +199,38 @@ namespace Snowfield.Sculpture
 
         void OnCollisionEnter(Collision col)
         {
-            if (!IsFlying) return;
-            var target = col.collider.GetComponentInParent<SnowSculpture>();
-            if (target == null || target == Sculpture)
+            if (!IsFlying || _rb == null) return;
+            var contact = col.GetContact(0);
+            float into = Mathf.Max(0f, -Vector3.Dot(_rb.linearVelocity, contact.normal));
+
+            // Somebody. The ball does not stick to a person: they wear the splat and it drops at their feet,
+            // which is also why this needs no event of its own — the ball settles and Rest replicates as usual.
+            var person = col.collider.GetComponentInParent<SnowballTarget>();
+            if (person != null)
             {
-                Bite(col.GetContact(0).normal);
+                person.Strike(new SnowballTarget.Hit
+                {
+                    point = contact.point, normal = contact.normal, velocity = _rb.linearVelocity,
+                    mass = Mass, radius = radius,
+                });
+                Bite(contact.normal);
                 _airborneFor = 0f;
                 return;
             }
-            // Splat: sink a little into the surface, then fuse into the target (promoting it if it is a loose ball).
-            var contact = col.GetContact(0);
+
+            var target = col.collider.GetComponentInParent<SnowSculpture>();
+            if (target == null || target == Sculpture)
+            {
+                Bite(contact.normal);
+                // Only a real slam sprays; a ball rolling over a terrain seam re-enters contact constantly and
+                // would otherwise trail a permanent plume behind it (same threshold Bite uses, same reason).
+                if (into >= impactSpeedThreshold)
+                    SnowBurst.Play(contact.point, contact.normal, radius, into / 3f);
+                _airborneFor = 0f;
+                return;
+            }
+            // Splat: sink a little into the surface, then fuse into the target (promoting it if it is a loose
+            // ball). The fuse throws the spray — every way snow arrives on a sculpture goes through there.
             transform.position = contact.point + contact.normal * (radius * (1f - fuseSink));
             var factory = SculptureFactory.Instance;
             if (factory != null) factory.Fuse(target, this);

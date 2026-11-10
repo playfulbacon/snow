@@ -104,6 +104,12 @@ namespace Snowfield.Player
         float _nextItemScrollTime;
         float _tickAccumulator;
         float _remeshAccumulator;
+        // Continuous scoop: the depth plane the drag started on, where the last bite was taken, and the rate cap.
+        bool _scooping;
+        Vector3 _scoopPlanePoint;
+        Vector3 _scoopPlaneNormal;
+        Vector3 _scoopLastBite;
+        float _scoopNextTime;
         readonly HashSet<IBrushTarget> _dirtyTargets = new HashSet<IBrushTarget>();
         readonly List<IBrushTarget> _strokeTargets = new List<IBrushTarget>();
         readonly Collider[] _overlapScratch = new Collider[32];
@@ -135,6 +141,7 @@ namespace Snowfield.Player
             if (_placer.ActiveChain != null) FinishChainWithFlourish();
             _placer.CancelPlacement();
             ResetItemScroll();
+            _scooping = false;      // Tab mid-drag: the scoop is over, whatever the button is doing
             Mode = mode;
             HideBrushCursor();
         }
@@ -143,6 +150,7 @@ namespace Snowfield.Player
         {
             if (_placer != null) _placer.CancelPlacement();
             ResetItemScroll();
+            _scooping = false;
         }
 
         void Update()
@@ -161,6 +169,7 @@ namespace Snowfield.Player
             if (!locked || justLocked)
             {
                 ResetItemScroll();
+                _scooping = false;
                 if (IsSculpting) { IsSculpting = false; Flush(); }
                 if (_placer != null && _placer.ActiveChain != null) FinishChainWithFlourish();
                 HideBrushCursor();
@@ -249,16 +258,24 @@ namespace Snowfield.Player
                 }
                 Offer(CursorAction.PickAccessory, InputGlyph.Scroll);
             }
+            else if (_scooping)
+            {
+                // The button is already down and digging. Nothing else is on offer until it comes up, which is
+                // exactly what UpdateHand does with it, so this is the whole row.
+                Offer(CursorAction.ScoopAcross, InputGlyph.LeftMouse, hold: true);
+            }
             else if (Roller.IsCarrying)
             {
-                // LMB always lets the snow go where it is; a hold on a ball turns that into a throw.
+                // LMB always lets the snow go where it is; a hold on a ball turns that into a throw — unless the
+                // ball is too heavy to get off the ground, in which case there is no throw to promise.
+                bool canThrow = Roller.IsCarryingBall && !Roller.TooHeavyToLift;
                 Offer(ThrowCharge > 0f ? CursorAction.Throw
                     : (onSnow && Target != Roller.Carried) ? CursorAction.AttachSnowball
                     : CursorAction.Drop, InputGlyph.LeftMouse);
-                if (Roller.IsCarryingBall && ThrowCharge <= 0f)
+                if (canThrow && ThrowCharge <= 0f)
                     Offer(CursorAction.Throw, InputGlyph.LeftMouse, hold: true);
                 // Smoothing with a ball still in hand: the ball stays put, RMB pats the snow you are aiming at.
-                if (Roller.IsCarryingBall && onSnow && Target != Roller.Carried)
+                if (Roller.IsCarryingBall && !Roller.TooHeavyToLift && onSnow && Target != Roller.Carried)
                     Offer(CursorAction.Smooth, InputGlyph.RightMouse);
             }
             else if (onSnow)
@@ -273,6 +290,13 @@ namespace Snowfield.Player
                 else
                 {
                     Offer(CursorAction.ScoopSnow, InputGlyph.LeftMouse);
+                    if (config.scoopHoldSpacing > 0f)
+                        Offer(CursorAction.ScoopAcross, InputGlyph.LeftMouse, hold: true);
+                    // Whether you can carry it off is worth saying either way: "too heavy" is how a player
+                    // learns that the limit is their own arms and that a friend changes the answer.
+                    if (LiftOffered)
+                        Offer(Roller.CanLift(Target) ? CursorAction.PickUpSnow : CursorAction.TooHeavy,
+                              InputGlyph.PickUp);
                     Offer(CursorAction.Smooth, InputGlyph.RightMouse);
                     Offer(CursorAction.BrushRadius, InputGlyph.Scroll);
                 }
@@ -516,6 +540,8 @@ namespace Snowfield.Player
             bool rmb = mouse != null && mouse.rightButton.isPressed;
             bool shift = kb != null && kb.leftShiftKey.isPressed;
 
+            bool liftDown = kb != null && kb.eKey.wasPressedThisFrame;
+
             if (AimedPickup != null && !Roller.IsCarrying)
             {
                 if (IsSculpting) { IsSculpting = false; Flush(); }
@@ -541,17 +567,35 @@ namespace Snowfield.Player
             }
             if (planeCut != null) planeCut.Hide();
 
+            // --- the scoop button is still down from a bite: keep biting as the cursor sweeps ---
+            // This branch comes before the carrying one deliberately. The first bite fills your hands, so
+            // without it the same press that started the scoop would immediately be read as "holding to throw
+            // what I just dug out" — the hold has to keep meaning what it meant when it went down.
+            if (_scooping)
+            {
+                if (lmb) { ContinueScoopDrag(); return; }
+                _scooping = false;
+                _lmbDownTime = -1f;     // this press was a scoop; its release is not a drop or a throw
+                ThrowCharge = 0f;
+                Flush();
+                return;
+            }
+
             // --- carrying: LMB tap lets go where the snow is, hold charges a throw; RMB smooths ---
             if (Roller.IsCarrying)
             {
                 bool onSnow = HasHit && Target != null && Target != Roller.Carried;
+                // Snow too heavy to pick up cannot be thrown or previewed onto a surface either: it stays on the
+                // ground, rolls, and fuses where it sits. One question, asked of the roller, answered the same
+                // way by the prompts below.
+                bool heavy = Roller.TooHeavyToLift;
                 // Patting with a ball in hand is RMB — the same button it is with free hands, no modifier. It
                 // used to be Shift+LMB, which the planar shave then took, leaving smoothing reachable only by
                 // holding Shift, LMB and RMB together: a bound action nothing could have told you about.
                 // RMB does not fight LMB, so letting go and charging a throw keep working while you pat.
-                bool sculpting = rmb && Roller.IsCarryingBall && onSnow;
+                bool sculpting = rmb && Roller.IsCarryingBall && onSnow && !heavy;
                 if (lmbDown) _lmbDownTime = Time.time;
-                bool charging = lmb && _lmbDownTime >= 0f && Roller.IsCarryingBall
+                bool charging = lmb && _lmbDownTime >= 0f && Roller.IsCarryingBall && !heavy
                                 && Time.time - _lmbDownTime > config.throwTapThreshold;
                 ThrowCharge = charging
                     ? Mathf.Min(1f, (Time.time - _lmbDownTime - config.throwTapThreshold) / Mathf.Max(0.05f, Roller.chargeTime))
@@ -563,17 +607,17 @@ namespace Snowfield.Player
                     Vector3 d = GroundPoint - reachOrigin.position; d.y = 0f;
                     cursorNear = d.magnitude <= config.rollEngageDistance;
                 }
-                Vector3? preview = (charging || sculpting) ? null
+                Vector3? preview = (charging || sculpting || heavy) ? null
                                  : onSnow ? Roller.AttachCentre(BrushPoint, BrushNormal) : (Vector3?)null;
                 Roller.UpdateCarrying(preview, liftToHand: charging || sculpting,
-                                      rollOnGround: cursorNear && !charging && !sculpting && !onSnow);
+                                      rollOnGround: heavy || (cursorNear && !charging && !sculpting && !onSnow));
 
                 if (lmbUp && _lmbDownTime >= 0f)
                 {
                     float held = Time.time - _lmbDownTime;
                     _lmbDownTime = -1f;
                     ThrowCharge = 0f;
-                    if (Roller.IsCarryingBall && held > config.throwTapThreshold)
+                    if (Roller.IsCarryingBall && !heavy && held > config.throwTapThreshold)
                     {
                         var cam = viewCamera.transform;
                         Roller.Throw(cam.position, cam.forward,
@@ -597,10 +641,22 @@ namespace Snowfield.Player
             ThrowCharge = 0f;
             _lmbDownTime = -1f;
 
+            // --- free hands, E: pick the whole thing up, if these arms can manage it ---
+            // Putting it down again is the carrying branch above: a tap lets go where the snow is, which on
+            // another sculpture fuses the two together. That is how a snowman gets assembled.
+            if (liftDown && CanLiftAimed)
+            {
+                Vector3 at = (Vector3)BrushPoint;
+                Roller.PickUp(Target, at);
+                PulseFree(at, at - Body.position);
+                HideBrushCursor();
+                return;
+            }
+
             // --- free hands, LMB: scoop a chunk out of the aimed sculpture, or a handful off the ground ---
             if (lmbDown && !shift)
             {
-                if (HasHit && Target != null) { ScoopChunk(CurrentRadius()); return; }
+                if (HasHit && Target != null) { BeginScoopDrag(); ScoopChunk(BrushPoint, CurrentRadius()); return; }
                 if (HasGroundHit && Roller.CanReachGround(GroundPoint))
                 {
                     Roller.ScoopFrom(GroundPoint);
@@ -613,39 +669,101 @@ namespace Snowfield.Player
         }
 
         /// <summary>
-        /// One discrete bite. The chunk is built from the snow the brush sphere actually overlaps - so a bite at the
-        /// edge of a sculpture hands you a half-sphere - and the same kernel is then removed from every grid under it.
+        /// One discrete bite at <paramref name="point"/>. The chunk is built from the snow the brush sphere
+        /// actually overlaps - so a bite at the edge of a sculpture hands you a half-sphere - and the same kernel
+        /// is then removed from every grid under it. The point is passed in rather than read from the aim because
+        /// a held scoop takes its bites on a fixed depth plane, not wherever the ray happens to land.
+        ///
+        /// Colliders are re-cooked here for a single bite but left to <see cref="Flush"/> during a drag: cooking
+        /// a 192³ sculpture's chunks ten times a second is the one thing that cannot keep up with a sweep.
         /// </summary>
-        void ScoopChunk(float radius)
+        void ScoopChunk(float3 point, float radius, bool deferColliders = false)
         {
             var factory = SculptureFactory.Instance;
             if (factory == null) return;
-            GatherStrokeTargets(Target, radius);
+            GatherStrokeTargets(Target, point, radius);
 
-            var chunk = factory.CreateEmptySnowball(BrushPoint, radius);
+            var chunk = factory.CreateEmptySnowball((Vector3)point, radius);
             foreach (var t in _strokeTargets)
                 if (t is SnowSculpture s && s != null && s != chunk.Sculpture)
-                    chunk.Sculpture.ExtractFrom(s, BrushPoint, radius, config.addShoulder);
+                    chunk.Sculpture.ExtractFrom(s, point, radius, config.addShoulder);
 
             float volume = chunk.Sculpture.DensityVolume();
             if (volume <= 1e-5f)
             {
                 Destroy(chunk.gameObject);           // nothing but air under the cursor...
-                PulseFree(BrushPoint, (Vector3)BrushPoint - Body.position); // ...but the grab still happened
+                PulseFree((Vector3)point, (Vector3)point - Body.position); // ...but the grab still happened
                 return;
             }
 
             foreach (var t in _strokeTargets)
             {
                 if (t is Component c && c == null) continue;
-                t.ApplyAdd(BrushPoint, radius, -255f, config.addShoulder); // full-strength one-shot removal
+                t.ApplyAdd(point, radius, -255f, config.addShoulder); // full-strength one-shot removal
                 t.Remesh();
-                t.RebuildColliders();
+                if (deferColliders) _dirtyTargets.Add(t);
+                else t.RebuildColliders();
             }
             Roller.TakeChunk(chunk, volume);
             CollectNetTargets(chunk.Sculpture);
             SculptureNet.RaiseScooped(new SculptureNet.ScoopInfo
-            { point = BrushPoint, radius = radius, targets = _netTargets, chunk = chunk, resultRadius = chunk.radius });
+            { point = point, radius = radius, targets = _netTargets, chunk = chunk, resultRadius = chunk.radius });
+        }
+
+        // ---------- continuous scoop ----------
+
+        /// <summary>
+        /// Remember the depth this scoop started at: the plane through the first contact point, facing the way
+        /// the surface did. Every later bite of the same press is centred on that plane, so sweeping the cursor
+        /// shaves an even band across the shape instead of boring deeper and deeper into its own crater — the
+        /// ray would otherwise land on the inside wall of the hole just dug and take the next bite from there.
+        /// </summary>
+        void BeginScoopDrag()
+        {
+            _scooping = true;
+            _scoopPlanePoint = (Vector3)BrushPoint;
+            _scoopPlaneNormal = ((Vector3)BrushNormal).sqrMagnitude > 1e-6f
+                ? ((Vector3)BrushNormal).normalized : Vector3.up;
+            _scoopLastBite = _scoopPlanePoint;
+            _scoopNextTime = Time.time + Mathf.Max(0f, config.scoopHoldInterval);
+        }
+
+        /// <summary>
+        /// The scoop button is still down. Keep the snow already in hand where it belongs, draw the bite the
+        /// cursor is over at the drag's own depth, and take it once the cursor has actually moved on.
+        /// </summary>
+        void ContinueScoopDrag()
+        {
+            // Both hands are busy: one holds what has been dug out so far, the other goes on digging.
+            if (Roller.IsCarrying) Roller.UpdateCarrying(null, liftToHand: !Roller.TooHeavyToLift);
+            ThrowCharge = 0f;
+            CurrentOp = BrushOp.None;
+
+            float radius = CurrentRadius();
+            if (!HasHit || Target == null || config.scoopHoldSpacing <= 0f) { HideBrushCursor(); return; }
+
+            // How far the snow under the cursor sits from the plane, along it. Past a radius the shape has
+            // fallen away from the depth this scoop is working at and there is nothing there to take.
+            float offPlane = Vector3.Dot((Vector3)BrushPoint - _scoopPlanePoint, _scoopPlaneNormal);
+            if (offPlane < -radius) { HideBrushCursor(); return; }
+
+            Vector3 at = (Vector3)BrushPoint - _scoopPlaneNormal * offPlane;
+            ShowCursor(at, radius, cursorCarveColor);
+            DriveScoopHand(at);
+
+            if (Time.time < _scoopNextTime) return;
+            float step = radius * config.scoopHoldSpacing;
+            if ((at - _scoopLastBite).sqrMagnitude < step * step) return;
+            _scoopNextTime = Time.time + Mathf.Max(0f, config.scoopHoldInterval);
+            _scoopLastBite = at;
+            ScoopChunk(at, radius, deferColliders: true);
+        }
+
+        /// <summary>The digging hand stays on the snow it is biting, whichever hand is free.</summary>
+        void DriveScoopHand(Vector3 at)
+        {
+            if (hands == null || !hands.IsReady) return;
+            hands.Reach(Roller.IsCarrying ? HandRig.Side.Left : HandRig.Side.Right, at, 1f, at - Body.position);
         }
 
         readonly List<SnowSculpture> _netTargets = new List<SnowSculpture>();
@@ -673,18 +791,9 @@ namespace Snowfield.Player
             IBrushTarget target = Target;
 
             float radius = CurrentRadius();
-            if (cursor != null)
-            {
-                // Aiming at a prop still shows the cursor so the brush feels continuous over accessories.
-                bool show = target != null;
-                cursor.gameObject.SetActive(show);
-                if (show)
-                {
-                    cursor.position = BrushPoint;
-                    cursor.localScale = Vector3.one * radius * 2f;
-                    SetCursorColor(smoothing ? cursorAddColor : cursorCarveColor);
-                }
-            }
+            // Aiming at a prop still shows the cursor so the brush feels continuous over accessories.
+            if (target != null) ShowCursor((Vector3)BrushPoint, radius, smoothing ? cursorAddColor : cursorCarveColor);
+            else if (cursor != null) cursor.gameObject.SetActive(false);
 
             bool pressing = op != BrushOp.None;
             if (pressing && target != null)
@@ -727,6 +836,24 @@ namespace Snowfield.Player
         }
 
         public float CurrentRadius() => config.addRadius * radiusScale;
+
+        /// <summary>
+        /// Snow under the reticle that these arms could pick up whole. A loose ball, a snowball somebody left
+        /// lying about, a finished sculpture — the same question for all three, asked of the roller so the
+        /// prompt and the key can never disagree about the answer.
+        /// </summary>
+        bool CanLiftAimed => LiftOffered && Roller.CanLift(Target);
+
+        /// <summary>
+        /// As above, but without the verdict, so the HUD can say why the key is on screen doing nothing.
+        ///
+        /// Mid-stroke is deliberately not offered. Weighing a sculpture means a pass over its grid, cached until
+        /// the snow changes - and a stroke changes it every tick, so asking while patting would rescan a grown
+        /// 192 grid twice a second for nothing. You are not about to pick up what you are patting.
+        /// </summary>
+        bool LiftOffered => Mode == ToolMode.Hand && !Roller.IsCarrying && !_scooping
+                            && CurrentOp == BrushOp.None && !IsSculpting
+                            && HasHit && Target != null && AimedProp == null;
 
         /// <summary>
         /// Chop the aimed sculpture along the previewed plane. The plane is spanned by the camera's forward
@@ -785,11 +912,14 @@ namespace Snowfield.Player
         }
 
         /// <summary>Everything the brush sphere touches: the aimed target plus any other grids under the kernel.</summary>
-        void GatherStrokeTargets(IBrushTarget aimed, float radius)
+        void GatherStrokeTargets(IBrushTarget aimed, float radius) => GatherStrokeTargets(aimed, BrushPoint, radius);
+
+        /// <summary>As above, with the kernel somewhere other than the aim point (a held scoop's depth plane).</summary>
+        void GatherStrokeTargets(IBrushTarget aimed, float3 at, float radius)
         {
             _strokeTargets.Clear();
             _strokeTargets.Add(aimed);
-            int n = Physics.OverlapSphereNonAlloc(BrushPoint, radius, _overlapScratch, sculptMask, QueryTriggerInteraction.Ignore);
+            int n = Physics.OverlapSphereNonAlloc((Vector3)at, radius, _overlapScratch, sculptMask, QueryTriggerInteraction.Ignore);
             for (int i = 0; i < n; i++)
             {
                 var s = _overlapScratch[i].GetComponentInParent<SnowSculpture>();
@@ -812,6 +942,16 @@ namespace Snowfield.Player
             }
             _dirtyTargets.Clear();
             _remeshAccumulator = 0f;
+        }
+
+        /// <summary>Put the brush sphere somewhere and colour it. The one place the cursor is positioned.</summary>
+        void ShowCursor(Vector3 at, float radius, Color colour)
+        {
+            if (cursor == null) return;
+            cursor.gameObject.SetActive(true);
+            cursor.position = at;
+            cursor.localScale = Vector3.one * radius * 2f;
+            SetCursorColor(colour);
         }
 
         MaterialPropertyBlock _cursorBlock;

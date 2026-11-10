@@ -63,6 +63,13 @@ namespace Snowfield.Player
         /// gets hoisted overhead. A whole sculpture always does.
         /// </summary>
         public bool TwoHandedCarry => Ball == null || config == null || Ball.radius >= config.handTwoHandedRadius;
+        /// <summary>
+        /// Snow too heavy to get off the ground. With no cap on how big a ball can grow, this is what keeps a
+        /// waist-high boulder from floating over your head: past the lift capacity the ball stays down, rolls
+        /// instead of being held, cannot be thrown, and fuses where it sits. Another player with their hands on
+        /// it raises the capacity, so a ball one of you could only shove, two of you can hoist.
+        /// </summary>
+        public bool TooHeavyToLift => Ball != null && config != null && !CanLift(Ball.Sculpture);
         /// <summary>What the hands are holding onto: a ball's centre, a sculpture's grab point.</summary>
         public Vector3 HoldCentre => Carried == null ? Vector3.zero
             : Ball != null ? Ball.Centre : Carried.transform.TransformPoint(_grabLocal);
@@ -74,9 +81,12 @@ namespace Snowfield.Player
         Vector3 _bottomLocal;       // lowest point of the carried object (under the grab point), in its frame
         float _footOffset;          // carried object's transform height above the ground under it at pick-up
 
+        SculptTool _tool;
+
         void Awake()
         {
             if (character == null) character = transform.root != transform ? transform.root : transform;
+            _tool = GetComponent<SculptTool>();   // the aim: what the player's hands are reaching for
             Snowball.TrenchStamper = StampTrenchAt;
             Snowball.RestHeightAdjuster = RestingCentreY;
             // Sculpture cannot see SnowGround, so hand the drape a ground probe the same way.
@@ -120,6 +130,30 @@ namespace Snowfield.Player
             }
         }
 
+        // ---------- what you can get off the ground ----------
+
+        /// <summary>
+        /// Weight of a thing, in kg. A ball answers from its nominal radius (free, and the number the player can
+        /// see); anything else is measured from its density, which <see cref="SnowSculpture.Mass"/> caches.
+        /// </summary>
+        public static float MassOf(SnowSculpture s)
+        {
+            if (s == null) return 0f;
+            var ball = s.GetComponent<Snowball>();
+            return ball != null ? ball.Mass : s.Mass;
+        }
+
+        /// <summary>
+        /// How much this group can get off the ground (kg): one pair of arms per player with their hands on it.
+        /// Every pusher derives the same number from the same facts, so nobody has to be told whether a lift is
+        /// allowed - and a snowman two people cannot shift becomes liftable the moment a third steps up to it.
+        /// </summary>
+        public float LiftCapacity(SnowSculpture s) =>
+            config == null ? float.MaxValue : config.liftMass * SnowPush.Arms(s);
+
+        /// <summary>Whether the arms currently on <paramref name="s"/> can pick it up at all.</summary>
+        public bool CanLift(SnowSculpture s) => s != null && MassOf(s) <= LiftCapacity(s);
+
         public bool CanReachGround(Vector3 groundPoint)
         {
             if (character == null) return false;
@@ -153,7 +187,7 @@ namespace Snowfield.Player
         public void TakeChunk(Snowball chunk, float volume)
         {
             if (chunk == null) return;
-            float maxR = config != null ? config.snowballMaxRadius : 0.6f;
+            float maxR = config != null ? config.MaxBallRadius : 0.6f;
             if (IsCarryingSculpture || volume <= 0f) { Destroy(chunk.gameObject); return; }
 
             if (Ball != null)
@@ -317,7 +351,10 @@ namespace Snowfield.Player
             if (!IsCarrying) return;
             var t = Carried.transform;
 
-            if (Ball != null && rollOnGround && !liftToHand && !previewGrabPoint.HasValue)
+            // Too heavy to lift overrides every caller: there is nothing a cursor can ask for that gets a
+            // boulder off the ground. The tool knows this too (no throw charge, no attach preview), so this is
+            // a backstop rather than the rule being enforced in two places.
+            if (Ball != null && (TooHeavyToLift || (rollOnGround && !liftToHand && !previewGrabPoint.HasValue)))
             {
                 RollAtFeet();
                 return;
@@ -337,11 +374,26 @@ namespace Snowfield.Player
             var t = Ball.transform;
             var terrain = SnowGround.Instance;
 
+            // How fast this much snow will go, for everyone with their hands on it. Published before the move so
+            // the character controller is already capped to it: the ball is glued in front of the player, so a
+            // ball that cannot keep up has to slow the player down rather than be left behind by them.
+            float limit = PushSpeedFor(Ball.Mass, Ball.Sculpture);
+            SnowPush.Set(Ball.Sculpture, limit);
+            _pushedThisFrame = true;
+
             Vector3 goal = ch.position + ch.forward * (CapsuleRadius + pushGap + Ball.radius);
             Vector3 prev = t.position;
             Vector3 newPos = Vector3.Lerp(prev, goal, 1f - Mathf.Exp(-14f * Time.deltaTime));
 
             Vector3 delta = newPos - prev; delta.y = 0f;
+            // The weight bites here: however far the glue would like the ball to travel this frame, the arms
+            // behind it only manage so much. A boulder visibly trails your facing while you shuffle it round.
+            float maxStep = limit * Time.deltaTime;
+            if (delta.magnitude > maxStep && maxStep > 0f)
+            {
+                delta = delta.normalized * maxStep;
+                newPos = prev + delta;
+            }
             float moved = delta.magnitude;
             Vector3 dir = moved > 0.0005f ? delta.normalized : ch.forward;
             Vector3 ahead = newPos + dir * Ball.radius; // ride the snow it rolls ONTO, not its own trench
@@ -351,8 +403,10 @@ namespace Snowfield.Player
                 bool fresh = terrain == null || terrain.IsFreshAt(ahead, config.footprintDepth * 1.5f);
                 Vector3 axis = Vector3.Cross(Vector3.up, dir);
                 t.Rotate(axis, moved / Ball.radius * Mathf.Rad2Deg, Space.World);
-                if (fresh && Ball.radius < config.snowballMaxRadius)
-                    Ball.Grow(Mathf.Min(config.snowballMaxRadius, Ball.radius + config.snowballGrowthPerMetre * moved));
+                // No design cap on ball size any more — only the ball's own grid wall. What stops you is the
+                // line above: every centimetre of radius is snow you then have to shove.
+                if (fresh && Ball.radius < config.MaxBallRadius)
+                    Ball.Grow(Mathf.Min(config.MaxBallRadius, Ball.radius + config.snowballGrowthPerMetre * moved));
             }
 
             float sink = config != null ? Ball.radius * config.rollTrenchDepthFraction * 0.5f : 0f;
@@ -362,6 +416,91 @@ namespace Snowfield.Player
             StampTrench(newPos, Ball.radius, ref _lastTrenchPos);
 
             Ball.Sculpture.Remesh(); // every frame: the ball's grid is small and stepped growth reads as snapping
+        }
+
+        // ---------- weight and strength ----------
+
+        /// <summary>Set by <see cref="RollAtFeet"/>; consumed in LateUpdate, after every Update has had its say.</summary>
+        bool _pushedThisFrame;
+
+        /// <summary>
+        /// Top speed this ball can be rolled at by everyone currently pushing it. Derived from the same three
+        /// numbers on every machine (the ball's mass, the config's power, the head count), so two players
+        /// shoving the same boulder agree about how fast it is going without anyone being authoritative.
+        /// </summary>
+        float PushSpeedFor(float massKg, SnowSculpture s)
+        {
+            if (config == null) return float.PositiveInfinity;
+            return SnowPush.SpeedFor(massKg, SnowPush.Arms(s), config.pushPower, config.pushMinSpeed);
+        }
+
+        /// <summary>
+        /// Who is pushing what, settled once a frame. A ball being rolled was claimed in <see cref="RollAtFeet"/>
+        /// during someone's Update; with empty hands the player may instead be leaning on a ball another player
+        /// is rolling, which is the whole of co-operative pushing — their arms are added to its head count by
+        /// the net layer, and both of them end up capped to the same, higher, speed.
+        /// </summary>
+        void LateUpdate()
+        {
+            if (_pushedThisFrame) { _pushedThisFrame = false; return; }
+            if (character == null || config == null) { SnowPush.Clear(); return; }
+
+            if (IsCarrying)
+            {
+                // A whole sculpture in your arms sets your pace out of the same budget as shoving one: a snowman
+                // you can just about lift is a waddle, and help makes it a walk. A ball small enough to palm is
+                // not worth slowing anyone down for.
+                if (Ball == null) SnowPush.Set(Carried, PushSpeedFor(Carried.Mass, Carried));
+                else SnowPush.Clear();
+                return;
+            }
+
+            // Hands free: your arms count toward whatever they are on. A ball another player is rolling is the
+            // co-operative push; a resting sculpture you are standing against and looking at is the co-operative
+            // LIFT, and it has to be claimable before anyone picks it up or two people could never start one
+            // together. A claim on something resting costs no speed - you are only leaning on it.
+            Snowball help = null;
+            float nearest = float.MaxValue;
+            var carried = Snowball.CarriedBalls;
+            for (int i = 0; i < carried.Count; i++)
+            {
+                var ball = carried[i];
+                if (ball == null || ball == Ball) continue;
+                Vector3 to = ball.Centre - character.position; to.y = 0f;
+                float flat = to.magnitude;
+                float gap = flat - ball.radius - CapsuleRadius;
+                if (gap > config.pushHelpRange || gap >= nearest) continue;
+                // Facing it: standing beside someone else's boulder is not pushing it.
+                if (flat > 0.001f && Vector3.Dot(character.forward, to / flat) < 0.4f) continue;
+                nearest = gap;
+                help = ball;
+            }
+
+            if (help != null) { SnowPush.Set(help.Sculpture, PushSpeedFor(help.Mass, help.Sculpture)); return; }
+
+            var within = ClaimableAtReticle();
+            if (within != null) SnowPush.Set(within, float.PositiveInfinity);
+            else SnowPush.Clear();
+        }
+
+        /// <summary>
+        /// The resting snow the player has their hands on: what the reticle is on, close enough to touch. Taken
+        /// from the tool's aim rather than a physics query of its own - the sculpture under your cursor is the
+        /// one you are about to try to lift, and asking the aim costs nothing.
+        /// </summary>
+        SnowSculpture ClaimableAtReticle()
+        {
+            if (_tool == null || !_tool.HasHit || _tool.Target == null) return null;
+            if (_tool.Target == Carried) return null;
+            Vector3 to = (Vector3)_tool.BrushPoint - character.position; to.y = 0f;
+            return to.magnitude - CapsuleRadius <= config.pushHelpRange ? _tool.Target : null;
+        }
+
+        void OnDisable()
+        {
+            // A limit left set by a disabled roller would cap the player's speed with nothing pushing anything.
+            if (SnowPush.Pushing != null) SnowPush.Clear();
+            _pushedThisFrame = false;
         }
 
         void StampTrenchAt(Vector3 ballCentre, float radius)

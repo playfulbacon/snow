@@ -23,13 +23,13 @@ MonoBehaviour:
   smoothShoulder: 0.5
   remeshHz: 10
   snowballStartRadius: 0.15
-  snowballMaxRadius: 0.6
   snowballGrowthPerMetre: 0.05
   scoopRadius: 0.12
   scoopDivotDepth: 0.04
-  snowballGridSize: 48
+  snowballGridSize: 64
   maxGridSize: 192
   regrowMarginVoxels: 4
+  mergeReachVoxels: 1
   terrainFieldSize: 40
   terrainCellSize: 0.05
   terrainChunkCells: 200

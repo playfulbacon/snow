@@ -245,7 +245,9 @@ namespace SnowDays.EditorTools
             rt.sizeDelta = new Vector2(PanelWidth, 400f);
             go.GetComponent<Image>().color = Card;
 
-            Column(go, padding: 28, spacing: 14);
+            // The outer column owns both axes of the heading and the content column: they are simply the width
+            // of the card, and their height is whatever they report.
+            Column(go, padding: 28, spacing: 14, controlWidth: true, controlHeight: true);
             // Width is the prefab's to own, height is the column's. A LayoutElement outranks a layout group when
             // the fitter asks for a preferred size, so the height it reports has to stay -1 ("no opinion").
             Sized(go, new Vector2(PanelWidth, -1f));
@@ -261,7 +263,9 @@ namespace SnowDays.EditorTools
 
             var contentGo = new GameObject("Content", typeof(RectTransform));
             contentGo.transform.SetParent(go.transform, false);
-            Column(contentGo, padding: 0, spacing: 12);
+            // Rows keep their own width (the button is narrower than the column on purpose) but NOT their own
+            // height: see Column for why reading that off the RectTransform stacked every row on top of the last.
+            Column(contentGo, padding: 0, spacing: 12, controlWidth: false, controlHeight: true);
             Sized(contentGo, new Vector2(PanelWidth - 56f, -1f));
             panel.content = (RectTransform)contentGo.transform;
 
@@ -460,15 +464,25 @@ namespace SnowDays.EditorTools
             text.resizeTextForBestFit = false;
         }
 
-        static void Column(GameObject go, float padding, float spacing)
+        /// <summary>
+        /// A column of rows. <paramref name="controlHeight"/> matters more than it looks: with it off, a
+        /// VerticalLayoutGroup stacks its children by reading each one's CURRENT RectTransform height instead of
+        /// asking what height it wants. A freshly instantiated row has not been laid out yet, so the answer is
+        /// whatever its prefab happens to have been saved with — and three of the row prefabs were saved with a
+        /// zero-size root, which put every slider, toggle and dropdown on a page at the same offset, drawn on
+        /// top of one another. With it on, the height comes from the row's own LayoutElement, which is where its
+        /// authored size lives anyway (the MenuButton trick, see <see cref="Sized"/>), so the prefabs still own
+        /// their looks and the column cannot be fooled by a stale rect.
+        /// </summary>
+        static void Column(GameObject go, float padding, float spacing,
+                           bool controlWidth = false, bool controlHeight = true)
         {
             var layout = go.AddComponent<VerticalLayoutGroup>();
             layout.padding = new RectOffset((int)padding, (int)padding, (int)padding, (int)padding);
             layout.spacing = spacing;
             layout.childAlignment = TextAnchor.UpperCenter;
-            // Positions its children and leaves their sizes alone: every row carries its own.
-            layout.childControlWidth = false;
-            layout.childControlHeight = false;
+            layout.childControlWidth = controlWidth;
+            layout.childControlHeight = controlHeight;
             layout.childForceExpandWidth = false;
             layout.childForceExpandHeight = false;
         }
@@ -494,6 +508,12 @@ namespace SnowDays.EditorTools
             fitter.horizontalFit = size.x >= 0f ? ContentSizeFitter.FitMode.PreferredSize
                                                 : ContentSizeFitter.FitMode.Unconstrained;
             fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+            // And say it on the RectTransform too. The fitter gets there on its own at runtime, but the saved
+            // prefab is what a layout group reads on the first frame an instance exists, and a prefab saved with
+            // a zero rect is how the whole menu came to be drawn in one spot.
+            var rt = (RectTransform)go.transform;
+            var saved = rt.sizeDelta;
+            rt.sizeDelta = new Vector2(size.x >= 0f ? size.x : saved.x, size.y >= 0f ? size.y : saved.y);
         }
 
         static void Stretch(RectTransform rt)

@@ -80,6 +80,11 @@ namespace Snowfield.Net
             CarriedActive = carried;
             _targetPos = pos;
             _targetRot = rot;
+            // Say out loud that somebody has hold of it. Nothing local reads a remote ball's state for its own
+            // motion, but Snowball.CarriedBalls is the only way a player standing next to a ball someone else
+            // is rolling can find it to lend their arms — its colliders are off and no query will see it.
+            if (_ball != null && carried && _ball.Current != Snowball.State.Carrying)
+                _ball.SetState(Snowball.State.Carrying);
             if (_ball != null && radius > _ball.radius + 0.0025f)
             {
                 _ball.Grow(radius);

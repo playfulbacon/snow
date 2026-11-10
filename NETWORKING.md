@@ -38,11 +38,25 @@ gameplay code ──raises──▶ SculptureNet (static seam, Snowfield.Sculptu
   full parameter set, including poses that came from physics. Regrow broadcasts its exact grid size+origin so
   peers regrow byte-identically. A Fuse replays its inner Promote/Regrow on every peer (only the outermost op
   broadcasts — `SculptureNet.StructuralDepth`).
+- **Merging two sculptures needs no wire format of its own.** When fused-on snow closes the gap between two
+  shapes they become one (`SculptureFactory.MergeTouching`, CLAUDE.md), and that is already a fuse of one
+  sculpture into another: the acting peer detects it and broadcasts a plain Fuse naming both ids, raised at
+  depth 0 after the first one finished. A replay never looks for merges of its own (`SculptureNet.Suppress`) —
+  the originator's events are on their way, and two peers each deciding from their own grids is how ids come
+  apart. Which sculpture survives is decided by grid size, which both peers already agree on.
 - **Physics flights never replay** (CLAUDE.md rule): a throw event spawns a cosmetic kinematic arc on remotes
   (`RemoteBallDrive`), and the authoritative splat (`Fuse`) or `Rest` event snaps the outcome.
 - **Carried/rolled balls** stream pose+radius at 10 Hz unreliable from the carrier; remotes ease toward it,
   grow the ball on radius change, and press roll trenches into their own snow window from the replicated
   motion (no extra traffic — deformation is windowed, decaying, cosmetic, per CLAUDE.md).
+- **Shared pushing**: each peer says what it has its hands on (`SnowNetChannel.StreamPushing`, a sculpture id
+  on change with a 2 Hz floor, unreliable) and installs `SnowPush.RemoteHelpers`. Nobody is authoritative about
+  how fast a ball is going: the speed limit falls out of mass, `pushPower` and the head count, which every peer
+  derives from the same numbers. A departing client's claim is cleared by the host on their behalf.
+- **Snowballs hitting people**: the avatar prefab carries a capsule (disabled on your own avatar, which sits
+  inside your own) and a `SnowballTarget`. The flight only runs on the thrower, so the hit is detected there and
+  `NetAvatar.HitRpc` tells the owner, who sprays the snow and shoves their own capsule. The ball itself needs no
+  event — it drops at their feet and settles into the usual `Rest`.
 - **Ground deformation**: scoop divots replay inside the scoop event; footprints come free — remote avatars
   get `SnowFootprints` at spawn (`SnowNetGlue`) and stamp locally from their animated bones.
 - **Late join**: the host's world is THE world. A joining client wipes its local field and receives every
@@ -88,6 +102,8 @@ gameplay code ──raises──▶ SculptureNet (static seam, Snowfield.Sculptu
 - `Assets/Net/SnowNetGlue.cs` — SnowDays side: local rig registration, footprints on remote avatars.
 - `Assets/Editor/NetSceneSetup.cs` — builds `Assets/Net/NetAvatar.prefab` + `NetChannel.prefab`, wires the
   `Network` root (NetworkManager + UnityTransport + NetBootstrap). Runs inside `MainSceneSetup.Run`.
+- `Assets/Snowfield/Player/SnowPush.cs` — the other Assembly-CSharp inversion seam: the push speed limit the
+  character controller obeys, and the helper count the net layer fills in.
 - Seam raise points were added in: `SculptureFactory` (+ `RegrowExact`), `SculptTool`, `SnowballRoller`,
   `AccessoryPlacer` (+ static `PlaceEntry`), `Snowball` (rest on landing), `SaveLoadManager` (F9 guard).
 

@@ -33,19 +33,30 @@ namespace Snowfield.Config
 
         [Header("Snowball")]
         public float snowballStartRadius = 0.15f;
-        public float snowballMaxRadius = 0.6f;
         [Tooltip("Radius gained per metre rolled over fresh snow.")]
         public float snowballGrowthPerMetre = 0.04f;
         [Tooltip("Radius of a freshly scooped handful of snow (m).")]
         public float scoopRadius = 0.12f;
         [Tooltip("Depth of the divot a scoop leaves in the field (m).")]
         public float scoopDivotDepth = 0.04f;
-        [Tooltip("Voxels per axis for a loose snowball's own grid (multiple of 16). Must hold the max diameter plus brush room.")]
-        public int snowballGridSize = 48;
+        [Tooltip("Voxels per axis for a loose snowball's own grid (multiple of 16). This is what sets MaxBallRadius.")]
+        public int snowballGridSize = 64;
+
+        /// <summary>
+        /// The biggest a loose snowball can get. There is no longer a design cap on ball size — what stops you is
+        /// your own strength (see <see cref="pushPower"/>), which turns a boulder into a crawl long before this.
+        /// This is only the wall of the ball's own grid: its sphere is stamped into a snowballGridSize cube, and
+        /// snow past the edge would simply be clipped off. Loose balls never regrow (CLAUDE.md), so the wall is
+        /// final — two voxels of margin keep the stamp's shoulder inside it.
+        /// </summary>
+        public float MaxBallRadius => snowballGridSize * voxelSize * 0.5f - voxelSize * 2f;
+
         [Tooltip("Auto-regrow ceiling: a sculpture's grid grows on demand up to this many voxels per axis (multiple of 16).")]
         public int maxGridSize = 192;
         [Tooltip("Free voxels the brush wants between its edge and the grid wall before a regrow is triggered.")]
         public int regrowMarginVoxels = 4;
+        [Tooltip("How close two sculptures' snow has to come before they count as joined and merge into one sculpture (voxels). 0 = they must actually overlap.")]
+        public int mergeReachVoxels = 1;
 
         [Header("Terrain (heightmap field)")]
         [Tooltip("Field side length in metres.")]
@@ -86,6 +97,24 @@ namespace Snowfield.Config
         public float rollEngageDistance = 3.5f;
         [Tooltip("Holding LMB longer than this (s) starts a throw charge; a shorter tap places or drops what you are carrying.")]
         public float throwTapThreshold = 0.2f;
+
+        [Header("Weight and strength")]
+        [Tooltip("Packed snow's density (kg/m3). The one number that turns volume into weight, for a rolled ball and a whole sculpture alike - so size is the only thing you have to read off the screen to know how hard something will be to move.")]
+        public float snowDensity = 350f;
+        [Tooltip("How much snow one pair of arms can shove, in kg*m/s: the top rolling speed is this divided by the ball's mass. At 250 a handful rolls as fast as you can walk, a 40 cm ball keeps up at a stroll, and a waist-high boulder is a crawl you need help with.")]
+        public float pushPower = 250f;
+        [Tooltip("Slowest a ball can be rolled (m/s). Not a stall: it keeps a monstrous ball nudgeable rather than welding the player to the spot, since the push limit also caps how fast they can walk.")]
+        public float pushMinSpeed = 0.2f;
+        [Tooltip("How close another player has to be to the ball's surface to lend their arms to it (m). Their strength adds to whoever is rolling it.")]
+        public float pushHelpRange = 0.9f;
+        [Tooltip("Heaviest snow ONE pair of arms can pick up off the ground (kg) - a rolled ball or a whole sculpture. Anything heavier stays down and can only be rolled, cannot be thrown, and attaches where it sits rather than where the cursor points. Every other player with their hands on it raises this by the same amount again. At the default density 60 kg is a ball about 35 cm across the radius.")]
+        public float liftMass = 60f;
+
+        [Header("Scoop")]
+        [Tooltip("Holding the scoop button keeps biting as the cursor moves. Metres of cursor travel between bites, as a fraction of the brush radius - 0 disables the drag and a hold scoops one chunk, as it used to.")]
+        [Range(0f, 2f)] public float scoopHoldSpacing = 0.55f;
+        [Tooltip("Shortest time between bites while the scoop button is held (s), whatever the cursor does.")]
+        [Min(0f)] public float scoopHoldInterval = 0.08f;
 
         [Header("Hands")]
         [Tooltip("Snow at least this big (radius, m) takes both hands; anything smaller sits in one palm.")]

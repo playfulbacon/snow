@@ -117,7 +117,7 @@ namespace Snowfield.Sculpture
                 big.Remesh();
                 big.RebuildColliders();
                 SculptureNet.RaiseReplaced(ball.Sculpture, big);
-                Destroy(ball.gameObject);
+                Retire(ball.Sculpture);
                 return big;
             }
             finally { SculptureNet.PopStructural(); }
@@ -171,7 +171,7 @@ namespace Snowfield.Sculpture
                 big.RebuildColliders();
                 Debug.Log($"[Snowfield] Regrew sculpture {s.Info.size}³ → {sizeVox}³");
                 SculptureNet.RaiseReplaced(s, big);
-                Destroy(s.gameObject);
+                Retire(s);
             }
             finally { SculptureNet.PopStructural(); }
             SculptureNet.RaiseRegrowCommitted(big, sizeVox, origin);
@@ -189,11 +189,16 @@ namespace Snowfield.Sculpture
         /// <summary>Fuse a snowball (at its current transform) into <paramref name="target"/>; the ball is consumed.</summary>
         public SnowSculpture Fuse(SnowSculpture target, Snowball ball) => Fuse(target, ball != null ? ball.Sculpture : null);
 
-        /// <summary>Fuse any sculpture (at its current transform) into <paramref name="target"/>; the source is consumed, its props move across.</summary>
-        public SnowSculpture Fuse(SnowSculpture target, SnowSculpture source)
+        /// <summary>
+        /// Fuse any sculpture (at its current transform) into <paramref name="target"/>; the source is consumed,
+        /// its props move across. <paramref name="spray"/> is false only for a merge: nothing arrived with force
+        /// there, the two shapes were already standing where they stand — see <see cref="MergeTouching"/>.
+        /// </summary>
+        public SnowSculpture Fuse(SnowSculpture target, SnowSculpture source, bool spray = true)
         {
             if (target == null || source == null || target == source) return target;
             SculptureNet.RaiseFuseCommitted(target, source); // before EnsureRoom: ids + source pose still readable
+            if (spray) BurstOnJoin(target, source);          // read the poses before either is rebuilt or consumed
             SculptureNet.PushStructural();
             try
             {
@@ -212,10 +217,140 @@ namespace Snowfield.Sculpture
                 var targetBall = target.GetComponent<Snowball>();
                 if (targetBall != null) targetBall.Fix();
                 SculptureNet.RaiseRemoved(source);
-                Destroy(source.gameObject);
-                return target;
+                Retire(source);
             }
             finally { SculptureNet.PopStructural(); }
+            // The snow that just arrived may have closed the gap to a neighbour: one lump is one sculpture.
+            return MergeTouching(target);
+        }
+
+        /// <summary>
+        /// Snow that reaches a neighbour makes one sculpture out of two. Run at the end of every
+        /// <see cref="Fuse"/>, because packing more snow on is the only thing that can close the gap between two
+        /// shapes — and once it has, they are one lump, so they get one grid, one id, one set of props, and the
+        /// brush can no longer find a seam between them.
+        ///
+        /// A merge is a local decision that travels as exactly what it is: an ordinary fuse of one sculpture into
+        /// another, raised at depth 0 so every peer replays the same two ids and no new wire format is needed. A
+        /// remote replay never goes looking for merges of its own (<see cref="SculptureNet.Suppress"/>) — the
+        /// originator's events are already on their way, and two peers each deciding for themselves is how ids
+        /// come apart.
+        /// </summary>
+        public SnowSculpture MergeTouching(SnowSculpture s)
+        {
+            if (s == null || s.Grid == null || config == null || SculptureNet.Suppress) return s;
+            // Fuse recurses back into here, so one pass normally finishes the chain; the loop is the backstop.
+            for (int i = 0; i < MaxMergesPerFuse; i++)
+            {
+                var other = FindTouching(s);
+                if (other == null) break;
+                // The bigger grid survives: Fuse regrows the TARGET to fit the source and gives up at
+                // maxGridSize, so pouring the small one into the big one is the direction that cannot clip.
+                // No spray: the fuse that closed the gap already threw its puff at the point of contact, and
+                // BurstOnJoin would put this one at the centre of a snowman nobody touched.
+                s = other.Info.size > s.Info.size ? Fuse(other, s, spray: false) : Fuse(s, other, spray: false);
+            }
+            return s;
+        }
+
+        const int MaxMergesPerFuse = 8;
+
+        /// <summary>The first sculpture whose snow meets <paramref name="s"/>'s, or null. Policy lives here.</summary>
+        SnowSculpture FindTouching(SnowSculpture s)
+        {
+            var root = container != null ? container : transform;
+            float reach = Mathf.Max(0, config.mergeReachVoxels) * config.voxelSize;
+            var snow = s.SnowBoundsWorld();
+            if (snow.size == Vector3.zero) return null;
+            var probe = snow;
+            probe.Expand(reach * 2f);
+            for (int i = 0; i < root.childCount; i++)
+            {
+                var child = root.GetChild(i);
+                if (!child.gameObject.activeSelf) continue; // retired this frame; see Retire
+                var c = child.GetComponent<SnowSculpture>();
+                if (c == null || c == s || c.Grid == null || !MergeCandidate(c)) continue;
+                if (!c.WorldBounds.Intersects(probe)) continue;  // free: grid cubes nowhere near each other
+                var cSnow = c.SnowBoundsWorld();
+                if (cSnow.size == Vector3.zero || !probe.Intersects(cSnow)) continue;
+                if (!FitsOneGrid(snow, cSnow)) continue;
+                if (!s.TouchesSnow(c, reach)) continue;
+                return c;
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Snow that is not ours to merge. A loose ball is a thing you can still pick up and roll, and it is
+        /// allowed to rest against a snowman without becoming part of it — attaching it is a deliberate tap.
+        /// Anything in somebody's hands or mid-flight sits on the Ignore Raycast layer, which is the one answer
+        /// to "is a player using this".
+        /// </summary>
+        static bool MergeCandidate(SnowSculpture s)
+        {
+            // Asked at the call, never cached in a field: a static initializer on a MonoBehaviour runs during
+            // type init, and Unity refuses NameToLayer there (it is what the rest of the codebase does too).
+            if (s.gameObject.layer == LayerMask.NameToLayer("Ignore Raycast")) return false;
+            var ball = s.GetComponent<Snowball>();
+            return ball == null || !ball.IsLoose;
+        }
+
+        /// <summary>
+        /// Let go of a sculpture the factory has just emptied. Destroy is deferred to the end of the frame, so a
+        /// consumed source (or the small grid a regrow left behind) is still sitting in the container with its
+        /// snow in it when <see cref="FindTouching"/> comes looking for neighbours — and it overlaps its own
+        /// replacement perfectly, so it would be merged straight back in. Deactivating it says "gone" now.
+        /// </summary>
+        static void Retire(SnowSculpture s)
+        {
+            if (s == null) return;
+            s.gameObject.SetActive(false);
+            Destroy(s.gameObject);
+        }
+
+        /// <summary>
+        /// Would both lumps fit in one grid? Past maxGridSize <see cref="Regrow"/> gives up and Absorb clips
+        /// whatever hangs outside the grid, which would quietly delete the end of somebody's sculpture — so two
+        /// big shapes that meet stay two sculptures, seam and all. That is the cap doing its job.
+        /// </summary>
+        bool FitsOneGrid(Bounds a, Bounds b)
+        {
+            var u = a;
+            u.Encapsulate(b);
+            float margin = config.regrowMarginVoxels * config.voxelSize * 2f;
+            int maxSize = Mathf.Max(config.gridSize, config.maxGridSize / 16 * 16);
+            return Mathf.Max(u.size.x, Mathf.Max(u.size.y, u.size.z)) + margin <= maxSize * config.voxelSize;
+        }
+
+        /// <summary>
+        /// Snow landing on snow. Every way that happens comes through <see cref="Fuse"/> — a handful pressed on
+        /// by hand, a thrown ball splatting, a remote player's attach being replayed — so this is the one place
+        /// that has to know about it, and remotes spray without a single extra byte on the wire.
+        ///
+        /// The burst goes where the two actually meet: the source's snow centre pushed back toward the target,
+        /// not the source's transform (a snowball's transform is its centre, a sculpture's is a grid corner).
+        /// </summary>
+        static void BurstOnJoin(SnowSculpture target, SnowSculpture source)
+        {
+            Vector3 at;
+            float radius;
+            var ball = source.GetComponent<Snowball>();
+            if (ball != null)
+            {
+                at = ball.Centre;                        // a ball's transform IS its centre, and it knows its size
+                radius = ball.radius;
+            }
+            else
+            {
+                // A whole sculpture being set down: scanning its density for the real extent costs a pass over
+                // the grid, and Fuse is about to do far more than that, so this one is worth being exact about.
+                var snow = source.SnowBoundsWorld();
+                at = snow.size == Vector3.zero ? source.transform.position : snow.center;
+                radius = Mathf.Clamp(Mathf.Max(snow.extents.x, snow.extents.z), 0.05f, 0.8f);
+            }
+            Vector3 away = at - target.WorldBounds.center;
+            Vector3 normal = away.sqrMagnitude > 1e-6f ? away.normalized : Vector3.up;
+            SnowBurst.Play(at - normal * (radius * 0.5f), normal, radius);
         }
     }
 }

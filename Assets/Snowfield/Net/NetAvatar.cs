@@ -1,4 +1,5 @@
 using Snowfield.Player;
+using Snowfield.Sculpture;
 using Unity.Netcode;
 using Unity.Netcode.Components;
 using UnityEngine;
@@ -46,6 +47,7 @@ namespace Snowfield.Net
 
         Animator _animator;
         bool _followWarned;
+        CapsuleCollider _body;
 
         // Hands. The owner mirrors its own rig's goals; everyone else replays them onto this avatar's rig.
         const float HandSendInterval = 1f / 15f;
@@ -58,18 +60,68 @@ namespace Snowfield.Net
         {
             _animator = GetComponentInChildren<Animator>(true);
             _hands = GetComponent<HandRig>();
+            _body = EnsureBody();
             if (IsOwner)
             {
                 // Your own avatar exists only so the others can see you.
                 foreach (var r in GetComponentsInChildren<Renderer>(true)) r.enabled = false;
                 if (_animator != null) _animator.enabled = false;
                 if (_hands != null) _hands.enabled = false; // nothing to solve on a hidden body
+                // ...and it sits exactly where your own capsule is, so a live collider here would have the
+                // character controller shoving itself around, and your own snowballs hitting you in the back.
+                if (_body != null) _body.enabled = false;
                 SnapToLocalPlayer();
             }
             else
             {
+                MakeHittable();
                 NetAvatarHooks.RemoteAvatarSpawned?.Invoke(gameObject);
             }
+        }
+
+        /// <summary>
+        /// A body for the ball to hit — and for you to walk into. Self-healing rather than only authored in
+        /// NetSceneSetup: a prefab from before snowballs could hit people has no collider, and a remote player
+        /// you can throw straight through is the kind of thing that reads as the throw being broken.
+        /// Matches the local player's capsule (Game.prefab): 2.1 m tall, bottom-anchored, 0.42 m radius.
+        /// </summary>
+        CapsuleCollider EnsureBody()
+        {
+            var capsule = GetComponent<CapsuleCollider>();
+            if (capsule != null) return capsule;
+            capsule = gameObject.AddComponent<CapsuleCollider>();
+            capsule.height = 2.1015205f;
+            capsule.radius = 0.42030412f;
+            capsule.center = new Vector3(0f, 1.0707603f, 0f);
+            return capsule;
+        }
+
+        /// <summary>
+        /// Somebody else's body, on this machine. Their flights do not run here (physics stays with the thrower),
+        /// so the only hits this ever sees are from balls thrown by the player at this keyboard — and the shove
+        /// has to happen on the machine that owns the body being shoved, hence the RPC rather than a local push.
+        /// </summary>
+        void MakeHittable()
+        {
+            var target = GetComponent<SnowballTarget>();
+            if (target == null) target = gameObject.AddComponent<SnowballTarget>();
+            target.onHit = hit => HitRpc(hit.point, hit.normal, hit.velocity, hit.mass, hit.radius);
+        }
+
+        /// <summary>
+        /// "You have been hit." Sent by the thrower to the owner of the body, who sprays the snow and takes the
+        /// shove on their own capsule. Reliable: a knock the victim never hears about is a throw that visibly
+        /// landed and did nothing. NGO proxies a client-to-owner call through the host on its own.
+        /// </summary>
+        [Rpc(SendTo.Owner)]
+        void HitRpc(Vector3 point, Vector3 normal, Vector3 velocity, float mass, float radius)
+        {
+            var rig = NetAvatarHooks.GetLocalPlayer?.Invoke();
+            var mine = rig?.root != null ? rig.Value.root.GetComponent<SnowballTarget>() : null;
+            var hit = new SnowballTarget.Hit
+            { point = point, normal = normal, velocity = velocity, mass = mass, radius = radius };
+            if (mine != null) mine.Strike(hit);
+            else SnowBurst.Play(point, normal, radius, Mathf.Max(1f, hit.Impact / 3f)); // at least show the splat
         }
 
         void SnapToLocalPlayer()

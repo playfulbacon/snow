@@ -17,6 +17,7 @@ namespace Snowfield.Player
         Scroll,
         ShiftScroll,
         Tab,
+        PickUp,
         Escape,
         Mute,
         SaveKey,
@@ -26,7 +27,6 @@ namespace Snowfield.Player
         Look,
         Run,
         Jump,
-        Stances,
     }
 
     /// <summary>How a glyph is drawn: a mouse picture where there is one, otherwise a key cap with text in it.</summary>
@@ -66,6 +66,7 @@ namespace Snowfield.Player
             InputGlyph.Scroll => "Scroll",
             InputGlyph.ShiftScroll => "Scroll",
             InputGlyph.Tab => "Tab",
+            InputGlyph.PickUp => "E",
             InputGlyph.Escape => "Esc",
             InputGlyph.Mute => "M",
             InputGlyph.SaveKey => "F5",
@@ -75,7 +76,6 @@ namespace Snowfield.Player
             InputGlyph.Look => "Mouse",
             InputGlyph.Run => "Shift",
             InputGlyph.Jump => "Space",
-            InputGlyph.Stances => "Q / E",
             _ => "",
         };
 

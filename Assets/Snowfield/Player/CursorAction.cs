@@ -20,6 +20,9 @@ namespace Snowfield.Player
         UsePoint,
         FinishChain,
         ScoopSnow,
+        ScoopAcross,
+        PickUpSnow,
+        TooHeavy,
         Drop,
         SliceSnow,
         RotateSlice,
@@ -48,6 +51,11 @@ namespace Snowfield.Player
             CursorAction.UsePoint => "Use this point",
             CursorAction.FinishChain => "Finish the strand",
             CursorAction.ScoopSnow => "Scoop",
+            CursorAction.ScoopAcross => "Scoop across the snow",
+            CursorAction.PickUpSnow => "Pick it up",
+            // Not an action: it says why the key is on screen and doing nothing, the way StackFull does. With
+            // another player's arms on the same snow the capacity doubles, so this is a "not yet", not a "never".
+            CursorAction.TooHeavy => "Too heavy to lift alone",
             CursorAction.Drop => "Let go",
             CursorAction.SliceSnow => "Slice",
             CursorAction.RotateSlice => "Turn the cut",

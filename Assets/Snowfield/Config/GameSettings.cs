@@ -39,7 +39,12 @@ namespace Snowfield.Config
         static bool s_VSync = true;
         static int s_Quality = -1;
         static bool s_ShowStatus;
+        static string s_MicDevice = "";
+        static string s_OutputDevice = "";
         static bool s_Loaded;
+
+        /// <summary>Stored value meaning "whatever the operating system says is the default device".</summary>
+        public const string SystemDevice = "";
 
         public const float LookMin = 0.2f;
         public const float LookMax = 3f;
@@ -69,6 +74,26 @@ namespace Snowfield.Config
         {
             get { Ensure(); return s_Voice; }
             set => Set(ref s_Voice, Mathf.Clamp01(value));
+        }
+
+        /// <summary>
+        /// Microphone to talk through, by the name the voice service gives it. Stored as a NAME rather than an
+        /// index on purpose: a headset that was third in the list last week is first today, and an index would
+        /// quietly switch the player to a different microphone. Empty means the system default, which is both
+        /// the sane fallback and what a name that is no longer plugged in falls back to.
+        /// Applied by Snowfield.Net (which owns the Vivox dependency), the same way <see cref="VoiceVolume"/> is.
+        /// </summary>
+        public static string MicDevice
+        {
+            get { Ensure(); return s_MicDevice; }
+            set => Set(ref s_MicDevice, value ?? SystemDevice);
+        }
+
+        /// <summary>Speakers or headphones other players' voices come out of. Same rules as <see cref="MicDevice"/>.</summary>
+        public static string OutputDevice
+        {
+            get { Ensure(); return s_OutputDevice; }
+            set => Set(ref s_OutputDevice, value ?? SystemDevice);
         }
 
         /// <summary>Multiplier on the controller's authored look speed, so tuning that value still means something.</summary>
@@ -164,6 +189,8 @@ namespace Snowfield.Config
             s_VSync = PlayerPrefs.GetInt(Prefix + "screen.vsync", QualitySettings.vSyncCount > 0 ? 1 : 0) == 1;
             s_Quality = PlayerPrefs.GetInt(Prefix + "screen.quality", QualitySettings.GetQualityLevel());
             s_ShowStatus = PlayerPrefs.GetInt(Prefix + "hud.status", 0) == 1;
+            s_MicDevice = PlayerPrefs.GetString(Prefix + "voice.mic", SystemDevice);
+            s_OutputDevice = PlayerPrefs.GetString(Prefix + "voice.out", SystemDevice);
         }
 
         public static void Save()
@@ -182,6 +209,8 @@ namespace Snowfield.Config
             PlayerPrefs.SetInt(Prefix + "screen.vsync", s_VSync ? 1 : 0);
             PlayerPrefs.SetInt(Prefix + "screen.quality", s_Quality);
             PlayerPrefs.SetInt(Prefix + "hud.status", s_ShowStatus ? 1 : 0);
+            PlayerPrefs.SetString(Prefix + "voice.mic", s_MicDevice ?? SystemDevice);
+            PlayerPrefs.SetString(Prefix + "voice.out", s_OutputDevice ?? SystemDevice);
             PlayerPrefs.Save();
         }
 

@@ -34,6 +34,13 @@ namespace Snowfield.Net
         // Host: which ball each client's pose stream is driving (settled on disconnect).
         readonly Dictionary<ulong, ulong> _carriedByClient = new Dictionary<ulong, ulong>();
 
+        // Everyone: who has their hands on what. Shoving a heavy ball is a shared effort, so each peer has to
+        // know how many pairs of arms are on it — the speed limit falls straight out of mass and head count, so
+        // nobody has to be authoritative about how fast the thing is actually going.
+        readonly Dictionary<ulong, ulong> _pushingByClient = new Dictionary<ulong, ulong>();
+        float _pushTimer;
+        ulong _pushSent;
+
         // Client: snapshot gate. Events are held until the host's join-time world has fully landed.
         bool _gateOpen;
         int _expectedSnapshots = -1;
@@ -52,6 +59,7 @@ namespace Snowfield.Net
             _sync.Attach();
             _sync.Send = SubmitLocal;
             SaveLoadManager.BlockManualLoad = true;
+            SnowPush.RemoteHelpers = CountHelpers;
 
             if (IsServer)
             {
@@ -77,6 +85,8 @@ namespace Snowfield.Net
         {
             if (Instance == this) Instance = null;
             SaveLoadManager.BlockManualLoad = false;
+            SnowPush.RemoteHelpers = null;   // back to your own strength alone
+            _pushingByClient.Clear();
             if (IsServer && NetworkManager != null)
             {
                 NetworkManager.OnClientConnectedCallback -= OnClientConnected;
@@ -97,6 +107,7 @@ namespace Snowfield.Net
             if (!IsSpawned || _sync == null) return;
             _sync.Tick(Time.deltaTime);
             StreamCarried();
+            StreamPushing();
         }
 
         // ------------------------------------------------------------------ event relay
@@ -161,11 +172,59 @@ namespace Snowfield.Net
             _sync?.ApplyCarried(id, pos, rot, radius, carried);
         }
 
+        // ------------------------------------------------------------------ shared pushing (~on change, 2 Hz floor)
+
+        /// <summary>
+        /// Tell the others what the local player has their hands on. Tiny and rare — it changes when you pick a
+        /// ball up, put it down or step up to someone else's — so it goes out on change, with a slow repeat
+        /// because the delivery is unreliable and a lost "let go" would leave a phantom helper behind.
+        /// </summary>
+        void StreamPushing()
+        {
+            ulong id = 0;
+            var pushing = SnowPush.Pushing;
+            if (pushing != null && !_sync.Registry.TryGetId(pushing, out id)) id = 0;
+
+            _pushTimer += Time.deltaTime;
+            if (id == _pushSent && _pushTimer < 0.5f) return;
+            _pushTimer = 0f;
+            _pushSent = id;
+            SubmitPushingRpc(id);
+        }
+
+        [Rpc(SendTo.Server, Delivery = RpcDelivery.Unreliable)]
+        void SubmitPushingRpc(ulong id, RpcParams rpcParams = default)
+        {
+            BroadcastPushingRpc(id, rpcParams.Receive.SenderClientId);
+        }
+
+        [Rpc(SendTo.Everyone, Delivery = RpcDelivery.Unreliable)]
+        void BroadcastPushingRpc(ulong id, ulong origin)
+        {
+            if (id == 0) _pushingByClient.Remove(origin);
+            else _pushingByClient[origin] = id;
+        }
+
+        /// <summary>Players other than this one with their hands on <paramref name="s"/>.</summary>
+        int CountHelpers(SnowSculpture s)
+        {
+            if (s == null || _sync == null || _pushingByClient.Count == 0) return 0;
+            if (!_sync.Registry.TryGetId(s, out ulong id)) return 0;
+            ulong me = NetworkManager != null ? NetworkManager.LocalClientId : ulong.MaxValue;
+            int n = 0;
+            foreach (var kv in _pushingByClient)
+                if (kv.Value == id && kv.Key != me) n++;
+            return n;
+        }
+
         // ------------------------------------------------------------------ carrier disconnect
 
         void OnClientDisconnected(ulong clientId)
         {
             if (!IsServer || _sync == null) return;
+            // Their arms left with them: the keepalive above never clears a client that is gone, so the host
+            // says so on their behalf or whatever they were pushing stays mysteriously easy to shove.
+            if (_pushingByClient.Remove(clientId)) BroadcastPushingRpc(0, clientId);
             if (!_carriedByClient.TryGetValue(clientId, out ulong ballId)) return;
             _carriedByClient.Remove(clientId);
             if (!_sync.Registry.TryGet(ballId, out var s)) return;

@@ -60,6 +60,8 @@ namespace Snowfield.Sculpture
         public void Initialise(int size, float voxelSize)
         {
             Teardown();
+            _massKg = -1f;          // a brand-new grid: whatever was weighed before was a different sculpture
+            _massStale = true;
             Grid = new VoxelGrid(size, voxelSize);
             _lookup = MarchingCubesLookup.Create(Allocator.Persistent);
             _scratch = new NativeArray<byte>(Grid.Info.VoxelCount, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
@@ -151,6 +153,7 @@ namespace Snowfield.Sculpture
                 CenterVoxel = c, RadiusVoxels = r, Shoulder = shoulder,
             }.Schedule(ext.x * ext.y * ext.z, 128).Complete();
             Grid.MarkDirty(min, max);
+            MassChanged();
         }
 
         /// <summary>Volume of snow in this grid, in cubic metres (density-weighted).</summary>
@@ -177,8 +180,42 @@ namespace Snowfield.Sculpture
                 FeatherVoxels = 1f,
             }.Schedule(Info.VoxelCount, 256).Complete();
             Grid.MarkAllDirty();
+            MassChanged();
             return math.max(0f, before - DensityVolume());
         }
+
+        /// <summary>
+        /// Weight of the snow in this grid (kg): its volume times the config's snow density. This is what
+        /// decides whether a sculpture can be picked up and carried, so it has to be askable while the reticle
+        /// rests on it - but <see cref="DensityVolume"/> is a pass over every voxel (7 million of them on a
+        /// grown 192 grid), which is not a per-frame question.
+        ///
+        /// So it is cached and only rescanned when the grid has actually changed, and then at most twice a
+        /// second: a snowman nobody is touching is measured once and free from then on, and one being carved
+        /// under the cursor reports a weight that is at worst half a second stale.
+        /// </summary>
+        public float Mass
+        {
+            get
+            {
+                if (Grid == null || !Grid.IsCreated) return 0f;
+                bool fresh = _massKg >= 0f;
+                if (fresh && !_massStale) return _massKg;
+                if (fresh && Time.time - _massAt < MassRefreshSeconds) return _massKg;
+                _massAt = Time.time;
+                _massStale = false;
+                float density = config != null && config.snowDensity > 0f ? config.snowDensity : 350f;
+                return _massKg = DensityVolume() * density;
+            }
+        }
+
+        const float MassRefreshSeconds = 0.5f;
+        float _massKg = -1f;
+        float _massAt = float.NegativeInfinity;
+        bool _massStale = true;
+
+        /// <summary>The snow changed, so the cached weight is a guess until the next scan.</summary>
+        void MassChanged() => _massStale = true;
 
         public float DensityVolume()
         {
@@ -190,22 +227,56 @@ namespace Snowfield.Sculpture
             return voxels * vs * vs * vs;
         }
 
+        /// <summary>
+        /// The slab of this grid a world-space box covers (min inclusive, max exclusive), clamped to the grid.
+        /// False when the box misses the grid entirely. Rotation-aware: the box's corners are what is mapped.
+        /// </summary>
+        bool VoxelRange(Bounds world, out int3 min, out int3 max)
+        {
+            float3 lo = float.MaxValue, hi = float.MinValue;
+            for (int i = 0; i < 8; i++)
+            {
+                var corner = new Vector3((i & 1) == 0 ? world.min.x : world.max.x, ((i >> 1) & 1) == 0 ? world.min.y : world.max.y, ((i >> 2) & 1) == 0 ? world.min.z : world.max.z);
+                float3 v = WorldToVoxel(corner);
+                lo = math.min(lo, v); hi = math.max(hi, v);
+            }
+            min = math.clamp((int3)math.floor(lo), 0, Info.size - 1);
+            max = math.clamp((int3)math.ceil(hi) + 1, 0, Info.size);
+            return math.all(max > min);
+        }
+
+        /// <summary>
+        /// True if this grid's snow and <paramref name="other"/>'s snow meet — overlapping, or within
+        /// <paramref name="reachMetres"/> of each other, which on screen is the same thing. Only the box where
+        /// the two could possibly meet is walked, so sculptures that merely share a neighbourhood are cheap.
+        /// </summary>
+        public bool TouchesSnow(SnowSculpture other, float reachMetres)
+        {
+            if (other == null || other == this || Grid == null || other.Grid == null) return false;
+            var region = other.SnowBoundsWorld();
+            if (region.size == Vector3.zero) return false;
+            region.Expand(reachMetres * 2f); // Expand grows the whole size, so this is reach per side
+            if (!VoxelRange(region, out var min, out var max)) return false;
+
+            var result = new NativeArray<bool>(1, Allocator.TempJob);
+            new ContactTestJob
+            {
+                Density = Grid.Density, Info = Info, Other = other.Grid.Density, OtherInfo = other.Info,
+                AabbMin = min, AabbMax = max,
+                ToOtherVoxel = math.mul(other.WorldToVoxelMatrix, VoxelToWorldMatrix),
+                ReachVoxels = reachMetres / Info.voxelSize,
+                Result = result,
+            }.Schedule().Complete();
+            bool touching = result[0];
+            result.Dispose();
+            return touching;
+        }
+
         /// <summary>Max-merge another sculpture's density into this grid, in world space (handles offset/rotation).</summary>
         public void Absorb(SnowSculpture other)
         {
             if (other == null || other == this || other.Grid == null) return;
-            // Voxel range of this grid covered by the other's world bounds.
-            var ob = other.WorldBounds;
-            float3 lo = float.MaxValue, hi = float.MinValue;
-            for (int i = 0; i < 8; i++)
-            {
-                var corner = new Vector3((i & 1) == 0 ? ob.min.x : ob.max.x, ((i >> 1) & 1) == 0 ? ob.min.y : ob.max.y, ((i >> 2) & 1) == 0 ? ob.min.z : ob.max.z);
-                float3 v = WorldToVoxel(corner);
-                lo = math.min(lo, v); hi = math.max(hi, v);
-            }
-            int3 min = math.clamp((int3)math.floor(lo), 0, Info.size - 1);
-            int3 max = math.clamp((int3)math.ceil(hi) + 1, 0, Info.size);
-            if (!math.all(max > min)) return;
+            if (!VoxelRange(other.WorldBounds, out var min, out var max)) return;
 
             int3 ext = max - min;
             new AbsorbJob
@@ -214,6 +285,7 @@ namespace Snowfield.Sculpture
                 AabbMin = min, AabbExtent = ext, ToSourceVoxel = math.mul(other.WorldToVoxelMatrix, VoxelToWorldMatrix),
             }.Schedule(ext.x * ext.y * ext.z, 256).Complete();
             Grid.MarkDirty(min, max);
+            MassChanged();
         }
 
         /// <summary>Re-cook every chunk collider from scratch (after the sculpture moved while its colliders were off).</summary>
@@ -286,6 +358,7 @@ namespace Snowfield.Sculpture
                 CenterVoxel = c, RadiusVoxels = r, RatePerTick = ratePerTick, Shoulder = shoulder,
             }.Schedule(ext.x * ext.y * ext.z, 64).Complete();
             Grid.MarkDirty(min, max);
+            MassChanged();
         }
 
         public void ApplySmooth(float3 worldCenter, float radiusMetres, float strength, float shoulder)
@@ -303,6 +376,7 @@ namespace Snowfield.Sculpture
                 CenterVoxel = c, RadiusVoxels = r, Strength = strength, Shoulder = shoulder,
             }.Schedule(count, 64, copy).Complete();
             Grid.MarkDirty(min, max);
+            MassChanged();
         }
 
         /// <summary>One-shot stamp. clipBelowWorldY: leave voxels below this world height untouched (hemisphere).</summary>
@@ -319,6 +393,7 @@ namespace Snowfield.Sculpture
                 CenterVoxel = c, RadiusVoxels = r, Shoulder = shoulder, ClipBelowY = clipVoxelY,
             }.Schedule(ext.x * ext.y * ext.z, 64).Complete();
             Grid.MarkDirty(min, max);
+            MassChanged();
         }
 
         // ---------- meshing ----------
